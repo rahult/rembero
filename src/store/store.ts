@@ -1,4 +1,11 @@
-import { mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -24,6 +31,17 @@ export interface AssertResult {
 interface CachedNamespace {
   clauses: Clause[];
   keys: Set<string>;
+  /** mtime+size of the file this cache was read from; '' when the file did not exist. */
+  fileStamp: string;
+}
+
+function fileStamp(path: string): string {
+  try {
+    const stat = statSync(path);
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return '';
+  }
 }
 
 export class MemoryStore {
@@ -41,14 +59,16 @@ export class MemoryStore {
   }
 
   private loadCached(namespace: string): CachedNamespace {
-    const cached = this.cache.get(namespace);
-    if (cached) return cached;
     const path = this.filePath(namespace);
+    const stamp = fileStamp(path);
+    const cached = this.cache.get(namespace);
+    // another process may have written the file since we cached it
+    if (cached && cached.fileStamp === stamp) return cached;
     let text: string;
     try {
       text = readFileSync(path, 'utf8');
     } catch {
-      const empty = { clauses: [], keys: new Set<string>() };
+      const empty = { clauses: [], keys: new Set<string>(), fileStamp: stamp };
       this.cache.set(namespace, empty);
       return empty;
     }
@@ -59,7 +79,7 @@ export class MemoryStore {
       const message = e instanceof Error ? e.message : String(e);
       throw new ParseError(`failed to load ${path}: ${message}`);
     }
-    const entry = { clauses, keys: new Set(clauses.map(canonicalKey)) };
+    const entry = { clauses, keys: new Set(clauses.map(canonicalKey)), fileStamp: stamp };
     this.cache.set(namespace, entry);
     return entry;
   }
@@ -73,6 +93,7 @@ export class MemoryStore {
     const tmp = `${path}.tmp-${process.pid}`;
     writeFileSync(tmp, `${HEADER}${body}\n`, 'utf8');
     renameSync(tmp, path);
+    entry.fileStamp = fileStamp(path);
   }
 
   load(namespace: string): Clause[] {

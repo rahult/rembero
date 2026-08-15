@@ -30,6 +30,7 @@ export interface PipelineDeps {
 export interface RememberResult {
   added: string[];
   duplicates: number;
+  retracted: number;
 }
 
 export interface RecallResult {
@@ -79,13 +80,34 @@ export async function rememberText(
     { role: 'system', content: extractionSystemPrompt(schema) },
     { role: 'user', content: text },
   ];
-  const clauses = await completeWithRetry(deps.llm, messages, (response): Clause[] | null => {
-    if (response === NOTHING_SENTINEL) return null;
-    return parseProgram(response);
-  });
-  if (clauses === null || clauses.length === 0) return { added: [], duplicates: 0 };
-  const { added, duplicates } = deps.store.assert(namespace, clauses);
-  return { added: added.map(serializeClause), duplicates };
+  const extraction = await completeWithRetry(
+    deps.llm,
+    messages,
+    (response): { clauses: Clause[]; retractions: Goal[][] } | null => {
+      if (response === NOTHING_SENTINEL) return null;
+      const retractionLines: string[] = [];
+      const clauseLines: string[] = [];
+      for (const line of response.split('\n')) {
+        const retractMatch = line.trim().match(/^retract\s+(.*)$/);
+        if (retractMatch) retractionLines.push(retractMatch[1].replace(/\.\s*$/, ''));
+        else clauseLines.push(line);
+      }
+      // parse retraction patterns up front so a bad one triggers the retry loop
+      return {
+        clauses: parseProgram(clauseLines.join('\n')),
+        retractions: retractionLines.map((p) => parseQuery(p)),
+      };
+    }
+  );
+  if (extraction === null) return { added: [], duplicates: 0, retracted: 0 };
+
+  let retracted = 0;
+  for (const pattern of extraction.retractions) {
+    retracted += deps.store.retract(namespace, pattern.map(serializeGoal).join(', ')).removed;
+  }
+  if (extraction.clauses.length === 0) return { added: [], duplicates: 0, retracted };
+  const { added, duplicates } = deps.store.assert(namespace, extraction.clauses);
+  return { added: added.map(serializeClause), duplicates, retracted };
 }
 
 function validateQueryPredicates(goals: Goal[], clauses: Clause[]): void {
@@ -109,6 +131,9 @@ export async function recallQuestion(
   namespaces: string[] | '*' = ['default']
 ): Promise<RecallResult> {
   const clauses = deps.store.clausesFor(namespaces);
+  if (clauses.length === 0) {
+    return { answer: 'I have no relevant memories to answer that.', query: null, bindings: [] };
+  }
   const schema = buildSchemaSummary(clauses);
   const messages: ChatMessage[] = [
     { role: 'system', content: queryGenSystemPrompt(schema) },

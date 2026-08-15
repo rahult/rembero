@@ -44,6 +44,10 @@ Output one clause per line and nothing else — no prose, no code fences.
 - Prefer several small binary facts over one wide fact. Emit a rule only when the input states a general relationship ("every X who ... is ...").
 - For relations that should never relate a thing to itself (colleague, sibling, neighbor, ...), add an inequality to the rule body: colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
 - Reuse predicates from the existing schema below when they fit; invent new ones only when needed.
+- When the input says something CHANGED or is no longer true ("now works at", "moved to", "no longer"), first retract the outdated fact with a retract line, then assert the new one:
+  retract works_at(mira, _).
+  works_at(mira, initech).
+  Only retract facts the schema shows could exist. Never retract when the input merely adds information.
 - If nothing factual can be extracted, output exactly: ${NOTHING_SENTINEL}
 
 Existing schema:

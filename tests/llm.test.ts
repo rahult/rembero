@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
+import { serializeClause } from '../src/engine/index.js';
 import { buildSchemaSummary } from '../src/llm/prompts.js';
 import { rememberText, recallQuestion } from '../src/llm/pipeline.js';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
@@ -87,6 +88,22 @@ describe('rememberText', () => {
     expect(store.load('default')).toEqual([]);
   });
 
+  it('applies retract lines before asserting, superseding stale facts', async () => {
+    store.assert('default', 'works_at(mira, acme).');
+    const llm = new ScriptedLlm(['retract works_at(mira, _).\nworks_at(mira, initech).']);
+    const result = await rememberText({ store, llm }, 'Mira now works at Initech');
+    expect(result.retracted).toBe(1);
+    expect(result.added).toEqual(['works_at(mira, initech).']);
+    expect(store.load('default').map(serializeClause)).toEqual(['works_at(mira, initech).']);
+  });
+
+  it('counts retractions that match nothing as zero without failing', async () => {
+    const llm = new ScriptedLlm(['retract dentist(rahul, _).\ndentist(rahul, dr_chen).']);
+    const result = await rememberText({ store, llm }, 'My dentist is Dr Chen now');
+    expect(result.retracted).toBe(0);
+    expect(result.added).toEqual(['dentist(rahul, dr_chen).']);
+  });
+
   it('treats "% nothing" as a no-op', async () => {
     const llm = new ScriptedLlm(['% nothing']);
     const result = await rememberText({ store, llm }, 'hello there!');
@@ -102,6 +119,15 @@ describe('recallQuestion', () => {
       `works_at(rahul, acme). works_at(maya, acme).
        colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.`
     );
+  });
+
+  it('answers immediately without any LLM call when memory is empty', async () => {
+    const empty = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-empty-')));
+    const llm = new ScriptedLlm([]);
+    const result = await recallQuestion({ store: empty, llm }, 'Where does Rahul work?');
+    expect(result.query).toBeNull();
+    expect(result.answer).toMatch(/no (relevant )?memor/i);
+    expect(llm.calls).toHaveLength(0);
   });
 
   it('generates a query, evaluates it, and phrases the answer', async () => {

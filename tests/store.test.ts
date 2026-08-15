@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
-import { serializeClause } from '../src/engine/index.js';
+import { canonicalKey, parseProgram, serializeClause } from '../src/engine/index.js';
 
 let root: string;
 let store: MemoryStore;
@@ -103,6 +103,33 @@ describe('MemoryStore.retract', () => {
   });
 });
 
+describe('round-trip hardening', () => {
+  const nasty = [
+    "note(a, 'it''s got ''nested'' quotes').",
+    "place(x, 'New York, NY (USA)').",
+    "unicode(a, 'こんにちは 🦉 café').",
+    "leading_digit(a, '42nd_street').",
+    "looks_like_var(a, 'X').",
+    "looks_like_op(a, 'a :- b, c.').",
+    "spaces(a, '  padded  ').",
+    'big_num(a, 123456789.25).',
+    'neg(a, -273.15).',
+    `long(a, '${'x'.repeat(500)}').`,
+  ];
+
+  it.each(nasty)('survives assert → reload → query for %s', (clause) => {
+    store.assert('default', clause);
+    const reloaded = new MemoryStore(root).load('default');
+    // canonical form may legally differ from the input (e.g. unneeded quotes
+    // dropped) but must parse back to the same clause
+    expect(reloaded.map(canonicalKey)).toEqual(parseProgram(clause).map(canonicalKey));
+    // and a second reload round-trip stays stable
+    const again = new MemoryStore(root);
+    again.assert('default', clause);
+    expect(again.load('default')).toHaveLength(1);
+  });
+});
+
 describe('namespaces', () => {
   it('lists namespaces and merges clauses across them with *', () => {
     store.assert('work', 'works_at(rahul, acme).');
@@ -117,6 +144,25 @@ describe('namespaces', () => {
     store.assert('default', 'f(a).');
     store.retract('default', 'f(a)');
     expect(readdirSync(root).filter((f) => !f.endsWith('.dl'))).toEqual([]);
+  });
+
+  it('does not clobber writes from another process with a stale cache', () => {
+    const s1 = new MemoryStore(root);
+    const s2 = new MemoryStore(root);
+    s1.assert('default', 'f(a).');
+    s2.load('default'); // prime s2's cache
+    s1.assert('default', 'g(b).'); // another process writes
+    s2.assert('default', 'h(c).'); // stale cache must reload before writing
+    const clauses = new MemoryStore(root).load('default').map(serializeClause).sort();
+    expect(clauses).toEqual(['f(a).', 'g(b).', 'h(c).']);
+  });
+
+  it('sees facts asserted by another store instance', () => {
+    const s1 = new MemoryStore(root);
+    const s2 = new MemoryStore(root);
+    s2.load('default');
+    s1.assert('default', 'f(a).');
+    expect(s2.load('default').map(serializeClause)).toEqual(['f(a).']);
   });
 
   it('creates the root directory on demand', () => {
