@@ -1,18 +1,45 @@
 {
   "name": "rembero",
   "version": "0.1.0",
-  "description": "Logic-based memory system for LLM chats and agents: Datalog engine + MCP server + LLM pipeline",
+  "description": "Logic-based memory for LLM chats and agents: Datalog facts + rules with deterministic inference, an MCP server, and an LLM natural-language pipeline",
   "type": "module",
   "bin": {
     "rembero": "dist/cli.js"
   },
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "tsx src/cli.ts"
+    "dev": "tsx src/cli.ts",
+    "prepublishOnly": "npm test && npm run build"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahult/rembero.git"
+  },
+  "keywords": [
+    "memory",
+    "datalog",
+    "prolog",
+    "mcp",
+    "model-context-protocol",
+    "llm",
+    "agent",
+    "claude",
+    "knowledge-base",
+    "reasoning"
+  ],
+  "author": "Rahul Trikha",
   "engines": {
     "node": ">=20"
   },

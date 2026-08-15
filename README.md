@@ -16,26 +16,31 @@ built-in, zero-dependency Datalog engine does the reasoning deterministically.
 
 Facts nobody ever stated directly (like `colleague(rahul, mira)`) are *derived*, not stored.
 
-## Setup
+## Install
 
 ```bash
-npm install
-npm run build
+npm install -g rembero        # or run ad hoc with: npx -y rembero
 ```
 
-Create `.env` in the project root (or export the variables):
+Configuration is via environment variables (a `.env` file in the working directory also works):
 
-```
-LLM_API_KEY=sk-or-...                          # OpenRouter API key
-LLM_BASE_URL=https://openrouter.ai/api/v1      # optional, this is the default
-LLM_MODEL=openai/gpt-5.6-luna                  # optional, this is the default
-```
+| Variable | Required | Default |
+|---|---|---|
+| `LLM_API_KEY` | for `remember`/`recall` only | — (an [OpenRouter](https://openrouter.ai) key) |
+| `LLM_BASE_URL` | no | `https://openrouter.ai/api/v1` |
+| `LLM_MODEL` | no | `openai/gpt-5.6-luna` |
+| `REMBERO_HOME` | no | `~/.rembero` (memories live in `$REMBERO_HOME/memory/`) |
+
+The raw Datalog tools (`query`, `assert_facts`, `forget`, `list_memories`) work with no
+API key at all — only natural-language `remember`/`recall` call the LLM.
 
 ## Use from Claude Code (MCP)
 
 ```bash
-claude mcp add rembero -- node /path/to/rembero/dist/cli.js serve
+claude mcp add rembero --env LLM_API_KEY=sk-or-... -- npx -y rembero serve
 ```
+
+From a git checkout instead: `claude mcp add rembero -- node /path/to/rembero/dist/cli.js serve`
 
 Tools exposed: `remember`, `recall`, `assert_facts`, `query`, `forget`, `list_memories`.
 `remember`/`recall` take natural language; the rest take raw Datalog for direct, LLM-free access.
@@ -72,6 +77,19 @@ deduplicated on write. Files are written atomically.
 - Safety: facts must be ground; every head variable must appear in a positive body literal
   (range restriction). LLM output that violates this is rejected, retried once with the
   error message, then surfaced as an error — nothing unparsed ever reaches the store.
+
+## Troubleshooting
+
+- **`LLM_API_KEY is not set`** — export it, put it in `.env` in the directory you launch
+  from, or pass it via `claude mcp add --env`. Only `remember`/`recall` need it.
+- **HTTP 401/403 from the LLM** — key is invalid or lacks access to the model; try
+  another `LLM_MODEL` you have access to on OpenRouter.
+- **`failed to load ….dl`** — a memory file was hand-edited into a state that doesn't
+  parse; the error names the file and line. Fix the line (or delete it) and retry.
+  Nothing is ever silently dropped.
+- **Server shows "disconnected" in Claude Code** — run `npx -y rembero serve` manually;
+  anything printed before the JSON handshake (e.g. npm warnings) breaks stdio. Use
+  `npx -y` (never a bare `npm run`) so nothing pollutes stdout.
 
 ## Development
 

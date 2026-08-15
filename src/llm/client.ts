@@ -60,6 +60,20 @@ export class OpenRouterClient implements LlmClient {
   }
 }
 
+/**
+ * An LlmClient that resolves its configuration on first use, so the MCP server
+ * can start (and serve the LLM-free tools) without an API key present.
+ */
+export function lazyClientFromEnv(): LlmClient {
+  let client: OpenRouterClient | undefined;
+  return {
+    complete(messages) {
+      client ??= clientFromEnv();
+      return client.complete(messages);
+    },
+  };
+}
+
 export function clientFromEnv(env = process.env): OpenRouterClient {
   const apiKey = env.LLM_API_KEY;
   if (!apiKey) {

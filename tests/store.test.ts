@@ -165,6 +165,18 @@ describe('namespaces', () => {
     expect(s2.load('default').map(serializeClause)).toEqual(['f(a).']);
   });
 
+  it('honors REMBERO_HOME for the default root', () => {
+    const home = mkdtempSync(join(tmpdir(), 'rembero-home-'));
+    process.env.REMBERO_HOME = home;
+    try {
+      const s = new MemoryStore();
+      s.assert('default', 'f(a).');
+      expect(readFileSync(join(home, 'memory', 'default.dl'), 'utf8')).toContain('f(a).');
+    } finally {
+      delete process.env.REMBERO_HOME;
+    }
+  });
+
   it('creates the root directory on demand', () => {
     const nested = join(root, 'deep', 'memory');
     const s = new MemoryStore(nested);

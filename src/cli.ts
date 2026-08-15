@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { loadEnv } from './env.js';
-import { clientFromEnv } from './llm/client.js';
+import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
 import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { serveStdio } from './mcp/server.js';
 import { forgetTool, listMemoriesTool, queryTool } from './mcp/tools.js';
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'serve':
-      await serveStdio({ store, llm: clientFromEnv() });
+      await serveStdio({ store, llm: lazyClientFromEnv() });
       return; // keep process alive; transport owns stdio
     case 'remember': {
       const result = await rememberText({ store, llm: clientFromEnv() }, text, args.namespace);

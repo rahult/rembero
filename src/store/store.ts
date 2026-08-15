@@ -44,10 +44,14 @@ function fileStamp(path: string): string {
   }
 }
 
+export function defaultRoot(): string {
+  return join(process.env.REMBERO_HOME ?? join(homedir(), '.rembero'), 'memory');
+}
+
 export class MemoryStore {
   private cache = new Map<string, CachedNamespace>();
 
-  constructor(private root: string = join(homedir(), '.rembero', 'memory')) {}
+  constructor(private root: string = defaultRoot()) {}
 
   private filePath(namespace: string): string {
     if (!NAMESPACE_RE.test(namespace)) {
