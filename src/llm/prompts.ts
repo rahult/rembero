@@ -48,6 +48,7 @@ Output one clause per line and nothing else — no prose, no code fences.
   retract works_at(mira, _).
   works_at(mira, initech).
   Only retract facts the schema shows could exist. Never retract when the input merely adds information.
+- NEVER extract secrets: passwords, API keys, tokens, credit card or account numbers. Skip them even if the rest of the sentence is stored.
 - If nothing factual can be extracted, output exactly: ${NOTHING_SENTINEL}
 
 Existing schema:

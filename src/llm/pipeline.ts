@@ -139,20 +139,43 @@ export async function recallQuestion(
     { role: 'system', content: queryGenSystemPrompt(schema) },
     { role: 'user', content: question },
   ];
-  const goals = await completeWithRetry(deps.llm, messages, (response): Goal[] | null => {
+  const validateResponse = (response: string): Goal[] | null => {
     if (UNANSWERABLE_RE.test(response)) return null;
     const parsed = parseQuery(response);
     validateQueryPredicates(parsed, clauses);
     return parsed;
-  });
-  if (goals === null) {
-    return { answer: 'I have no relevant memories to answer that.', query: null, bindings: [] };
-  }
+  };
+  const noMemories: RecallResult = {
+    answer: 'I have no relevant memories to answer that.',
+    query: null,
+    bindings: [],
+  };
+  const evalRows = (goals: Goal[]) =>
+    evaluate(clauses, goals).map((b: Bindings) =>
+      Object.fromEntries(Object.entries(b).map(([name, term]) => [name, serializeTerm(term)]))
+    );
 
-  const queryText = goals.map(serializeGoal).join(', ');
-  const rows = evaluate(clauses, goals).map((b: Bindings) =>
-    Object.fromEntries(Object.entries(b).map(([name, term]) => [name, serializeTerm(term)]))
-  );
+  let goals = await completeWithRetry(deps.llm, messages, validateResponse);
+  if (goals === null) return noMemories;
+
+  let queryText = goals.map(serializeGoal).join(', ');
+  let rows = evalRows(goals);
+
+  // one shot at an alternative query before giving up on an empty result
+  if (rows.length === 0) {
+    const fallbackMessages: ChatMessage[] = [
+      ...messages,
+      { role: 'assistant', content: `?- ${queryText}.` },
+      {
+        role: 'user',
+        content: `The query ${queryText} returned no results. Try ONE alternative query — different predicates or fewer constraints — or output exactly: ?- ${UNANSWERABLE}.`,
+      },
+    ];
+    goals = await completeWithRetry(deps.llm, fallbackMessages, validateResponse);
+    if (goals === null) return noMemories;
+    queryText = goals.map(serializeGoal).join(', ');
+    rows = evalRows(goals);
+  }
 
   const answer = await deps.llm.complete([
     { role: 'system', content: PHRASING_SYSTEM_PROMPT },

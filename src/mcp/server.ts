@@ -38,7 +38,7 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
     {
       title: 'Remember',
       description:
-        'Store a natural-language statement in long-term memory as logical facts/rules. Use for anything worth remembering about the user, projects, or the world.',
+        "Store a natural-language statement in long-term memory as logical facts/rules. Use proactively when the user states something durable: preferences, relationships, decisions, project facts, biography ('my dentist is Dr Chen', 'we picked Postgres', 'Mira now works at Initech' — updates supersede old facts). Do NOT store secrets (passwords, keys) or transient context (today's error message).",
       inputSchema: { text: z.string().describe('What to remember, in plain language'), namespace: namespaceField },
     },
     async ({ text, namespace }) => {
@@ -55,7 +55,7 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
     {
       title: 'Recall',
       description:
-        'Answer a question from long-term memory using logical inference over stored facts and rules.',
+        "Answer a question from long-term memory using logical inference over stored facts and rules. Use when the user asks about anything previously discussed or personal ('who is my dentist?', 'what did we decide about the database?'), and at the start of tasks where remembered context would help. Returns the answer plus the query and bindings used to derive it.",
       inputSchema: { question: z.string(), namespaces: namespacesField },
     },
     async ({ question, namespaces }) => {

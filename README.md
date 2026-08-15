@@ -42,6 +42,17 @@ claude mcp add rembero --env LLM_API_KEY=sk-or-... -- npx -y rembero serve
 
 From a git checkout instead: `claude mcp add rembero -- node /path/to/rembero/dist/cli.js serve`
 
+To make agents use memory *proactively*, add a snippet like this to your `CLAUDE.md`
+(or system prompt):
+
+```markdown
+## Memory (rembero)
+- At the start of tasks, use `recall` to check for relevant remembered context.
+- When I state something durable — a preference, decision, relationship, or fact about
+  me or a project — store it with `remember`. Updates ("X is now Y") supersede old facts.
+- Never store secrets or transient details. When unsure whether to remember, ask.
+```
+
 Tools exposed: `remember`, `recall`, `assert_facts`, `query`, `forget`, `list_memories`.
 `remember`/`recall` take natural language; the rest take raw Datalog for direct, LLM-free access.
 

@@ -162,11 +162,38 @@ describe('recallQuestion', () => {
     expect(retry[retry.length - 1].content).toContain('employed_by/2');
   });
 
-  it('still phrases an answer when the query returns no rows', async () => {
-    const llm = new ScriptedLlm(['?- works_at(zoe, X).', "I don't have that in memory."]);
+  it('tries one alternative query when the first returns no rows', async () => {
+    const llm = new ScriptedLlm([
+      '?- works_at(maya, initech).', // plausible but wrong guess: no rows
+      '?- works_at(maya, X).', // fallback attempt finds the answer
+      'Maya works at Acme.',
+    ]);
+    const result = await recallQuestion({ store, llm }, 'Is Maya employed anywhere?');
+    expect(result.query).toBe('works_at(maya, X)');
+    expect(result.bindings).toEqual([{ X: 'acme' }]);
+    expect(result.answer).toBe('Maya works at Acme.');
+    // the fallback prompt tells the model what came up empty
+    const fallback = llm.calls[1];
+    expect(fallback[fallback.length - 1].content).toContain('works_at(maya, initech)');
+  });
+
+  it('phrases an honest answer when the fallback also returns no rows', async () => {
+    const llm = new ScriptedLlm([
+      '?- works_at(zoe, X).',
+      '?- colleague(zoe, X).',
+      "I don't have that in memory.",
+    ]);
     const result = await recallQuestion({ store, llm }, 'Where does Zoe work?');
     expect(result.bindings).toEqual([]);
     expect(result.answer).toBe("I don't have that in memory.");
+  });
+
+  it('accepts unanswerable as the fallback response and skips phrasing', async () => {
+    const llm = new ScriptedLlm(['?- works_at(zoe, X).', '?- unanswerable.']);
+    const result = await recallQuestion({ store, llm }, 'Where does Zoe work?');
+    expect(result.bindings).toEqual([]);
+    expect(result.answer).toMatch(/no (relevant )?memor/i);
+    expect(llm.calls).toHaveLength(2);
   });
 });
 
