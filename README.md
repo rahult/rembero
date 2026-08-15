@@ -1,5 +1,7 @@
 # rembero
 
+[![CI](https://github.com/rahult/rembero/actions/workflows/ci.yml/badge.svg)](https://github.com/rahult/rembero/actions/workflows/ci.yml)
+
 Logic-based memory for LLM chats and agents. Instead of fuzzy vector recall, rembero stores
 memories as **Datalog facts and rules** and answers questions by **logical inference** —
 an LLM (GPT-5.6 Luna via OpenRouter) translates natural language in and out, and a
