@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
@@ -102,6 +102,15 @@ describe('rememberText', () => {
     const result = await rememberText({ store, llm }, 'My dentist is Dr Chen now');
     expect(result.retracted).toBe(0);
     expect(result.added).toEqual(['dentist(rahul, dr_chen).']);
+  });
+
+  it('journals the source text of what was remembered', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-journal-'));
+    const s = new MemoryStore(root);
+    const llm = new ScriptedLlm(['works_at(rahul, acme).']);
+    await rememberText({ store: s, llm }, 'Rahul works at Acme');
+    const journal = readFileSync(join(root, 'journal.log'), 'utf8');
+    expect(journal).toContain('Rahul works at Acme');
   });
 
   it('treats "% nothing" as a no-op', async () => {

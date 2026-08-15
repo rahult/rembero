@@ -1,4 +1,5 @@
 import {
+  appendFileSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -104,6 +105,13 @@ export class MemoryStore {
     return this.loadCached(namespace).clauses;
   }
 
+  /** Append an entry to the append-only operation journal ("why does it think that?"). */
+  note(namespace: string, op: string, details: Record<string, unknown> = {}): void {
+    mkdirSync(this.root, { recursive: true });
+    const entry = { ts: new Date().toISOString(), op, namespace, ...details };
+    appendFileSync(join(this.root, 'journal.log'), `${JSON.stringify(entry)}\n`, 'utf8');
+  }
+
   assert(namespace: string, clauses: string | Clause[]): AssertResult {
     const parsed = typeof clauses === 'string' ? parseProgram(clauses) : clauses;
     const entry = this.loadCached(namespace);
@@ -119,7 +127,10 @@ export class MemoryStore {
         added.push(clause);
       }
     }
-    if (added.length > 0) this.save(namespace, entry);
+    if (added.length > 0) {
+      this.save(namespace, entry);
+      this.note(namespace, 'assert', { added: added.map(serializeClause), duplicates });
+    }
     return { added, duplicates };
   }
 
@@ -147,6 +158,7 @@ export class MemoryStore {
       entry.keys = new Set(keep.map(canonicalKey));
       this.cache.set(namespace, entry);
       this.save(namespace, entry);
+      this.note(namespace, 'retract', { pattern, removed });
     }
     return { removed };
   }

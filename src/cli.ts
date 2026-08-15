@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
+import { serializeClause } from './engine/index.js';
 import { loadEnv } from './env.js';
 import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
 import { rememberText, recallQuestion } from './llm/pipeline.js';
@@ -15,6 +17,8 @@ Usage:
   rembero query <datalog>                Run a raw Datalog query
   rembero forget <pattern>               Retract facts matching a pattern
   rembero list                           List stored memories
+  rembero export                         Print all memories as portable Datalog
+  rembero import <ns> <file>             Load clauses from a .dl file into a namespace
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
@@ -74,6 +78,25 @@ async function main(): Promise<void> {
     case 'forget': {
       const result = forgetTool({ store }, { pattern: text, namespace: args.namespace });
       console.log(`removed ${result.removed} clause(s)`);
+      return;
+    }
+    case 'export': {
+      for (const ns of store.listNamespaces()) {
+        console.log(`% namespace: ${ns}`);
+        for (const clause of store.load(ns)) console.log(serializeClause(clause));
+        console.log('');
+      }
+      return;
+    }
+    case 'import': {
+      const [ns, file] = args.positional;
+      if (!ns || !file) {
+        console.error('usage: rembero import <namespace> <file.dl>');
+        process.exitCode = 1;
+        return;
+      }
+      const result = store.assert(ns, readFileSync(file, 'utf8'));
+      console.log(`imported ${result.added.length} clause(s), ${result.duplicates} duplicate(s) skipped`);
       return;
     }
     case 'list': {

@@ -103,6 +103,48 @@ describe('MemoryStore.retract', () => {
   });
 });
 
+describe('journal', () => {
+  function journalLines(): { ts: string; op: string; [k: string]: unknown }[] {
+    const text = readFileSync(join(root, 'journal.log'), 'utf8');
+    return text
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+  }
+
+  it('records asserts with the clauses added', () => {
+    store.assert('default', 'f(a). f(a).');
+    const [entry] = journalLines();
+    expect(entry.op).toBe('assert');
+    expect(entry.namespace).toBe('default');
+    expect(entry.added).toEqual(['f(a).']);
+    expect(entry.duplicates).toBe(1);
+    expect(new Date(entry.ts).getTime()).not.toBeNaN();
+  });
+
+  it('records retractions with pattern and count', () => {
+    store.assert('default', 'f(a). f(b).');
+    store.retract('default', 'f(_)');
+    const entries = journalLines();
+    expect(entries[1]).toMatchObject({ op: 'retract', pattern: 'f(_)', removed: 2 });
+  });
+
+  it('records the source text of remembered statements', () => {
+    store.note('default', 'remember', { text: 'Rahul works at Acme' });
+    expect(journalLines()[0]).toMatchObject({
+      op: 'remember',
+      namespace: 'default',
+      text: 'Rahul works at Acme',
+    });
+  });
+
+  it('does not journal no-op asserts', () => {
+    store.assert('default', 'f(a).');
+    store.assert('default', 'f(a).');
+    expect(journalLines()).toHaveLength(1);
+  });
+});
+
 describe('round-trip hardening', () => {
   const nasty = [
     "note(a, 'it''s got ''nested'' quotes').",
@@ -143,7 +185,7 @@ describe('namespaces', () => {
   it('leaves no temp files behind after writes', () => {
     store.assert('default', 'f(a).');
     store.retract('default', 'f(a)');
-    expect(readdirSync(root).filter((f) => !f.endsWith('.dl'))).toEqual([]);
+    expect(readdirSync(root).filter((f) => !f.endsWith('.dl') && f !== 'journal.log')).toEqual([]);
   });
 
   it('does not clobber writes from another process with a stale cache', () => {

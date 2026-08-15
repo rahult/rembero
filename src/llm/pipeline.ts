@@ -105,6 +105,9 @@ export async function rememberText(
   for (const pattern of extraction.retractions) {
     retracted += deps.store.retract(namespace, pattern.map(serializeGoal).join(', ')).removed;
   }
+  if (extraction.clauses.length > 0 || retracted > 0) {
+    deps.store.note(namespace, 'remember', { text });
+  }
   if (extraction.clauses.length === 0) return { added: [], duplicates: 0, retracted };
   const { added, duplicates } = deps.store.assert(namespace, extraction.clauses);
   return { added: added.map(serializeClause), duplicates, retracted };
