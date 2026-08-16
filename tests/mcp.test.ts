@@ -33,6 +33,13 @@ describe('MCP explanation surfaces', () => {
       'default',
       'left(a). right(a). answer(X) :- left(X). answer(X) :- right(X).'
     );
+    store.assert(
+      'default',
+      `rembero_alias('Mira Patel', mira).
+       rembero_entity_position(works_at, 2, 0).
+       works_at('Mira Patel', acme).`,
+      { opId: 'mcp-identity-source' }
+    );
     const server = createServer({
       store,
       llm: new ScriptedLlm(['?- pet(rahul, Name).', 'Your cat is Luna.']),
@@ -42,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.10.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.11.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -148,6 +155,33 @@ describe('MCP explanation surfaces', () => {
       expect(arithmeticPayload.bindings).toEqual([
         { Person: 'alice', Points: '20', Base: '10' },
       ]);
+
+      const identity = await client.callTool({
+        name: 'explain_query',
+        arguments: {
+          query: 'works_at(mira, Company)',
+          entityIdentity: 'canonical',
+        },
+      });
+      const identityText = identity.content.find((item) => item.type === 'text');
+      const identityPayload = JSON.parse(
+        identityText?.type === 'text' ? identityText.text : ''
+      );
+      expect(identityPayload.rows[0]).toMatchObject({
+        bindings: { Company: 'acme' },
+        proofs: [
+          {
+            sources: [
+              expect.objectContaining({
+                projectedFrom: "works_at('Mira Patel', acme).",
+                identityRewrites: [
+                  expect.objectContaining({ original: 'Mira Patel', canonical: 'mira' }),
+                ],
+              }),
+            ],
+          },
+        ],
+      });
 
       const recalled = await client.callTool({
         name: 'recall_explain',

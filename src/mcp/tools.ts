@@ -22,6 +22,16 @@ import {
   type IntegrityCheckResult,
 } from '../knowledge/integrity.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
+import {
+  EntityIdentityError,
+  buildEntityResolver,
+  canonicalizeKnowledge,
+  literalKnowledge,
+  type EntityAlias,
+  type EntityIdentityMode,
+  type EntityPosition,
+  type EntityResolver,
+} from '../knowledge/identity.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 
 export type LlmToolDeps = PipelineDeps;
@@ -29,6 +39,7 @@ export type LlmToolDeps = PipelineDeps;
 export interface StoreToolDeps {
   store: MemoryStore;
   integrityEnforcement?: IntegrityEnforcementOptions | false;
+  entityIdentity?: EntityIdentityMode | false;
 }
 
 type NamespacesArg = string[] | '*' | undefined;
@@ -45,6 +56,7 @@ export function rememberTool(
     text: string;
     namespace?: string;
     integrityEnforcement?: IntegrityEnforcementOptions;
+    entityIdentity?: EntityIdentityMode;
   }
 ): Promise<RememberResult> {
   assertBoundedInput(args.text, 'memory text');
@@ -52,6 +64,9 @@ export function rememberTool(
     ...(args.integrityEnforcement === undefined
       ? {}
       : { integrityEnforcement: args.integrityEnforcement }),
+    ...(args.entityIdentity === undefined
+      ? {}
+      : { entityIdentity: args.entityIdentity }),
   });
 }
 
@@ -61,6 +76,7 @@ export function recallTool(
     question: string;
     namespaces?: string[] | '*';
     schemaPredicateLimit?: number;
+    entityIdentity?: EntityIdentityMode;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -68,6 +84,9 @@ export function recallTool(
     ...(args.schemaPredicateLimit === undefined
       ? {}
       : { schemaPredicateLimit: args.schemaPredicateLimit }),
+    ...(args.entityIdentity === undefined
+      ? {}
+      : { entityIdentity: args.entityIdentity }),
   });
 }
 
@@ -78,6 +97,7 @@ export function recallExplainTool(
     namespaces?: string[] | '*';
     schemaPredicateLimit?: number;
     proofLimit?: number;
+    entityIdentity?: EntityIdentityMode;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -87,6 +107,9 @@ export function recallExplainTool(
     ...(args.schemaPredicateLimit === undefined
       ? {}
       : { schemaPredicateLimit: args.schemaPredicateLimit }),
+    ...(args.entityIdentity === undefined
+      ? {}
+      : { entityIdentity: args.entityIdentity }),
   });
 }
 
@@ -111,11 +134,26 @@ export function assertFactsTool(
 
 export function queryTool(
   deps: StoreToolDeps,
-  args: { query: string; namespaces?: string[] | '*' }
+  args: {
+    query: string;
+    namespaces?: string[] | '*';
+    entityIdentity?: EntityIdentityMode;
+  }
 ): { bindings: Record<string, string>[] } {
   assertBoundedInput(args.query, 'query');
-  const clauses = deps.store.clausesFor(namespacesOrDefault(args.namespaces));
-  const bindings = evaluateQuerySpec(clauses, parseQuerySpec(args.query)).map((b) =>
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const clauses = deps.store.clausesFor(namespaces);
+  const sources = deps.store.sourcesFor(namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const view = entityIdentity === 'canonical'
+    ? canonicalizeKnowledge(clauses, sources)
+    : literalKnowledge(clauses, sources);
+  const parsed = parseQuerySpec(args.query);
+  const query = entityIdentity === 'canonical'
+    ? view.resolver.canonicalizeQuery(parsed).query
+    : parsed;
+  const bindings = evaluateQuerySpec(view.clauses, query).map((b) =>
     Object.fromEntries(Object.entries(b).map(([name, term]) => [name, serializeTerm(term)]))
   );
   return { bindings };
@@ -123,15 +161,25 @@ export function queryTool(
 
 export function explainQueryTool(
   deps: StoreToolDeps,
-  args: { query: string; namespaces?: string[] | '*'; proofLimit?: number }
+  args: {
+    query: string;
+    namespaces?: string[] | '*';
+    proofLimit?: number;
+    entityIdentity?: EntityIdentityMode;
+  }
 ): ExplainKnowledgeResult {
   assertBoundedInput(args.query, 'query');
   const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
   return explainKnowledge(
     deps.store.clausesFor(namespaces),
     args.query,
     deps.store.sourcesFor(namespaces),
-    args.proofLimit === undefined ? {} : { maxProofsPerRow: args.proofLimit }
+    {
+      ...(args.proofLimit === undefined ? {} : { maxProofsPerRow: args.proofLimit }),
+      ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    }
   );
 }
 
@@ -141,9 +189,12 @@ export function checkIntegrityTool(
     namespaces?: string[] | '*';
     proofLimit?: number;
     maxViolations?: number;
+    entityIdentity?: EntityIdentityMode;
   }
 ): IntegrityCheckResult {
   const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
   return checkIntegrity(
     deps.store.clausesFor(namespaces),
     deps.store.sourcesFor(namespaces),
@@ -154,6 +205,7 @@ export function checkIntegrityTool(
       ...(args.maxViolations === undefined
         ? {}
         : { maxViolations: args.maxViolations }),
+      ...(entityIdentity === undefined ? {} : { entityIdentity }),
     }
   );
 }
@@ -197,8 +249,26 @@ export interface PredicateGroup {
 export function listMemoriesTool(
   deps: StoreToolDeps,
   args: { namespaces?: string[] | '*'; predicate?: string }
-): { predicates: PredicateGroup[]; constraints?: string[] } {
-  const clauses = deps.store.clausesFor(namespacesOrDefault(args.namespaces));
+): {
+  predicates: PredicateGroup[];
+  constraints?: string[];
+  aliases?: EntityAlias[];
+  entityPositions?: EntityPosition[];
+  identityError?: { code: 'entity_identity_error'; message: string };
+} {
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const storedClauses = deps.store.clausesFor(namespaces);
+  const storedSources = deps.store.sourcesFor(namespaces);
+  const view = literalKnowledge(storedClauses, storedSources);
+  let resolver: EntityResolver | undefined;
+  let identityError: { code: 'entity_identity_error'; message: string } | undefined;
+  try {
+    resolver = buildEntityResolver(storedClauses, storedSources);
+  } catch (error) {
+    if (!(error instanceof EntityIdentityError)) throw error;
+    identityError = { code: error.code, message: error.message };
+  }
+  const clauses = view.clauses;
   const groups = new Map<string, PredicateGroup>();
   const constraints: string[] = [];
   for (const clause of clauses) {
@@ -231,8 +301,13 @@ export function listMemoriesTool(
       (group.rules ??= []).push(serializeClause(clause));
     }
   }
+  const aliases = resolver?.aliases() ?? [];
+  const entityPositions = resolver?.positions() ?? [];
   return {
     predicates: [...groups.values()],
     ...(constraints.length === 0 ? {} : { constraints }),
+    ...(aliases.length === 0 ? {} : { aliases }),
+    ...(entityPositions.length === 0 ? {} : { entityPositions }),
+    ...(identityError === undefined ? {} : { identityError }),
   };
 }

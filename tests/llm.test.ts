@@ -57,6 +57,17 @@ describe('buildSchemaSummary', () => {
     expect(summary).not.toContain('suspended');
     expect(summary).not.toContain(':-');
   });
+
+  it('keeps entity identity metadata out of the LLM-facing schema', () => {
+    const summary = buildSchemaSummary(
+      parseProgram(
+        "rembero_alias('Mira Patel', mira). rembero_entity_position(works_at, 2, 0). works_at(mira, acme)."
+      )
+    );
+    expect(summary).toContain('works_at/2');
+    expect(summary).not.toContain('rembero_alias');
+    expect(summary).not.toContain('rembero_entity_position');
+  });
 });
 
 describe('rememberText', () => {
@@ -107,6 +118,31 @@ describe('rememberText', () => {
       rememberText({ store, llm }, 'Make sure active users are not suspended')
     ).rejects.toThrow(/may not create integrity constraints/i);
     expect(store.load('default')).toEqual([]);
+  });
+
+  it('never lets natural-language extraction create entity identity metadata', async () => {
+    const llm = new ScriptedLlm([
+      "rembero_alias('Mira Patel', mira).",
+      'rembero_entity_position(works_at, 2, 0).',
+    ]);
+    await expect(
+      rememberText({ store, llm }, 'Mira Patel and Mira are the same person')
+    ).rejects.toThrow(/may not create entity identity metadata/i);
+    expect(store.load('default')).toEqual([]);
+  });
+
+  it('never lets natural-language extraction retract entity identity metadata', async () => {
+    store.assert('default', "rembero_alias('Mira Patel', mira).");
+    const llm = new ScriptedLlm([
+      "retract rembero_alias('Mira Patel', _).",
+      "retract rembero_alias('Mira Patel', mira).",
+    ]);
+    await expect(
+      rememberText({ store, llm }, 'Forget that Mira Patel is Mira')
+    ).rejects.toThrow(/may not retract entity identity metadata/i);
+    expect(store.load('default').map(serializeClause)).toEqual([
+      "rembero_alias('Mira Patel', mira).",
+    ]);
   });
 
   it('applies retract lines before asserting, superseding stale facts', async () => {
@@ -295,6 +331,38 @@ describe('recallQuestion', () => {
     // phrasing prompt received the bindings
     const phrasing = llm.calls[1];
     expect(phrasing[phrasing.length - 1].content).toContain('maya');
+  });
+
+  it('projects an alias only at declared positions during opt-in recall', async () => {
+    const identityStore = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-identity-'))
+    );
+    identityStore.assert(
+      'default',
+      `rembero_alias('Mira Patel', mira).
+       rembero_entity_position(works_at, 2, 0).
+       works_at('Mira Patel', acme).`
+    );
+    const llm = new ScriptedLlm([
+      "?- works_at('Mira Patel', Company).",
+      'Mira Patel works at Acme.',
+    ]);
+
+    const result = await recallQuestion(
+      { store: identityStore, llm },
+      'Where does Mira Patel work?',
+      ['default'],
+      { entityIdentity: 'canonical' }
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query: 'works_at(mira, Company)',
+      bindings: [{ Company: 'acme' }],
+      answer: 'Mira Patel works at Acme.',
+    });
+    expect(llm.calls[0][0].content).toContain('works_at(mira, acme).');
+    expect(llm.calls[0][0].content).not.toContain('rembero_alias');
   });
 
   it('can evaluate retrieval without a phrasing call and applies the grounded prompt', async () => {

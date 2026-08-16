@@ -8,6 +8,7 @@ import {
   predKey,
   serializeClause,
 } from '../engine/index.js';
+import { isEntityMetadataDeclaration } from '../knowledge/identity.js';
 import { serializePromptClause } from './prompts.js';
 
 export const DEFAULT_RECALL_SCHEMA_PREDICATES = 32;
@@ -116,7 +117,7 @@ function boundedInteger(value: number, minimum: number, maximum: number, label: 
 function groupsFor(clauses: Clause[]): Map<string, PredicateGroup> {
   const groups = new Map<string, PredicateGroup>();
   for (const clause of clauses) {
-    if (isIntegrityConstraint(clause)) continue;
+    if (isIntegrityConstraint(clause) || isEntityMetadataDeclaration(clause)) continue;
     const key = predKey(clause.head);
     let group = groups.get(key);
     if (group === undefined) {

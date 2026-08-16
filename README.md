@@ -40,6 +40,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT` | no | `32` detailed predicates on the first recall pass (range: 1–256) |
 | `REMBERO_INTEGRITY_MODE` | no | `off`; use `strict` or migration mode `no_new_violations` for atomic write rejection |
 | `REMBERO_INTEGRITY_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view when enforcement is active |
+| `REMBERO_ENTITY_IDENTITY` | no | `off`; use `canonical` for explicit position-scoped alias projection |
 
 The raw Datalog tools (`assert`, `query`, `check`, `assert_facts`, `forget`,
 `list_memories`) work with no API key at all — only natural-language
@@ -122,6 +123,7 @@ node dist/cli.js query    'employee(X), \+ suspended(X)' # closed-world negation
 node dist/cli.js query    'age(X, A), age(dana, D), A > D + 5' # numeric arithmetic filter
 node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
+node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
 node dist/cli.js forget   'dentist(rahul, _)'
 node dist/cli.js history  'works_at(mira, _)' --json
 node dist/cli.js list
@@ -170,6 +172,15 @@ the same bounded proof, source, and query-scoped graph evidence as `check`; CLI 
 means no mutation was committed. All supported writers share one cross-process mutation
 lock so a cross-namespace candidate cannot race another Rembero 0.10 writer. Audit remains
 the default. See [the enforcement and migration contract](docs/INTEGRITY-ENFORCEMENT.md).
+
+Version 0.11 can treat explicitly declared names as one entity without rewriting stored
+facts. `rembero_alias(Alias, Canonical).` declares a chain and
+`rembero_entity_position(Predicate, Arity, ZeroBasedPosition).` limits projection to
+typed-by-policy argument positions. Raw reads remain literal by default; opt in with
+`--entity-identity canonical`, `REMBERO_ENTITY_IDENTITY=canonical`, or the matching
+library/MCP option. Proofs retain the exact literal source and graphs annotate canonical
+entities with alias provenance. History always stays literal. See
+[the entity identity contract](docs/ENTITY-IDENTITY.md).
 
 `-n <ns>` / `--namespace <ns>` selects the namespace to write to; `--namespaces a,b` or
 `--namespaces '*'` selects which namespaces recall, query, check, list, and history read
@@ -280,7 +291,8 @@ possible proofs. Programs are limited to 64 KiB and 16 rules; evaluation is capp
 arity-inconsistent, or cap-exceeding programs fail closed. Extension loading is disabled
 again immediately after the library is loaded. Stratified negation, arithmetic comparison
 expressions, scalar aggregate queries, and headless integrity constraints currently
-belong to the portable `.dl` engine; SQLite entry points reject them explicitly until
+belong to the portable `.dl` engine. Entity identity declarations also remain portable
+only. SQLite entry points reject all of them explicitly until
 native parity is implemented.
 
 ## The Datalog dialect
@@ -294,6 +306,9 @@ native parity is implemented.
 - Explicit integrity constraints have no head and describe forbidden states:
   `:- active(Person), suspended(Person).` They use query-style range restriction, never
   derive facts, and are inspected only by `check` / `check_integrity`.
+- Entity identity is explicit metadata: `rembero_alias('Mira Patel', mira).` declares
+  an alias and `rembero_entity_position(works_at, 2, 0).` opts one zero-based argument
+  position into canonical reads. The declarations never rewrite durable facts or history.
 - Stratified closed-world negation: `available(X) :- employee(X), \+ suspended(X).`
   Variables in comparisons and negated literals must be bound by an earlier positive
   goal. Recursive dependency cycles containing negation are rejected.

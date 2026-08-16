@@ -12,6 +12,7 @@ import {
 import { DEFAULT_TRANSCRIPT_TAIL_BYTES } from './autocapture/transcript.js';
 import { MAX_PROOFS_PER_ROW, serializeClause } from './engine/index.js';
 import {
+  entityIdentityFromEnv,
   integrityEnforcementFromEnv,
   loadEnv,
   recallSchemaPredicateLimitFromEnv,
@@ -25,6 +26,7 @@ import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
+import type { EntityIdentityMode } from './knowledge/identity.js';
 import { serveStdio } from './mcp/server.js';
 import {
   checkIntegrityTool,
@@ -78,6 +80,7 @@ Options:
       --max-violations <n> Maximum integrity violations (default: 1000; max: ${MAX_INTEGRITY_VIOLATIONS})
       --integrity-mode <mode>  Write guard: off, strict, or no_new_violations
       --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
+      --entity-identity <mode>  Read projection: off (default) or canonical
       --limit <n>          History event limit (maximum: 1000)
       --extension <path>   Path to the compiled Rembero SQLite extension
       --daily-cap <n>      Max auto-capture attempts per namespace/UTC day (default: 10)
@@ -108,6 +111,7 @@ interface ParsedArgs {
   maxViolations?: string;
   integrityMode?: string;
   integrityNamespaces?: string[] | '*';
+  entityIdentity?: string;
   limit?: string;
 }
 
@@ -161,6 +165,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       const value = valueAfter(i, arg);
       i += 1;
       parsed.integrityNamespaces = value === '*' ? '*' : value.split(',');
+    } else if (arg === '--entity-identity') {
+      parsed.entityIdentity = valueAfter(i, arg);
+      i += 1;
     } else if (arg === '--limit') {
       parsed.limit = valueAfter(i, arg);
       i += 1;
@@ -226,6 +233,15 @@ function maxViolationsOption(value: string | undefined): number | undefined {
     );
   }
   return parsed;
+}
+
+function entityIdentityOption(
+  value: string | undefined
+): EntityIdentityMode | false | undefined {
+  if (value === undefined) return entityIdentityFromEnv();
+  if (value === 'off') return false;
+  if (value === 'canonical') return value;
+  throw new Error("--entity-identity must be 'off' or 'canonical'");
 }
 
 function integrityEnforcementOption(
@@ -309,16 +325,27 @@ async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
   const store = new MemoryStore();
+  const entityIdentitySetting = entityIdentityOption(args.entityIdentity);
+  const entityIdentity = entityIdentitySetting === false
+    ? undefined
+    : entityIdentitySetting;
   const writeCommand = ['serve', 'remember', 'assert', 'forget', 'import', 'review'].includes(
     command ?? ''
   );
-  const integritySetting = integrityEnforcementOption(
+  const rawIntegritySetting = integrityEnforcementOption(
     args.integrityMode,
     args.integrityNamespaces,
     integrityEnforcementFromEnv(),
     writeCommand ? args.proofLimit : undefined,
     writeCommand ? args.maxViolations : undefined
   );
+  const integritySetting =
+    rawIntegritySetting === undefined || rawIntegritySetting === false
+      ? rawIntegritySetting
+      : {
+          ...rawIntegritySetting,
+          ...(entityIdentity === undefined ? {} : { entityIdentity }),
+        };
   const integrityEnforcement =
     integritySetting === false ? undefined : integritySetting;
   const llmAllowedNamespaces = llmNamespaceAllowlistFromEnv();
@@ -336,6 +363,7 @@ async function main(): Promise<void> {
           args.schemaPredicateLimit
         ),
         integrityEnforcement: integritySetting,
+        entityIdentity: entityIdentitySetting,
       });
       return; // keep process alive; transport owns stdio
     case 'remember': {
@@ -350,6 +378,7 @@ async function main(): Promise<void> {
             llm: lazyClientFromEnv(),
             llmAllowedNamespaces,
             integrityEnforcement: integritySetting,
+            entityIdentity: entityIdentitySetting,
           },
           rawHookInput,
           {
@@ -375,10 +404,15 @@ async function main(): Promise<void> {
           store,
           llm: clientFromEnv(),
           llmAllowedNamespaces,
+          entityIdentity: entityIdentitySetting,
         },
         text,
         args.namespace,
-        { validTimeMode, integrityEnforcement: integritySetting }
+        {
+          validTimeMode,
+          integrityEnforcement: integritySetting,
+          entityIdentity: entityIdentitySetting,
+        }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
@@ -392,6 +426,7 @@ async function main(): Promise<void> {
           recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
             args.schemaPredicateLimit
           ),
+          entityIdentity: entityIdentitySetting,
         },
         text,
         namespaces
@@ -413,6 +448,7 @@ async function main(): Promise<void> {
           recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
             args.schemaPredicateLimit
           ),
+          entityIdentity: entityIdentitySetting,
         },
         text,
         namespaces,
@@ -425,7 +461,10 @@ async function main(): Promise<void> {
       return;
     }
     case 'query': {
-      const result = queryTool({ store }, { query: text, namespaces });
+      const result = queryTool(
+        { store, entityIdentity: entityIdentitySetting },
+        { query: text, namespaces }
+      );
       console.log(stringifyBoundedResult(result.bindings, 'CLI result'));
       return;
     }
@@ -440,7 +479,7 @@ async function main(): Promise<void> {
     case 'explain': {
       const proofLimit = proofLimitOption(args.proofLimit);
       const result = explainQueryTool(
-        { store },
+        { store, entityIdentity: entityIdentitySetting },
         {
           query: text,
           namespaces,
@@ -454,7 +493,7 @@ async function main(): Promise<void> {
       const proofLimit = proofLimitOption(args.proofLimit);
       const maxViolations = maxViolationsOption(args.maxViolations);
       const result = checkIntegrityTool(
-        { store },
+        { store, entityIdentity: entityIdentitySetting },
         {
           namespaces,
           ...(proofLimit === undefined ? {} : { proofLimit }),

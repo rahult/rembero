@@ -136,6 +136,40 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('keeps literal queries unchanged and enables explicit canonical identity reads', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-identity-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      `rembero_alias('Mira Patel', mira).
+       rembero_entity_position(works_at, 2, 0).
+       works_at('Mira Patel', acme).`
+    );
+
+    const literal = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'query', 'works_at(mira, Company)'],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    const canonical = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'query',
+        'works_at(mira, Company)',
+        '--entity-identity',
+        'canonical',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+
+    expect(literal.status).toBe(0);
+    expect(JSON.parse(literal.stdout)).toEqual([]);
+    expect(canonical.status).toBe(0);
+    expect(JSON.parse(canonical.stdout)).toEqual([{ Company: 'acme' }]);
+  });
+
   it('checks explicit integrity constraints and exits 2 when violations exist', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-integrity-'));
     const home = join(root, 'home');

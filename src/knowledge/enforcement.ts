@@ -4,6 +4,7 @@ import {
   type IntegrityCheckResult,
 } from './integrity.js';
 import type { MemorySource } from '../store/store.js';
+import type { EntityIdentityMode } from './identity.js';
 
 export type IntegrityEnforcementMode = 'strict' | 'no_new_violations';
 
@@ -14,6 +15,8 @@ export interface IntegrityEnforcementOptions
   namespaces?: string[] | '*';
   /** Maximum complete violation rows considered before failing closed. */
   maxViolations?: number;
+  /** Opt-in identity-aware candidate projection through declared entity positions. */
+  entityIdentity?: EntityIdentityMode;
 }
 
 export interface IntegrityViolationRef {

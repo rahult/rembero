@@ -114,6 +114,7 @@ export {
   explainKnowledge,
   type ClaimGraphNode,
   type EntityGraphNode,
+  type ExplainKnowledgeOptions,
   type ExplainKnowledgeResult,
   type ExplainedKnowledgeRow,
   type ExplanationGraph,
@@ -128,6 +129,25 @@ export {
   type SourcedProofStep,
   type SourcedQueryProof,
 } from './knowledge/graph.js';
+export {
+  ENTITY_ALIAS_PREDICATE,
+  ENTITY_POSITION_PREDICATE,
+  MAX_ENTITY_ALIASES,
+  MAX_ENTITY_POSITIONS,
+  EntityIdentityError,
+  EntityResolver,
+  buildEntityResolver,
+  canonicalizeKnowledge,
+  isEntityMetadataDeclaration,
+  isEntityMetadataPredicate,
+  literalKnowledge,
+  type CanonicalKnowledgeView,
+  type EntityAlias,
+  type EntityIdentityMode,
+  type EntityPosition,
+  type EntityProjection,
+  type EntityRewrite,
+} from './knowledge/identity.js';
 export {
   checkIntegrity,
   DEFAULT_MAX_INTEGRITY_VIOLATIONS,

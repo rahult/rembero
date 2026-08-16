@@ -1,7 +1,7 @@
 {
   "name": "rembero",
-  "version": "0.10.0",
-  "description": "Logic-based memory for LLM chats and agents: deterministic Datalog rules, atomic integrity, recall, provenance, graphs, and MCP",
+  "version": "0.11.0",
+  "description": "Logic-based memory for LLM chats and agents: deterministic Datalog rules, explicit entity identity, integrity, provenance, graphs, and MCP",
   "type": "module",
   "bin": {
     "rembero": "dist/cli.js"
@@ -25,6 +25,7 @@
     "docs/ALTERNATIVE-PROOFS.md",
     "docs/INTEGRITY-CONSTRAINTS.md",
     "docs/INTEGRITY-ENFORCEMENT.md",
+    "docs/ENTITY-IDENTITY.md",
     "docs/MIGRATING-0.2.md",
     "docs/MIGRATING-0.3.md",
     "docs/MIGRATING-0.4.md",
@@ -34,6 +35,7 @@
     "docs/MIGRATING-0.8.md",
     "docs/MIGRATING-0.9.md",
     "docs/MIGRATING-0.10.md",
+    "docs/MIGRATING-0.11.md",
     "README.md",
     "LICENSE"
   ],

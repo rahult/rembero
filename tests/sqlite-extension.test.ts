@@ -371,6 +371,12 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
       expect(() =>
         database.datalogQuery('ahead(X) :- edge(X, Y), Y > X + 5.')
       ).toThrow(/arithmetic.*portable Datalog engine, not the SQLite extension/i);
+      expect(() =>
+        database.datalogQuery('rembero_alias(mira_patel, mira).')
+      ).toThrow(/entity identity.*portable Datalog engine, not the SQLite extension/i);
+      expect(() =>
+        database.datalogQuery('rembero_entity_position(edge, 2, 0).')
+      ).toThrow(/entity identity.*portable Datalog engine, not the SQLite extension/i);
       expect(database.datalogQuery('safe(X) :- edge(X, Y), -1 < 0.')).toEqual([]);
       expect(
         database.datalogQuery("safe(X) :- edge(X, Y), X = 'count(*) as Count where'.")

@@ -19,6 +19,13 @@ import type { MemoryStore, ValidTimeMode } from '../store/store.js';
 import type { ChatMessage, LlmClient } from './client.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
+import {
+  canonicalizeKnowledge,
+  isEntityMetadataDeclaration,
+  isEntityMetadataPredicate,
+  literalKnowledge,
+  type EntityIdentityMode,
+} from '../knowledge/identity.js';
 import { assertSafeForExternalLlm } from '../safety.js';
 import {
   NOTHING_SENTINEL,
@@ -56,6 +63,8 @@ export interface PipelineDeps {
   /** Optional default atomic reject-on-write policy for memory mutations. */
   /** `false` explicitly disables an environment-derived server default. */
   integrityEnforcement?: IntegrityEnforcementOptions | false;
+  /** Optional default explicit entity projection for recall and schema reads. */
+  entityIdentity?: EntityIdentityMode | false;
 }
 
 export interface RememberResult {
@@ -70,6 +79,8 @@ export interface RememberOptions {
   validTimeMode?: ValidTimeMode;
   /** Per-call enforcement override; omission uses the dependency default. */
   integrityEnforcement?: IntegrityEnforcementOptions | false;
+  /** Opt-in canonical read view for the extraction schema; stored writes stay literal. */
+  entityIdentity?: EntityIdentityMode | false;
   /** Controlled clock injection for library tests and deterministic integrations. */
   at?: Date;
 }
@@ -125,6 +136,7 @@ export interface RecallOptions {
   proofLimit?: number;
   schemaPredicateLimit?: number;
   schemaByteLimit?: number;
+  entityIdentity?: EntityIdentityMode | false;
 }
 
 function stripFences(text: string): string {
@@ -185,7 +197,16 @@ export async function rememberText(
   }
   assertLlmNamespacesAllowed(deps, [namespace]);
   assertSafeForExternalLlm(text, 'memory text');
-  const schema = buildSchemaSummary(deps.store.load(namespace));
+  const literalClauses = deps.store.load(namespace);
+  const configuredIdentity = options.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const schemaClauses = entityIdentity === 'canonical'
+    ? canonicalizeKnowledge(
+        literalClauses,
+        deps.store.sourcesFor([namespace])
+      ).clauses
+    : literalKnowledge(literalClauses).clauses;
+  const schema = buildSchemaSummary(schemaClauses);
   assertSafeForExternalLlm(schema, 'memory schema');
   const messages: ChatMessage[] = [
     { role: 'system', content: extractionSystemPrompt(schema) },
@@ -213,10 +234,30 @@ export async function rememberText(
       ) {
         throw new Error('each retract line must contain exactly one positive fact pattern');
       }
+      if (
+        retractions.some((goals) => {
+          const goal = goals[0];
+          return (
+            goal !== undefined &&
+            !isComparison(goal) &&
+            !isNegation(goal) &&
+            isEntityMetadataPredicate(goal.predicate)
+          );
+        })
+      ) {
+        throw new Error(
+          'natural-language memory extraction may not retract entity identity metadata'
+        );
+      }
       const clauses = parseProgram(clauseLines.join('\n'));
       if (clauses.some(isIntegrityConstraint)) {
         throw new Error(
           'natural-language memory extraction may not create integrity constraints'
+        );
+      }
+      if (clauses.some(isEntityMetadataDeclaration)) {
+        throw new Error(
+          'natural-language memory extraction may not create entity identity metadata'
         );
       }
       return { clauses, retractions };
@@ -274,7 +315,14 @@ export async function rememberTranscriptText(
 ): Promise<RememberResult> {
   assertLlmNamespacesAllowed(deps, [namespace]);
   assertSafeForExternalLlm(transcript, 'transcript');
-  const schema = buildSchemaSummary(deps.store.load(namespace));
+  const literalClauses = deps.store.load(namespace);
+  const schemaClauses = deps.entityIdentity === 'canonical'
+    ? canonicalizeKnowledge(
+        literalClauses,
+        deps.store.sourcesFor([namespace])
+      ).clauses
+    : literalKnowledge(literalClauses).clauses;
+  const schema = buildSchemaSummary(schemaClauses);
   assertSafeForExternalLlm(schema, 'memory schema');
   const messages: ChatMessage[] = [
     { role: 'system', content: transcriptExtractionSystemPrompt(schema) },
@@ -289,6 +337,9 @@ export async function rememberTranscriptText(
         throw new Error('auto-capture accepts additive ground facts only; retractions are forbidden');
       }
       const parsed = parseProgram(response);
+      if (parsed.some(isEntityMetadataDeclaration)) {
+        throw new Error('auto-capture may not create entity identity metadata');
+      }
       if (parsed.some((clause) => clause.body.length > 0)) {
         throw new Error('auto-capture accepts additive ground facts only; rules are forbidden');
       }
@@ -413,7 +464,14 @@ export async function retrieveQuestion(
 ): Promise<RetrievalResult> {
   assertLlmNamespacesAllowed(deps, namespaces);
   assertSafeForExternalLlm(question, 'recall question');
-  const clauses = deps.store.clausesFor(namespaces);
+  const literalClauses = deps.store.clausesFor(namespaces);
+  const literalSources = deps.store.sourcesFor(namespaces);
+  const configuredIdentity = options.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const view = entityIdentity === 'canonical'
+    ? canonicalizeKnowledge(literalClauses, literalSources)
+    : literalKnowledge(literalClauses, literalSources);
+  const clauses = view.clauses;
   if (clauses.length === 0) {
     return { status: 'unanswerable', query: null, bindings: [] };
   }
@@ -463,17 +521,22 @@ export async function retrieveQuestion(
       if (UNANSWERABLE_RE.test(response)) return null;
       const parsed = parseQuerySpec(response);
       validateQuerySpec(parsed, selection.availablePredicates, question);
-      return parsed;
+      return entityIdentity === 'canonical'
+        ? view.resolver.canonicalizeQuery(parsed).query
+        : parsed;
     };
     const evaluate = (query: QuerySpec, queryText: string): PassResult => {
       if (options.explain) {
         const explanation = explainKnowledge(
-          clauses,
+          literalClauses,
           queryText,
-          deps.store.sourcesFor(namespaces),
-          options.proofLimit === undefined
-            ? {}
-            : { maxProofsPerRow: options.proofLimit }
+          literalSources,
+          {
+            ...(options.proofLimit === undefined
+              ? {}
+              : { maxProofsPerRow: options.proofLimit }),
+            ...(entityIdentity === undefined ? {} : { entityIdentity }),
+          }
         );
         const bindings = explanation.rows.map((row) => row.bindings);
         return {

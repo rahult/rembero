@@ -98,3 +98,8 @@ multi-file atomic commit that the portable store does not provide.
 - The experimental SQLite extension remains audit/enforcement-independent in 0.10.
 - No conflict index, graph sidecar, repair agent, or inferred predicate semantics is
   introduced. The readable `.dl` program remains the only knowledge and policy source.
+
+Version 0.11 optionally evaluates both baseline and candidate through the same explicit
+position-scoped entity identity view. Set `entityIdentity: 'canonical'` (or the matching
+CLI/MCP option) only when aliases should denote one policy subject. The mutation and
+journal remain literal even when the candidate projection is canonical.

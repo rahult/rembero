@@ -93,6 +93,11 @@ function assertPortableEngineOnlySyntax(program: string): void {
       'scalar aggregation is currently supported by the portable Datalog engine, not the SQLite extension'
     );
   }
+  if (/\b(?:rembero_alias|rembero_entity_position)\s*\(/.test(visible)) {
+    throw new Error(
+      'entity identity declarations are currently supported by the portable Datalog engine, not the SQLite extension'
+    );
+  }
   if (containsArithmeticSyntax(visible)) {
     throw new Error(
       'arithmetic comparison expressions are currently supported by the portable Datalog engine, not the SQLite extension'

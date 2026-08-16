@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import {
+  entityIdentityFromEnv,
   integrityEnforcementFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
@@ -29,6 +30,7 @@ import {
   type IntegrityEnforcementMode,
   type IntegrityEnforcementOptions,
 } from '../knowledge/enforcement.js';
+import type { EntityIdentityMode } from '../knowledge/identity.js';
 
 const namespaceField = z
   .string()
@@ -67,6 +69,10 @@ const integrityNamespacesField = z
   .union([z.array(z.string()).max(MAX_NAMESPACE_COUNT), z.literal('*')])
   .optional()
   .describe('Knowledge view governed by write enforcement; must include the target namespace');
+const entityIdentityField = z
+  .literal('canonical')
+  .optional()
+  .describe('Project aliases only at explicitly declared predicate positions');
 const boundedText = (description?: string) => {
   const field = z.string().max(MAX_INPUT_BYTES);
   return description ? field.describe(description) : field;
@@ -102,13 +108,18 @@ function requestedIntegrity(
   mode: IntegrityEnforcementMode | undefined,
   namespaces: string[] | '*' | undefined,
   proofLimit: number | undefined,
-  maxViolations: number | undefined
+  maxViolations: number | undefined,
+  entityIdentity: EntityIdentityMode | undefined
 ): IntegrityEnforcementOptions | undefined {
   const activeFallback = fallback === false ? undefined : fallback;
   if (mode === undefined) {
     if (
       activeFallback === undefined &&
-      (namespaces !== undefined || proofLimit !== undefined || maxViolations !== undefined)
+      (
+        namespaces !== undefined ||
+        proofLimit !== undefined ||
+        maxViolations !== undefined
+      )
     ) {
       throw new Error('integrity write options require integrityMode or a server default');
     }
@@ -119,6 +130,7 @@ function requestedIntegrity(
           ...(namespaces === undefined ? {} : { namespaces }),
           ...(proofLimit === undefined ? {} : { maxProofsPerRow: proofLimit }),
           ...(maxViolations === undefined ? {} : { maxViolations }),
+          ...(entityIdentity === undefined ? {} : { entityIdentity }),
         };
   }
   if (activeFallback?.mode === 'strict' && mode !== 'strict') {
@@ -130,19 +142,30 @@ function requestedIntegrity(
     ...(namespaces === undefined ? {} : { namespaces }),
     ...(proofLimit === undefined ? {} : { maxProofsPerRow: proofLimit }),
     ...(maxViolations === undefined ? {} : { maxViolations }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
   };
 }
 
 export function createServer(deps: PipelineDeps): McpServer {
+  const entityIdentity = deps.entityIdentity ?? entityIdentityFromEnv();
+  const configuredIntegrity = deps.integrityEnforcement ?? integrityEnforcementFromEnv();
   const resolvedDeps: PipelineDeps = {
     ...deps,
     validTimeMode: deps.validTimeMode ?? validTimeModeFromEnv(),
     recallSchemaPredicateLimit:
       deps.recallSchemaPredicateLimit ?? recallSchemaPredicateLimitFromEnv(),
     integrityEnforcement:
-      deps.integrityEnforcement ?? integrityEnforcementFromEnv(),
+      configuredIntegrity === undefined || configuredIntegrity === false
+        ? configuredIntegrity
+        : {
+            ...configuredIntegrity,
+            ...(configuredIntegrity.entityIdentity !== undefined || entityIdentity !== 'canonical'
+              ? {}
+              : { entityIdentity }),
+          },
+    entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.10.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.11.0' });
 
   server.registerTool(
     'remember',
@@ -157,6 +180,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         integrityNamespaces: integrityNamespacesField,
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
       },
     },
     async ({
@@ -166,6 +190,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       integrityNamespaces,
       proofLimit,
       maxViolations,
+      entityIdentity,
     }) => {
       try {
         return asContent(
@@ -177,8 +202,10 @@ export function createServer(deps: PipelineDeps): McpServer {
               integrityMode,
               integrityNamespaces,
               proofLimit,
-              maxViolations
+              maxViolations,
+              entityIdentity
             ),
+            entityIdentity,
           })
         );
       } catch (e) {
@@ -197,12 +224,18 @@ export function createServer(deps: PipelineDeps): McpServer {
         question: boundedText(),
         namespaces: namespacesField,
         schemaPredicateLimit: schemaPredicateLimitField,
+        entityIdentity: entityIdentityField,
       },
     },
-    async ({ question, namespaces, schemaPredicateLimit }) => {
+    async ({ question, namespaces, schemaPredicateLimit, entityIdentity }) => {
       try {
         return asContent(
-          await recallTool(resolvedDeps, { question, namespaces, schemaPredicateLimit })
+          await recallTool(resolvedDeps, {
+            question,
+            namespaces,
+            schemaPredicateLimit,
+            entityIdentity,
+          })
         );
       } catch (e) {
         return asError(e);
@@ -221,9 +254,10 @@ export function createServer(deps: PipelineDeps): McpServer {
         namespaces: namespacesField,
         schemaPredicateLimit: schemaPredicateLimitField,
         proofLimit: proofLimitField,
+        entityIdentity: entityIdentityField,
       },
     },
-    async ({ question, namespaces, schemaPredicateLimit, proofLimit }) => {
+    async ({ question, namespaces, schemaPredicateLimit, proofLimit, entityIdentity }) => {
       try {
         return asContent(
           await recallExplainTool(resolvedDeps, {
@@ -231,6 +265,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             namespaces,
             schemaPredicateLimit,
             proofLimit,
+            entityIdentity,
           })
         );
       } catch (e) {
@@ -252,6 +287,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         integrityNamespaces: integrityNamespacesField,
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
       },
     },
     async ({
@@ -261,6 +297,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       integrityNamespaces,
       proofLimit,
       maxViolations,
+      entityIdentity,
     }) => {
       try {
         return asContent(
@@ -272,7 +309,8 @@ export function createServer(deps: PipelineDeps): McpServer {
               integrityMode,
               integrityNamespaces,
               proofLimit,
-              maxViolations
+              maxViolations,
+              entityIdentity
             ),
           })
         );
@@ -288,11 +326,15 @@ export function createServer(deps: PipelineDeps): McpServer {
       title: 'Query',
       description:
         "Run a raw Datalog query and get variable bindings, e.g. 'works_at(X, acme)', 'score(X, S), S > 10 + 5', 'employee(X), \\+ suspended(X)', or 'count(*) as Count where works_at(Person, acme)'.",
-      inputSchema: { query: boundedText(), namespaces: namespacesField },
+      inputSchema: {
+        query: boundedText(),
+        namespaces: namespacesField,
+        entityIdentity: entityIdentityField,
+      },
     },
-    async ({ query, namespaces }) => {
+    async ({ query, namespaces, entityIdentity }) => {
       try {
-        return asContent(queryTool(deps, { query, namespaces }));
+        return asContent(queryTool(resolvedDeps, { query, namespaces, entityIdentity }));
       } catch (e) {
         return asError(e);
       }
@@ -309,11 +351,19 @@ export function createServer(deps: PipelineDeps): McpServer {
         query: boundedText(),
         namespaces: namespacesField,
         proofLimit: proofLimitField,
+        entityIdentity: entityIdentityField,
       },
     },
-    async ({ query, namespaces, proofLimit }) => {
+    async ({ query, namespaces, proofLimit, entityIdentity }) => {
       try {
-        return asContent(explainQueryTool(deps, { query, namespaces, proofLimit }));
+        return asContent(
+          explainQueryTool(resolvedDeps, {
+            query,
+            namespaces,
+            proofLimit,
+            entityIdentity,
+          })
+        );
       } catch (e) {
         return asError(e);
       }
@@ -330,12 +380,18 @@ export function createServer(deps: PipelineDeps): McpServer {
         namespaces: namespacesField,
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
       },
     },
-    async ({ namespaces, proofLimit, maxViolations }) => {
+    async ({ namespaces, proofLimit, maxViolations, entityIdentity }) => {
       try {
         return asContent(
-          checkIntegrityTool(deps, { namespaces, proofLimit, maxViolations })
+          checkIntegrityTool(resolvedDeps, {
+            namespaces,
+            proofLimit,
+            maxViolations,
+            entityIdentity,
+          })
         );
       } catch (e) {
         return asError(e);
@@ -356,6 +412,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         integrityNamespaces: integrityNamespacesField,
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
       },
     },
     async ({
@@ -365,6 +422,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       integrityNamespaces,
       proofLimit,
       maxViolations,
+      entityIdentity,
     }) => {
       try {
         return asContent(
@@ -376,7 +434,8 @@ export function createServer(deps: PipelineDeps): McpServer {
               integrityMode,
               integrityNamespaces,
               proofLimit,
-              maxViolations
+              maxViolations,
+              entityIdentity
             ),
           })
         );
@@ -420,7 +479,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     },
     async ({ namespaces, predicate }) => {
       try {
-        return asContent(listMemoriesTool(deps, { namespaces, predicate }));
+        return asContent(listMemoriesTool(resolvedDeps, { namespaces, predicate }));
       } catch (e) {
         return asError(e);
       }

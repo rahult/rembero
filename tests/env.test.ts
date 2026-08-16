@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  entityIdentityFromEnv,
   integrityEnforcementFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
@@ -8,6 +9,22 @@ import {
   DEFAULT_RECALL_SCHEMA_PREDICATES,
   MAX_RECALL_SCHEMA_PREDICATES,
 } from '../src/llm/schema.js';
+
+describe('entityIdentityFromEnv', () => {
+  it('is off by default and accepts the explicit canonical projection', () => {
+    expect(entityIdentityFromEnv({})).toBeUndefined();
+    expect(entityIdentityFromEnv({ REMBERO_ENTITY_IDENTITY: 'off' })).toBeUndefined();
+    expect(entityIdentityFromEnv({ REMBERO_ENTITY_IDENTITY: 'canonical' })).toBe(
+      'canonical'
+    );
+  });
+
+  it('fails closed on an unknown identity mode', () => {
+    expect(() =>
+      entityIdentityFromEnv({ REMBERO_ENTITY_IDENTITY: 'global' })
+    ).toThrow(/must be 'off' or 'canonical'/i);
+  });
+});
 
 describe('validTimeModeFromEnv', () => {
   it('defaults to deletion and accepts only the two documented modes', () => {

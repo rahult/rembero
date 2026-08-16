@@ -35,6 +35,7 @@ import {
   enforceIntegrityCandidate,
   type IntegrityEnforcementOptions,
 } from '../knowledge/enforcement.js';
+import type { EntityRewrite } from '../knowledge/identity.js';
 
 const NAMESPACE_RE = /^[a-z0-9_-]+$/;
 const HEADER = '% rembero memory — one Datalog clause per line; edit by hand if you like.\n';
@@ -122,6 +123,9 @@ export interface MemorySource {
   text?: string;
   redacted?: boolean;
   temporal?: TemporalMemorySource;
+  /** Present when an opt-in identity view projected a literal stored clause. */
+  projectedFrom?: string;
+  identityRewrites?: EntityRewrite[];
 }
 
 export type AutoCaptureStatus = 'started' | 'captured' | 'empty' | 'failed' | 'skipped';

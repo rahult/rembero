@@ -8,6 +8,7 @@ import {
 } from './llm/schema.js';
 import type { ValidTimeMode } from './store/store.js';
 import type { IntegrityEnforcementOptions } from './knowledge/enforcement.js';
+import type { EntityIdentityMode } from './knowledge/identity.js';
 
 /**
  * Load .env from the current directory and from the package root (so the CLI
@@ -70,4 +71,13 @@ export function integrityEnforcementFromEnv(
     );
   }
   return { mode, namespaces };
+}
+
+export function entityIdentityFromEnv(
+  env: NodeJS.ProcessEnv = process.env
+): EntityIdentityMode | undefined {
+  const configured = env.REMBERO_ENTITY_IDENTITY ?? 'off';
+  if (configured === 'off') return undefined;
+  if (configured === 'canonical') return configured;
+  throw new Error("REMBERO_ENTITY_IDENTITY must be 'off' or 'canonical'");
 }

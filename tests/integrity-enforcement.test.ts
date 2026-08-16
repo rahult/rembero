@@ -23,6 +23,29 @@ function journal(root: string): string {
 }
 
 describe('atomic integrity enforcement', () => {
+  it('atomically enforces identity-aware policy only when explicitly configured', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-enforce-identity-'));
+    const store = new MemoryStore(root);
+    store.assert(
+      'default',
+      `rembero_alias('Mira Patel', mira).
+       rembero_entity_position(status, 2, 0).
+       status('Mira Patel', active).
+       :- status(Person, active), status(Person, terminated).`
+    );
+    const before = journal(root);
+
+    expect(() =>
+      store.assert('default', 'status(mira, terminated).', {
+        integrity: { mode: 'strict', entityIdentity: 'canonical' },
+      })
+    ).toThrow(IntegrityViolationError);
+    expect(journal(root)).toBe(before);
+    expect(store.load('default').map(serializeClause)).not.toContain(
+      'status(mira, terminated).'
+    );
+  });
+
   it('preserves legacy violation identity across alpha-equivalent policy renames', () => {
     const baseline = parseProgram('pair(1, 2). :- pair(A, Z), A < Z.');
     const candidate = parseProgram(

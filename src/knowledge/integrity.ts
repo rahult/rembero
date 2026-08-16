@@ -22,6 +22,12 @@ import {
   type ExplanationGraph,
   type ExplanationRule,
 } from './graph.js';
+import {
+  canonicalizeKnowledge,
+  literalKnowledge,
+  type EntityIdentityMode,
+  type EntityRewrite,
+} from './identity.js';
 
 export const DEFAULT_MAX_INTEGRITY_VIOLATIONS = 1_000;
 export const MAX_INTEGRITY_VIOLATIONS = 10_000;
@@ -33,6 +39,8 @@ export interface IntegrityCheckOptions
   extends Omit<EvaluateOptions, 'maxRows' | 'maxAggregateRows' | 'maxAggregateProofRows'> {
   /** Maximum complete violation rows returned across every constraint. */
   maxViolations?: number;
+  /** Opt-in deterministic projection through explicit entity-position declarations. */
+  entityIdentity?: EntityIdentityMode;
 }
 
 export interface IntegrityConstraintCheck {
@@ -44,6 +52,8 @@ export interface IntegrityConstraintCheck {
   bindingOrder: string[];
   /** Every active declaration source, in requested namespace order. */
   sources?: MemorySource[];
+  projectedFrom?: string;
+  identityRewrites?: EntityRewrite[];
   rows: ExplainedKnowledgeRow[];
   rules: ExplanationRule[];
   graph: ExplanationGraph;
@@ -114,13 +124,19 @@ export function checkIntegrity(
   sourceIndex: Map<string, MemorySource[]> = new Map(),
   options: IntegrityCheckOptions = {}
 ): IntegrityCheckResult {
-  const { maxViolations: requestedMaxViolations, ...proofOptions } = options;
+  const {
+    maxViolations: requestedMaxViolations,
+    entityIdentity,
+    ...proofOptions
+  } = options;
   const maxViolations = resolveMaxViolations(requestedMaxViolations);
-  const executableClauses = clauses.filter((clause) => !isIntegrityConstraint(clause));
+  const view = entityIdentity === 'canonical'
+    ? canonicalizeKnowledge(clauses, sourceIndex)
+    : literalKnowledge(clauses, sourceIndex);
   const constraints: Array<{ clause: Clause; key: string }> = [];
   const seen = new Set<string>();
 
-  for (const clause of clauses) {
+  for (const clause of view.clauses) {
     if (!isIntegrityConstraint(clause)) continue;
     const key = canonicalKey(clause);
     if (seen.has(key)) continue;
@@ -147,9 +163,10 @@ export function checkIntegrity(
   for (const { clause, key } of constraints) {
     const query = clause.body.map(serializeGoal).join(', ');
     const remaining = maxViolations - violationCount;
-    const explanation = explainKnowledge(executableClauses, query, sourceIndex, {
+    const explanation = explainKnowledge(clauses, query, sourceIndex, {
       ...proofOptions,
       maxRows: remaining + 1,
+      ...(entityIdentity === undefined ? {} : { entityIdentity }),
     });
     if (explanation.rows.length > remaining) {
       throw new EngineLimitError(
@@ -157,13 +174,15 @@ export function checkIntegrity(
       );
     }
     violationCount += explanation.rows.length;
-    const sources = sourceIndex.get(key);
+    const sources = view.sources.get(key);
+    const projection = view.projections.get(key)?.[0];
     checks.push({
       id: constraintId(key),
       clause: serializeClause(clause),
       query,
       bindingOrder: constraintBindingOrder(clause.body),
       ...(sources === undefined || sources.length === 0 ? {} : { sources }),
+      ...(projection ?? {}),
       rows: explanation.rows,
       rules: explanation.rules,
       graph: explanation.graph,

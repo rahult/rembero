@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IntegrityViolationError, checkIntegrity, evaluateQuerySpec, parseProgram, parseQuerySpec, selectRecallSchema } from 'rembero'; " +
+      "import { IntegrityViolationError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, parseProgram, parseQuerySpec, selectRecallSchema } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -46,7 +46,9 @@ try {
         "if (!schema.pruned || !schema.selectedPredicates.includes('works_at/2') || schema.summaryBytes > 24576) throw new Error('public recall schema API failed'); " +
         "const integrity = checkIntegrity(parseProgram('active(mira). suspended(mira). :- active(X), suspended(X).')); " +
         "if (integrity.status !== 'violations' || integrity.violationCount !== 1) throw new Error('public integrity API failed'); " +
-        "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed');",
+        "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed'); " +
+        "const identity = canonicalizeKnowledge(parseProgram(\"rembero_alias('Mira Patel', mira). rembero_entity_position(works_at, 2, 0). works_at('Mira Patel', acme).\")); " +
+        "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed');",
     ],
     { cwd: directory }
   );
@@ -256,7 +258,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

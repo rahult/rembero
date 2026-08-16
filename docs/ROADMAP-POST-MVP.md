@@ -118,6 +118,19 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    single-namespace reviewed-fact pruning share the same enforcement boundary. LLM paths
    still cannot author policy, and audit remains the backward-compatible default.
 
+## Phase 14 — Explicit entity identity  *(v0.11)*
+
+1. **Complete — position-scoped canonical view**: raw alias and entity-position facts
+   opt selected predicate arguments into deterministic chain resolution. Literal reads,
+   durable writes, and history remain unchanged by default.
+2. **Complete — proof-carrying recall and graph projection**: query generation is
+   canonicalized after validation, projected claims retain their exact literal source,
+   and query-scoped entity nodes expose alias provenance without a second graph store.
+3. **Complete — integrity and interface coverage**: audit and atomic enforcement can opt
+   into the same view across library, CLI, and MCP. Natural-language writers cannot
+   author identity metadata, invalid canonical views fail closed, and SQLite rejects the
+   feature until parity exists.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
@@ -145,7 +158,7 @@ without replacing the readable personal knowledge base with a second graph store
 
 The next reasoning milestone remains an evidence-driven index pass once benchmarks show
 relation scans becoming material. Retrieval context, alternative evidence, explicit
-integrity audits, and enforced candidate writes are bounded independently of
+identity projection, integrity audits, and enforced candidate writes are bounded independently of
 knowledge-base growth while the finite, proof-carrying rule language remains the
 deterministic authority. Direct hand edits and older writers remain outside the lock and
 must be followed by an explicit audit.

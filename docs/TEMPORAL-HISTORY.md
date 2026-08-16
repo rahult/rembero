@@ -112,3 +112,6 @@ Sources attached to an archived fact include additive temporal metadata:
 - The experimental SQLite extension does not add a separate temporal API in
   this release; ordinary archive-shaped table rows can still be modeled by the
   application.
+- Explicit entity-position declarations extend to the corresponding `_until` predicate
+  during canonical query, recall, proof, and integrity projection. `history` itself stays
+  literal and never rewrites the durable event stream.
