@@ -35,10 +35,10 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.5.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.6.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
-        expect.arrayContaining(['explain_query', 'recall_explain'])
+        expect.arrayContaining(['explain_query', 'recall_explain', 'history'])
       );
 
       const explained = await client.callTool({
@@ -112,9 +112,122 @@ describe('MCP explanation surfaces', () => {
         bindings: [{ Name: 'luna' }],
         explanation: { rows: [{ bindings: { Name: 'luna' } }] },
       });
+
+      store.assert('default', 'works_at(mira, acme).', {
+        opId: 'history-1',
+        sourceText: 'Mira works at Acme.',
+        at: new Date('2026-08-10T09:00:00.000Z'),
+      });
+      (
+        store as MemoryStore & {
+          supersede: (
+            namespace: string,
+            patterns: string[],
+            replacements: string,
+            context?: Record<string, unknown>
+          ) => unknown;
+        }
+      ).supersede('default', ['works_at(mira, _)'], 'works_at(mira, initech).', {
+        opId: 'history-2',
+        sourceText: 'Mira now works at Initech.',
+        at: new Date('2026-08-16T16:59:00.000Z'),
+      });
+      const historical = await client.callTool({
+        name: 'history',
+        arguments: { pattern: 'works_at(mira, _)', namespaces: ['default'] },
+      });
+      const historyText = historical.content.find((item) => item.type === 'text');
+      const historyPayload = JSON.parse(historyText?.type === 'text' ? historyText.text : '');
+      expect(historyPayload).toMatchObject({
+        pattern: 'works_at(mira, _)',
+        namespaces: ['default'],
+        events: [
+          expect.objectContaining({
+            action: 'asserted',
+            clause: 'works_at(mira, acme).',
+          }),
+          expect.objectContaining({
+            action: 'superseded',
+            clause: 'works_at(mira, acme).',
+            archivedAs: "works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').",
+          }),
+          expect.objectContaining({
+            action: 'asserted',
+            clause: 'works_at(mira, initech).',
+            current: true,
+          }),
+        ],
+      });
     } finally {
       await client.close();
       await server.close();
+    }
+  });
+
+  it('applies the configured valid-time mode through the real remember tool', async () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-temporal-')));
+    store.assert('default', 'works_at(mira, acme).', { opId: 'mcp-before' });
+    const server = createServer({
+      store,
+      validTimeMode: 'archive_until',
+      llm: new ScriptedLlm(['retract works_at(mira, _).\nworks_at(mira, initech).']),
+    });
+    const client = new Client({ name: 'rembero-temporal-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const remembered = await client.callTool({
+        name: 'remember',
+        arguments: { text: 'Mira now works at Initech' },
+      });
+      const text = remembered.content.find((item) => item.type === 'text');
+      const payload = JSON.parse(text?.type === 'text' ? text.text : '');
+      expect(payload).toMatchObject({
+        retracted: 1,
+        archived: [expect.stringMatching(/^works_at_until\(mira, acme, '/)],
+      });
+      expect(store.load('default').map((clause) => clause.head.predicate)).toEqual(
+        expect.arrayContaining(['works_at', 'works_at_until'])
+      );
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('applies REMBERO_VALID_TIME_MODE through a programmatic MCP server', async () => {
+    const previousMode = process.env.REMBERO_VALID_TIME_MODE;
+    process.env.REMBERO_VALID_TIME_MODE = 'archive_until';
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-temporal-env-')));
+    store.assert('default', 'works_at(mira, acme).', { opId: 'mcp-env-before' });
+    const server = createServer({
+      store,
+      llm: new ScriptedLlm(['retract works_at(mira, _).\nworks_at(mira, initech).']),
+    });
+    const client = new Client({ name: 'rembero-temporal-env-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const remembered = await client.callTool({
+        name: 'remember',
+        arguments: { text: 'Mira now works at Initech' },
+      });
+      const text = remembered.content.find((item) => item.type === 'text');
+      const payload = JSON.parse(text?.type === 'text' ? text.text : '');
+      expect(payload).toMatchObject({
+        retracted: 1,
+        archived: [expect.stringMatching(/^works_at_until\(mira, acme, '/)],
+      });
+      expect(store.load('default').map((clause) => clause.head.predicate)).toEqual(
+        expect.arrayContaining(['works_at', 'works_at_until'])
+      );
+    } finally {
+      await client.close();
+      await server.close();
+      if (previousMode === undefined) delete process.env.REMBERO_VALID_TIME_MODE;
+      else process.env.REMBERO_VALID_TIME_MODE = previousMode;
     }
   });
 });

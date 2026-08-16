@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
+import type { ValidTimeMode } from './store/store.js';
 
 /**
  * Load .env from the current directory and from the package root (so the CLI
@@ -15,4 +16,10 @@ export function loadEnv(): void {
   for (const path of candidates) {
     if (existsSync(path)) config({ path, quiet: true });
   }
+}
+
+export function validTimeModeFromEnv(env: NodeJS.ProcessEnv = process.env): ValidTimeMode {
+  const configured = env.REMBERO_VALID_TIME_MODE ?? 'delete';
+  if (configured === 'delete' || configured === 'archive_until') return configured;
+  throw new Error("REMBERO_VALID_TIME_MODE must be 'delete' or 'archive_until'");
 }

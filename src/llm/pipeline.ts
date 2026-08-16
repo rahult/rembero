@@ -14,7 +14,7 @@ import {
   serializeQuerySpec,
   serializeTerm,
 } from '../engine/index.js';
-import type { MemoryStore } from '../store/store.js';
+import type { MemoryStore, ValidTimeMode } from '../store/store.js';
 import type { ChatMessage, LlmClient } from './client.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
 import { assertSafeForExternalLlm } from '../safety.js';
@@ -35,13 +35,22 @@ export interface PipelineDeps {
   llm: LlmClient;
   /** When set, natural-language operations may export only these namespaces to the LLM. */
   llmAllowedNamespaces?: ReadonlySet<string>;
+  /** Default supersession policy for manual natural-language remember operations. */
+  validTimeMode?: ValidTimeMode;
 }
 
 export interface RememberResult {
   added: string[];
   duplicates: number;
   retracted: number;
+  archived?: string[];
   opId?: string;
+}
+
+export interface RememberOptions {
+  validTimeMode?: ValidTimeMode;
+  /** Controlled clock injection for library tests and deterministic integrations. */
+  at?: Date;
 }
 
 export interface RememberTranscriptOptions {
@@ -116,8 +125,13 @@ async function completeWithRetry<T>(
 export async function rememberText(
   deps: PipelineDeps,
   text: string,
-  namespace = 'default'
+  namespace = 'default',
+  options: RememberOptions = {}
 ): Promise<RememberResult> {
+  const validTimeMode = options.validTimeMode ?? deps.validTimeMode ?? 'delete';
+  if (validTimeMode !== 'delete' && validTimeMode !== 'archive_until') {
+    throw new Error("valid-time mode must be 'delete' or 'archive_until'");
+  }
   assertLlmNamespacesAllowed(deps, [namespace]);
   assertSafeForExternalLlm(text, 'memory text');
   const schema = buildSchemaSummary(deps.store.load(namespace));
@@ -139,16 +153,37 @@ export async function rememberText(
         else clauseLines.push(line);
       }
       // parse retraction patterns up front so a bad one triggers the retry loop
-      return {
-        clauses: parseProgram(clauseLines.join('\n')),
-        retractions: retractionLines.map((p) => parseQuery(p)),
-      };
+      const retractions = retractionLines.map((p) => parseQuery(p));
+      if (
+        retractions.some(
+          (goals) =>
+            goals.length !== 1 || isComparison(goals[0]) || isNegation(goals[0])
+        )
+      ) {
+        throw new Error('each retract line must contain exactly one positive fact pattern');
+      }
+      return { clauses: parseProgram(clauseLines.join('\n')), retractions };
     }
   );
   if (extraction === null) return { added: [], duplicates: 0, retracted: 0 };
 
   const opId = deps.store.createOperationId();
-  const context = { opId, sourceText: text };
+  const context = { opId, sourceText: text, origin: 'manual' as const, at: options.at };
+  if (validTimeMode === 'archive_until' && extraction.retractions.length > 0) {
+    const result = deps.store.supersede(
+      namespace,
+      extraction.retractions.map((goals) => goals.map(serializeGoal).join(', ')),
+      extraction.clauses,
+      context
+    );
+    return {
+      added: result.added.map(serializeClause),
+      duplicates: result.duplicates,
+      retracted: result.retracted,
+      archived: result.archived.map(serializeClause),
+      opId,
+    };
+  }
   let retracted = 0;
   for (const pattern of extraction.retractions) {
     retracted += deps.store.retract(
@@ -158,7 +193,7 @@ export async function rememberText(
     ).removed;
   }
   if (extraction.clauses.length > 0 || retracted > 0) {
-    deps.store.note(namespace, 'remember', { opId, text });
+    deps.store.note(namespace, 'remember', { opId, text }, options.at);
   }
   if (extraction.clauses.length === 0) {
     return { added: [], duplicates: 0, retracted, ...(retracted > 0 ? { opId } : {}) };

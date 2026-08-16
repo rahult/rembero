@@ -51,6 +51,7 @@ Output one clause per line and nothing else — no prose, no code fences.
   retract works_at(mira, _).
   works_at(mira, initech).
   Only retract facts the schema shows could exist. Never retract when the input merely adds information.
+- Predicates ending in _until are system-managed valid-time archives. Never assert, retract, or invent them directly; emit the current predicate update and let the store apply its configured supersession policy.
 - NEVER extract secrets: passwords, API keys, tokens, credit card or account numbers. Skip them even if the rest of the sentence is stored.
 - If nothing factual can be extracted, output exactly: ${NOTHING_SENTINEL}
 
@@ -67,6 +68,7 @@ Output additive ground facts only, one Datalog fact per line, with no prose or c
 - Assistant messages provide context only. Never treat an assistant guess, proposal, task summary, or generated result as user-authorized truth.
 - Ignore source code, diffs, commands, tool output, errors, stack traces, temporary debugging state, progress updates, greetings, thanks, and pleasantries.
 - Never output rules, variables, comparisons, negation, or retract lines. Auto-capture is additive and reversible only through explicit review.
+- Never output predicates ending in _until; they are system-managed valid-time archives.
 - Predicates and ordinary constants use lowercase snake_case. Quote multi-word or case-sensitive constants with single quotes. Numbers are bare.
 - Prefer small binary facts and reuse a predicate from the schema when it fits.
 - Never extract passwords, API keys, tokens, financial account details, or other secrets.
@@ -100,6 +102,8 @@ Relational form: ?- goal1, goal2, ... .
 Scalar aggregate forms: ?- count(*) as Count where goal1, goal2, ... .; ?- sum(Value) as Total where ... .; ?- min(Value) as Minimum where ... .; ?- max(Value) as Maximum where ... .
 Use uppercase variables for the unknowns the question asks about. Positive goals must use predicates that appear in the schema, with matching arity. Comparisons =, !=, <, >, <=, >= are allowed. Numeric comparison operands may use +, -, *, /, unary signs, and parentheses with standard precedence; every variable must first be bound by an earlier positive goal. Example: "more than 5 years older than Dana" becomes ?- age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5. Arithmetic is filter-only: never put an expression in a fact, relation argument, rule head, or aggregate input.
 Closed-world negation is written \\+ pred(...); every variable it uses must be bound by an earlier positive goal. A negated predicate may be absent from the schema because absence is the fact being tested, but use it only when the question explicitly names that missing relation, e.g. ?- employee(X), \\+ suspended(X).
+Predicates ending in _until are historical versions of the base predicate. Their final argument is the full ISO timestamp when the preceding fact stopped being current. Use the base predicate for present-tense questions and the matching _until predicate for explicitly past/former/previous/before questions; bind the final argument when the date matters.
+When a question names the later state, constrain it too: "Where did Mira work before Initech?" becomes ?- works_at(mira, initech), works_at_until(mira, Company, Until). This prevents an unrelated historical fact from being presented as preceding the named state.
 Use scalar aggregation only when explicitly requested: count(*) for "how many" or "number of", sum(Value) for a total, min(Value) for the least/earliest value, and max(Value) for the greatest/latest value. Aggregate queries return only the named output variable, allow exactly one operator, and must bind every sum/min/max input variable in a positive where goal.
 If the question cannot be expressed with these predicates, output exactly: ?- ${UNANSWERABLE}.${grounding}
 

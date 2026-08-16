@@ -1,4 +1,4 @@
-# Rembero post-MVP roadmap (v0.5 →)
+# Rembero post-MVP roadmap (v0.6 →)
 
 MVP shipped: public repo, CI, GitHub release v0.1.0, npm package ready (publish pending
 auth). What follows is ordered by user value per unit of effort — each phase is
@@ -36,19 +36,20 @@ Today the agent decides when to call `remember`. Auto-capture makes memory ambie
    stable IDs and no raw transcript copy. `rembero review` shows recent attempts and
    numbers current/removed facts; `--forget <n,...>` performs explicit journaled pruning.
 
-## Phase 8 — Time & provenance  *(v0.6, ~2 days)*
+## Phase 8 — Time & provenance  *(v0.6)*
 
 "Where did Mira work *before* Initech?" is unanswerable once supersession retracts the
 old fact. Fix by making time first-class:
 
-1. **Valid-time option**: supersession rewrites `works_at(mira, acme)` to
-   `works_at_until(mira, acme, <date>)` instead of deleting (config flag; default stays
-   simple deletion).
-2. **Provenance-aware recall**: answers can cite when/why a fact was stored, pulled from
-   the journal. The first deterministic slice is complete: raw and natural-language
-   queries can return recursive proof trees, durable source statements, and a
-   query-scoped personal knowledge graph. Temporal source history remains.
-3. **`rembero history <pattern>`**: the journal filtered to one predicate's life story.
+1. **Complete — valid-time option**: `archive_until` atomically rewrites a superseded
+   ground fact to `<predicate>_until(..., <ISO instant>)` in the same `.dl` file while
+   adding its replacement. Deletion remains the default; `forget` stays destructive and
+   auto-capture stays additive.
+2. **Complete — provenance-aware temporal recall**: historical predicates participate in
+   ordinary recall, deterministic proofs, and the query-scoped personal knowledge graph.
+   Their sources carry the preceding clause and exact valid-until instant.
+3. **Complete — `rembero history <pattern>`**: a bounded, redacted, fail-closed replay of
+   one fact pattern's append-order life story across the CLI, MCP, and library APIs.
 
 ## Phase 9 — Retrieval quality at scale  *(v0.7, ~2-3 days)*
 
@@ -83,9 +84,9 @@ V0 established a loadable C extension with `datalog_sql(rule)` and
 complete: multi-rule programs over ordinary SQLite tables use bounded semi-naive fixpoint
 evaluation, and `datalog_explain(program)` returns one nested derivation proof per result.
 
-The next evidence-driven step is source-aware, durable provenance and bi-temporal facts.
-Vector composition remains later; it should reuse existing SQLite vector infrastructure
-rather than consume originality budget in this project.
+The portable store now supplies source-aware valid-time history. A full bi-temporal model
+remains a later, evidence-driven expansion. Vector composition should reuse existing
+SQLite vector infrastructure rather than consume originality budget in this project.
 
 ## Explainable personal knowledge graph
 

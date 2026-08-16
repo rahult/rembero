@@ -35,6 +35,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_LLM_ALLOWED_NAMESPACES` | no | all namespaces (comma-separated allowlist when set; empty blocks all LLM export) |
 | `REMBERO_AUTO_CAPTURE_DAILY_CAP` | no | `10` unique attempts per namespace/UTC day |
 | `REMBERO_AUTO_CAPTURE_TAIL_BYTES` | no | `24576` bytes (maximum `49152`) |
+| `REMBERO_VALID_TIME_MODE` | no | `delete`; set `archive_until` to preserve superseded facts |
 
 The raw Datalog tools (`query`, `assert_facts`, `forget`, `list_memories`) work with no
 API key at all — only natural-language `remember`/`recall` call the LLM.
@@ -59,7 +60,7 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 ```
 
 Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`, `query`,
-`explain_query`, `forget`, and `list_memories`. `remember`/`recall` take natural
+`explain_query`, `history`, `forget`, and `list_memories`. `remember`/`recall` take natural
 language; the raw query tools are direct and LLM-free.
 
 For inspectable reasoning, `recall_explain` and `explain_query` return the bindings plus
@@ -106,12 +107,20 @@ node dist/cli.js query    'age(X, A), age(dana, D), A > D + 5' # numeric arithme
 node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
 node dist/cli.js forget   'dentist(rahul, _)'
+node dist/cli.js history  'works_at(mira, _)' --json
 node dist/cli.js list
 node dist/cli.js review --namespace personal           # inspect ambient captures
 node dist/cli.js review --namespace personal --forget 2 # explicit prune by number
 node dist/cli.js init-hooks --namespace personal       # opt in to Claude Stop capture
 node dist/cli.js serve                                # MCP server on stdio
 ```
+
+Manual supersession deletes the old fact by default. Opt into valid-time archives with
+`REMBERO_VALID_TIME_MODE=archive_until` or `remember --valid-time-mode archive_until`.
+An update then keeps the preceding fact as an ordinary
+`<predicate>_until(..., '<ISO instant>').` clause. `history` replays the bounded journal
+in authoritative append order, while past-tense recall can query and explain those
+portable archive facts. See [the temporal history contract](docs/TEMPORAL-HISTORY.md).
 
 `-n <ns>` / `--namespace <ns>` selects the namespace to write to; `--namespaces a,b` or
 `--namespaces '*'` selects which namespaces recall/query/list read from.
@@ -131,7 +140,9 @@ deduplicated on write. Files are written atomically. Journaled mutations carry s
 operation IDs; facts captured through `remember` retain their source statement for later
 explanation. Cross-process writers are serialized so background capture cannot overwrite
 a simultaneous manual mutation. Credential-like source text is redacted before
-journaling, and journal capacity is checked before mutation. See
+journaling, and journal capacity is checked before mutation. Opt-in supersessions atomically
+close old facts, add their `_until` archives and replacements, and record exact source
+lineage without changing explicit `forget`. See
 [the explainable graph contract](docs/EXPLAINABLE-KNOWLEDGE-GRAPH.md).
 
 ## SQLite extension (experimental)
@@ -222,6 +233,8 @@ SQLite entry points reject them explicitly until native parity is implemented.
 ## The Datalog dialect
 
 - Facts must be ground: `works_at(rahul, acme).` `birth_year(rahul, 1985).`
+- Valid-time archives are ordinary system-managed facts such as
+  `works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').`
 - Atoms are lowercase (`acme`) or quoted (`'Acme Corp'`); variables uppercase (`X`, `Who`);
   `_` is a wildcard in queries and rule bodies.
 - Rules, including recursive ones: `ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).`

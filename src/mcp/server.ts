@@ -1,18 +1,21 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { validTimeModeFromEnv } from '../env.js';
 import type { PipelineDeps } from '../llm/pipeline.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT, stringifyBoundedResult } from '../safety.js';
 import {
   assertFactsTool,
   explainQueryTool,
   forgetTool,
+  historyTool,
   listMemoriesTool,
   queryTool,
   recallExplainTool,
   recallTool,
   rememberTool,
 } from './tools.js';
+import { MAX_HISTORY_EVENTS } from '../store/store.js';
 
 const namespaceField = z
   .string()
@@ -37,7 +40,11 @@ function asError(e: unknown) {
 }
 
 export function createServer(deps: PipelineDeps): McpServer {
-  const server = new McpServer({ name: 'rembero', version: '0.5.0' });
+  const resolvedDeps: PipelineDeps =
+    deps.validTimeMode === undefined
+      ? { ...deps, validTimeMode: validTimeModeFromEnv() }
+      : deps;
+  const server = new McpServer({ name: 'rembero', version: '0.6.0' });
 
   server.registerTool(
     'remember',
@@ -49,7 +56,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     },
     async ({ text, namespace }) => {
       try {
-        return asContent(await rememberTool(deps, { text, namespace }));
+        return asContent(await rememberTool(resolvedDeps, { text, namespace }));
       } catch (e) {
         return asError(e);
       }
@@ -152,6 +159,27 @@ export function createServer(deps: PipelineDeps): McpServer {
     async ({ pattern, namespace }) => {
       try {
         return asContent(forgetTool(deps, { pattern, namespace }));
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'history',
+    {
+      title: 'Memory history',
+      description:
+        'Show the deterministic append-order life story of facts matching one Datalog literal, including exact supersession archives and redacted provenance. No LLM is used.',
+      inputSchema: {
+        pattern: boundedText("One fact pattern, e.g. 'works_at(mira, _)'"),
+        namespaces: namespacesField,
+        limit: z.number().int().min(1).max(MAX_HISTORY_EVENTS).optional(),
+      },
+    },
+    async ({ pattern, namespaces, limit }) => {
+      try {
+        return asContent(historyTool(deps, { pattern, namespaces, limit }));
       } catch (e) {
         return asError(e);
       }

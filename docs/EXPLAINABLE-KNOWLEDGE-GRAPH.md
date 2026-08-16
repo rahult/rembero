@@ -21,6 +21,8 @@ An explanation contains:
 - source metadata for asserted facts: namespace, operation ID, timestamp, and the
   original natural-language statement when the fact came from `remember` (credential-
   like or financial identifiers are redacted before journaling);
+- for system-managed `_until` facts, the preceding clause and exact valid-until instant
+  from the atomic supersession event;
 - a query-scoped hypergraph of results, claims, entities, and support relationships.
 
 Successful `\+ literal` goals appear as atomic `absence` nodes. They record the grounded
@@ -77,6 +79,8 @@ Namespaces organize one local personal store; they are not tenant or authorizati
 boundaries. Run separate Rembero processes and storage roots where access isolation is
 required.
 
-The graph is intentionally query-scoped. A global materialized graph browser, temporal
-history, conflict sets, and alternative-proof enumeration should build on this contract
-rather than introduce another source of truth.
+The graph is intentionally query-scoped. Temporal history now builds on this contract by
+keeping `_until` facts in the same portable `.dl` authority and adding temporal fields to
+their existing source objects. A global materialized graph browser, conflict sets, and
+alternative-proof enumeration should preserve the same boundary rather than introduce
+another source of truth.

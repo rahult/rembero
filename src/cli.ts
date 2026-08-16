@@ -11,12 +11,12 @@ import {
 } from './autocapture/hooks.js';
 import { DEFAULT_TRANSCRIPT_TAIL_BYTES } from './autocapture/transcript.js';
 import { serializeClause } from './engine/index.js';
-import { loadEnv } from './env.js';
+import { loadEnv, validTimeModeFromEnv } from './env.js';
 import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
 import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { serveStdio } from './mcp/server.js';
-import { explainQueryTool, forgetTool, listMemoriesTool, queryTool } from './mcp/tools.js';
-import { MemoryStore } from './store/store.js';
+import { explainQueryTool, forgetTool, historyTool, listMemoriesTool, queryTool } from './mcp/tools.js';
+import { MAX_HISTORY_EVENTS, MemoryStore, type ValidTimeMode } from './store/store.js';
 import {
   MAX_INPUT_BYTES,
   assertBoundedOutput,
@@ -36,6 +36,7 @@ Usage:
   rembero query <datalog>                Run a raw Datalog query
   rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
   rembero forget <pattern>               Retract facts matching a pattern
+  rembero history <pattern>              Show a fact's deterministic life story
   rembero list                           List stored memories
   rembero review                         Review recent auto-captured facts
   rembero init-hooks                     Install the opt-in Claude Stop hook
@@ -49,14 +50,16 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/list
+      --namespaces <a,b|*> Namespaces to search for recall/query/list/history
+      --valid-time-mode <mode>  Supersession: delete (default) or archive_until
+      --limit <n>          History event limit (maximum: 1000)
       --extension <path>   Path to the compiled Rembero SQLite extension
       --daily-cap <n>      Max auto-capture attempts per namespace/UTC day (default: 10)
       --tail-bytes <n>     Transcript tail bytes sent for extraction (default: 24576)
       --days <n>           Auto-capture review window (default: 7)
       --forget <n,...>     Prune numbered facts shown by review
       --settings <path>    Claude settings JSON (default: ~/.claude/settings.json)
-      --json               Emit machine-readable batch/review output
+      --json               Emit machine-readable batch/review/history output
 `;
 
 interface ParsedArgs {
@@ -73,6 +76,8 @@ interface ParsedArgs {
   forget?: string;
   settingsPath?: string;
   managedBy?: string;
+  validTimeMode?: string;
+  limit?: string;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -106,6 +111,12 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--tail-bytes') {
       parsed.tailBytes = valueAfter(i, arg);
       i += 1;
+    } else if (arg === '--valid-time-mode') {
+      parsed.validTimeMode = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--limit') {
+      parsed.limit = valueAfter(i, arg);
+      i += 1;
     } else if (arg === '--days') {
       parsed.days = valueAfter(i, arg);
       i += 1;
@@ -131,6 +142,12 @@ function integerOption(value: string | undefined, fallback: number, label: strin
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) throw new Error(`${label} must be a safe integer`);
   return parsed;
+}
+
+function validTimeModeOption(value: string | undefined): ValidTimeMode {
+  if (value === undefined) return validTimeModeFromEnv();
+  if (value === 'delete' || value === 'archive_until') return value;
+  throw new Error("--valid-time-mode must be 'delete' or 'archive_until'");
 }
 
 async function readStdinBounded(maxBytes = MAX_INPUT_BYTES): Promise<string> {
@@ -170,7 +187,12 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'serve':
-      await serveStdio({ store, llm: lazyClientFromEnv(), llmAllowedNamespaces });
+      await serveStdio({
+        store,
+        llm: lazyClientFromEnv(),
+        llmAllowedNamespaces,
+        validTimeMode: validTimeModeOption(args.validTimeMode),
+      });
       return; // keep process alive; transport owns stdio
     case 'remember': {
       if (args.batch) {
@@ -198,10 +220,12 @@ async function main(): Promise<void> {
         if (args.json) console.log(stringifyBoundedResult(result, 'CLI result'));
         return;
       }
+      const validTimeMode = validTimeModeOption(args.validTimeMode);
       const result = await rememberText(
         { store, llm: clientFromEnv(), llmAllowedNamespaces },
         text,
-        args.namespace
+        args.namespace,
+        { validTimeMode }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
@@ -240,6 +264,33 @@ async function main(): Promise<void> {
     case 'forget': {
       const result = forgetTool({ store }, { pattern: text, namespace: args.namespace });
       console.log(`removed ${result.removed} clause(s)`);
+      return;
+    }
+    case 'history': {
+      const result = historyTool(
+        { store },
+        {
+          pattern: text,
+          namespaces,
+          limit: integerOption(args.limit, MAX_HISTORY_EVENTS, 'history limit'),
+        }
+      );
+      if (args.json) {
+        console.log(stringifyBoundedResult(result, 'CLI result'));
+        return;
+      }
+      if (result.events.length === 0) {
+        console.log(`no history for ${result.pattern}`);
+        return;
+      }
+      for (const event of result.events) {
+        const current = event.current ? ' [current]' : '';
+        const archive = event.archivedAs ? ` -> ${event.archivedAs}` : '';
+        console.log(
+          `${event.sequence}.${event.position} ${event.ts} ${event.namespace} ${event.action}${current}: ${event.clause}${archive}`
+        );
+        if (event.sourceText) console.log(`  source: ${event.sourceText}`);
+      }
       return;
     }
     case 'export': {

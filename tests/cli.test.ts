@@ -174,4 +174,66 @@ describe('auto-capture CLI', () => {
     expect(prune.stdout).toContain('removed 1 auto-captured fact');
     expect(store.load('personal').map(serializeClause)).toEqual([]);
   });
+
+  it('prints temporal history as JSON with deterministic event ordering', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-history-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory')) as MemoryStore & {
+      supersede: (
+        namespace: string,
+        patterns: string[],
+        replacements: string,
+        context?: Record<string, unknown>
+      ) => unknown;
+    };
+
+    store.assert('personal', 'works_at(mira, acme).', {
+      opId: 'source-1',
+      sourceText: 'Mira works at Acme.',
+      at: new Date('2026-08-10T09:00:00.000Z'),
+    });
+    store.supersede('personal', ['works_at(mira, _)'], 'works_at(mira, initech).', {
+      opId: 'source-2',
+      sourceText: 'Mira now works at Initech.',
+      at: new Date('2026-08-16T16:59:00.000Z'),
+    });
+
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'history', 'works_at(mira, _)', '--namespace', 'personal', '--json'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      pattern: 'works_at(mira, _)',
+      namespaces: ['personal'],
+      events: [
+        expect.objectContaining({
+          sequence: 1,
+          position: 0,
+          action: 'asserted',
+          clause: 'works_at(mira, acme).',
+        }),
+        expect.objectContaining({
+          sequence: 2,
+          position: 0,
+          action: 'superseded',
+          clause: 'works_at(mira, acme).',
+          archivedAs: "works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').",
+          validUntil: '2026-08-16T16:59:00.000Z',
+        }),
+        expect.objectContaining({
+          sequence: 2,
+          position: 2,
+          action: 'asserted',
+          clause: 'works_at(mira, initech).',
+          current: true,
+        }),
+      ],
+    });
+  });
 });

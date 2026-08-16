@@ -104,6 +104,77 @@ describe('rememberText', () => {
     expect(result.added).toEqual(['dentist(rahul, dr_chen).']);
   });
 
+  it('keeps deletion semantics by default when no valid-time mode is requested', async () => {
+    store.assert('default', 'works_at(mira, acme).');
+    const llm = new ScriptedLlm(['retract works_at(mira, _).\nworks_at(mira, initech).']);
+
+    const result = await rememberText({ store, llm }, 'Mira now works at Initech');
+
+    expect(result.retracted).toBe(1);
+    const clauses = store.load('default').map(serializeClause);
+    expect(clauses).toEqual(['works_at(mira, initech).']);
+    expect(clauses.some((clause) => clause.startsWith('works_at_until('))).toBe(false);
+  });
+
+  it('uses archive_until supersession with a full ISO timestamp when valid-time mode is enabled', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-valid-time-'));
+    const temporal = new MemoryStore(root);
+    temporal.assert('default', 'works_at(mira, acme).', {
+      opId: 'source-1',
+      sourceText: 'Mira works at Acme.',
+      at: new Date('2026-08-10T09:00:00.000Z'),
+    });
+    const llm = new ScriptedLlm(['retract works_at(mira, _).\nworks_at(mira, initech).']);
+
+    const result = await (rememberText as unknown as (
+      deps: { store: MemoryStore; llm: LlmClient },
+      text: string,
+      namespace?: string,
+      options?: { validTimeMode?: 'delete' | 'archive_until'; at?: Date }
+    ) => Promise<{
+      added: string[];
+      duplicates: number;
+      retracted: number;
+      archived: string[];
+      opId: string;
+    }>)(
+      { store: temporal, llm },
+      'Mira now works at Initech',
+      'default',
+      { validTimeMode: 'archive_until', at: new Date('2026-08-16T16:59:00.000Z') }
+    );
+
+    expect(result).toMatchObject({
+      retracted: 1,
+      archived: ["works_at_until(mira, acme, '2026-08-16T16:59:00.000Z')."],
+    });
+    expect(temporal.load('default').map(serializeClause).sort()).toEqual([
+      'works_at(mira, initech).',
+      "works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').",
+    ].sort());
+    const journal = readFileSync(join(root, 'journal.log'), 'utf8');
+    expect(journal).toContain('"op":"supersede"');
+    expect(journal).toContain("works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').");
+  });
+
+  it('honors the server-level valid-time mode when no per-call override is supplied', async () => {
+    store.assert('default', 'works_at(mira, acme).');
+    const llm = new ScriptedLlm(['retract works_at(mira, _).\nworks_at(mira, initech).']);
+
+    const result = await rememberText(
+      { store, llm, validTimeMode: 'archive_until' },
+      'Mira now works at Initech'
+    );
+
+    expect(result.archived).toHaveLength(1);
+    expect(store.load('default').map(serializeClause)).toEqual(
+      expect.arrayContaining([
+        'works_at(mira, initech).',
+        expect.stringMatching(/^works_at_until\(mira, acme, '/),
+      ])
+    );
+  });
+
   it('journals the source text of what was remembered', async () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-journal-'));
     const s = new MemoryStore(root);
@@ -276,6 +347,56 @@ describe('recallQuestion', () => {
       bindings: [{ Person: 'carol', Years: '38', DanaYears: '27' }],
     });
     expect(llm.calls[0][0].content).toContain('Years > DanaYears + 5');
+  });
+
+  it('recall-explain carries temporal source metadata for an archived fact', async () => {
+    const temporal = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-temporal-')));
+    temporal.assert('default', 'works_at(mira, acme).', {
+      opId: 'source-1',
+      sourceText: 'Mira works at Acme.',
+      at: new Date('2026-08-10T09:00:00.000Z'),
+    });
+    await (rememberText as unknown as (
+      deps: { store: MemoryStore; llm: LlmClient },
+      text: string,
+      namespace?: string,
+      options?: { validTimeMode?: 'delete' | 'archive_until'; at?: Date }
+    ) => Promise<unknown>)(
+      { store: temporal, llm: new ScriptedLlm(['retract works_at(mira, _).\nworks_at(mira, initech).']) },
+      'Mira now works at Initech',
+      'default',
+      { validTimeMode: 'archive_until', at: new Date('2026-08-16T16:59:00.000Z') }
+    );
+    const llm = new ScriptedLlm([
+      '?- works_at(mira, initech), works_at_until(mira, Company, Until).',
+      'Mira worked at Acme until 16 August 2026.',
+    ]);
+
+    const result = await recallQuestion(
+      { store: temporal, llm },
+      'Where did Mira work before Initech?',
+      ['default'],
+      { explain: true }
+    );
+
+    expect(result.answer).toBe('Mira worked at Acme until 16 August 2026.');
+    expect(result.explanation?.rows[0].proofs[1]).toMatchObject({
+      predicate: 'works_at_until',
+      sources: [
+        expect.objectContaining({
+          opId: expect.any(String),
+          ts: expect.any(String),
+          temporal: {
+            kind: 'superseded',
+            previousClause: 'works_at(mira, acme).',
+            validUntil: '2026-08-16T16:59:00.000Z',
+          },
+        }),
+      ],
+    });
+    expect(llm.calls[0][0].content).toContain(
+      'works_at(mira, initech), works_at_until(mira, Company, Until)'
+    );
   });
 
   it('retries an aggregate the question did not explicitly request', async () => {

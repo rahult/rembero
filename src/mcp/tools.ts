@@ -12,7 +12,7 @@ import {
   recallQuestion,
   rememberText,
 } from '../llm/pipeline.js';
-import type { MemoryStore } from '../store/store.js';
+import type { MemoryHistory, MemoryStore } from '../store/store.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 
@@ -99,6 +99,18 @@ export function forgetTool(
 ): { removed: number; opId: string } {
   assertBoundedInput(args.pattern, 'forget pattern');
   return deps.store.retract(args.namespace ?? 'default', args.pattern);
+}
+
+export function historyTool(
+  deps: StoreToolDeps,
+  args: { pattern: string; namespaces?: string[] | '*'; limit?: number }
+): MemoryHistory {
+  assertBoundedInput(args.pattern, 'history pattern');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  return deps.store.history(args.pattern, {
+    namespaces,
+    ...(args.limit === undefined ? {} : { limit: args.limit }),
+  });
 }
 
 export interface PredicateGroup {

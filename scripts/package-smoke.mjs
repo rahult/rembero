@@ -151,6 +151,36 @@ try {
       'score(alice, 20). score(bob, 14). baseline(team, 10).\n'
   );
   const memoryEnv = { ...process.env, REMBERO_HOME: memoryHome };
+  const temporalHome = join(directory, 'temporal-home');
+  const temporalEnv = { ...process.env, REMBERO_HOME: temporalHome };
+  run(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      "import { join } from 'node:path'; import { MemoryStore } from 'rembero'; " +
+        "const store = new MemoryStore(join(process.env.REMBERO_HOME, 'memory')); " +
+        "store.assert('default', 'works_at(mira, acme).', { opId: 'before' }); " +
+        "const result = store.supersede('default', ['works_at(mira, _)'], 'works_at(mira, initech).', { opId: 'after', at: new Date('2026-08-16T16:59:00.000Z') }); " +
+        "if (result.archived.length !== 1 || store.history('works_at(mira, _)').events.length !== 3) throw new Error('public temporal API failed');",
+    ],
+    { cwd: directory, env: temporalEnv }
+  );
+  const temporalOutput = run(
+    process.execPath,
+    [installedCli, 'history', 'works_at(mira, _)', '--json'],
+    { cwd: directory, env: temporalEnv }
+  );
+  const temporalHistory = JSON.parse(temporalOutput);
+  if (
+    temporalHistory.events.length !== 3 ||
+    !temporalHistory.events.some(({ action }) => action === 'superseded') ||
+    !temporalHistory.events.some(({ clause, current }) =>
+      clause === 'works_at(mira, initech).' && current === true
+    )
+  ) {
+    throw new Error(`unexpected packaged temporal history: ${temporalOutput}`);
+  }
   run(process.execPath, [installedCli, 'import', 'default', memoryFile], {
     cwd: directory,
     env: memoryEnv,
@@ -220,7 +250,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, safe auto-capture hook lifecycle, native recursion, personal proofs, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });
