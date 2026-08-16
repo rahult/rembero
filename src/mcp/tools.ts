@@ -5,10 +5,10 @@ import {
   serializeClause,
   serializeTerm,
 } from '../engine/index.js';
-import type { LlmClient } from '../llm/client.js';
 import {
   type RecallResult,
   type RememberResult,
+  type PipelineDeps,
   recallQuestion,
   rememberText,
 } from '../llm/pipeline.js';
@@ -16,10 +16,7 @@ import type { MemoryStore } from '../store/store.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 
-export interface LlmToolDeps {
-  store: MemoryStore;
-  llm: LlmClient;
-}
+export type LlmToolDeps = PipelineDeps;
 
 export interface StoreToolDeps {
   store: MemoryStore;

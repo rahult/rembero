@@ -38,6 +38,7 @@ export {
 export { type QueryPromptVariant } from './llm/prompts.js';
 export { createServer, serveStdio } from './mcp/server.js';
 export {
+  type AbsenceGraphNode,
   buildExplanationGraph,
   explainKnowledge,
   type ClaimGraphNode,
@@ -50,4 +51,6 @@ export {
   type ExplanationRule,
   type ResultGraphNode,
   type SourcedDerivationProof,
+  type SourcedAbsenceProof,
+  type SourcedProofStep,
 } from './knowledge/graph.js';

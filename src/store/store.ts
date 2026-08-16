@@ -17,6 +17,7 @@ import {
   ParseError,
   canonicalKey,
   isComparison,
+  isNegation,
   literalMatches,
   parseProgram,
   parseQuery,
@@ -199,7 +200,7 @@ export class MemoryStore {
       keep = entry.clauses.filter((c) => canonicalKey(c) !== key);
     } else {
       const goals = parseQuery(pattern);
-      if (goals.length !== 1 || isComparison(goals[0])) {
+      if (goals.length !== 1 || isComparison(goals[0]) || isNegation(goals[0])) {
         throw new ParseError('forget pattern must be a single literal, e.g. works_at(rahul, _)');
       }
       const literal = goals[0] as Literal;

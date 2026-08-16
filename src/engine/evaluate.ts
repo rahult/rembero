@@ -6,7 +6,9 @@ import {
   type Literal,
   type Term,
   isComparison,
+  isNegation,
 } from './ast.js';
+import { stratifyProgram } from './stratify.js';
 
 export type Bindings = Record<string, Term>;
 
@@ -14,12 +16,22 @@ export interface DerivationProof {
   predicate: string;
   values: (string | number)[];
   rule?: number;
-  because?: DerivationProof[];
+  because?: ProofStep[];
 }
+
+export interface AbsenceProof {
+  negated: true;
+  predicate: string;
+  /** Grounded arguments; null represents an existential wildcard. */
+  pattern: (string | number | null)[];
+  stratum: number;
+}
+
+export type ProofStep = DerivationProof | AbsenceProof;
 
 export interface ExplainedBindings {
   bindings: Bindings;
-  proofs: DerivationProof[];
+  proofs: ProofStep[];
 }
 
 export interface MaterializedFactWithProof {
@@ -36,6 +48,13 @@ export class EngineLimitError extends Error {
   }
 }
 
+export class EngineSafetyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EngineSafetyError';
+  }
+}
+
 export interface EvaluateOptions {
   maxFacts?: number;
   maxIterations?: number;
@@ -49,12 +68,14 @@ interface FactEntry {
   tuple: Term[];
   derived: boolean;
   rule?: number;
-  because?: FactEntry[];
+  because?: ProofRef[];
 }
+
+type ProofRef = FactEntry | AbsenceProof;
 
 interface GoalSolution {
   env: Bindings;
-  proofs: FactEntry[];
+  proofs: ProofRef[];
 }
 
 /** Ground tuples per predicate, keyed for O(1) dedup while preserving insertion order. */
@@ -155,8 +176,9 @@ function* solveGoals(
   goals: Goal[],
   index: number,
   env: Bindings,
-  proofs: FactEntry[],
-  source: (goalIndex: number, key: string) => Relation | undefined
+  proofs: ProofRef[],
+  source: (goalIndex: number, key: string) => Relation | undefined,
+  stratumOf: (key: string) => number
 ): Generator<GoalSolution> {
   if (index === goals.length) {
     yield { env, proofs };
@@ -165,8 +187,36 @@ function* solveGoals(
   const goal = goals[index];
   if (isComparison(goal)) {
     if (checkComparison(goal, env)) {
-      yield* solveGoals(goals, index + 1, env, proofs, source);
+      yield* solveGoals(goals, index + 1, env, proofs, source, stratumOf);
     }
+    return;
+  }
+  if (isNegation(goal)) {
+    const key = litKey(goal.not.predicate, goal.not.args.length);
+    const resolved = goal.not.args.map((term): Term => {
+      const value = resolve(term, env);
+      if (value.type === 'var') {
+        throw new EngineSafetyError(
+          `negated variable ${value.name} is not bound by an earlier positive relation`
+        );
+      }
+      return value;
+    });
+    const relation = source(index, key);
+    if (relation) {
+      for (const entry of relation.values()) {
+        if (matchArgs(resolved, entry.tuple, {}) !== null) return;
+      }
+    }
+    const absence: AbsenceProof = {
+      negated: true,
+      predicate: goal.not.predicate,
+      pattern: resolved.map((term) =>
+        term.type === 'wildcard' ? null : groundValue(term)
+      ),
+      stratum: stratumOf(key),
+    };
+    yield* solveGoals(goals, index + 1, env, [...proofs, absence], source, stratumOf);
     return;
   }
   const relation = source(index, litKey(goal.predicate, goal.args.length));
@@ -174,7 +224,14 @@ function* solveGoals(
   for (const entry of relation.values()) {
     const extended = matchArgs(goal.args, entry.tuple, env);
     if (extended) {
-      yield* solveGoals(goals, index + 1, extended, [...proofs, entry], source);
+      yield* solveGoals(
+        goals,
+        index + 1,
+        extended,
+        [...proofs, entry],
+        source,
+        stratumOf
+      );
     }
   }
 }
@@ -213,18 +270,41 @@ interface ProofBudget {
   emittedNodes: number;
 }
 
+function isAbsenceProof(proof: ProofRef): proof is AbsenceProof {
+  return 'negated' in proof;
+}
+
 function serializeProof(
   entry: FactEntry,
   maxProofDepth: number,
   budget: ProofBudget,
+  depth?: number
+): DerivationProof;
+function serializeProof(
+  entry: AbsenceProof,
+  maxProofDepth: number,
+  budget: ProofBudget,
+  depth?: number
+): AbsenceProof;
+function serializeProof(
+  entry: ProofRef,
+  maxProofDepth: number,
+  budget: ProofBudget,
+  depth?: number
+): ProofStep;
+function serializeProof(
+  entry: ProofRef,
+  maxProofDepth: number,
+  budget: ProofBudget,
   depth = 1
-): DerivationProof {
+): ProofStep {
   if (depth > maxProofDepth) {
     throw new EngineLimitError(`proof exceeded max depth ${maxProofDepth}`);
   }
   if (++budget.emittedNodes > budget.maxNodes) {
     throw new EngineLimitError(`proof exceeded max nodes ${budget.maxNodes}`);
   }
+  if (isAbsenceProof(entry)) return { ...entry, pattern: [...entry.pattern] };
   const proof: DerivationProof = {
     predicate: entry.predicate,
     values: entry.tuple.map(groundValue),
@@ -246,13 +326,17 @@ function rowKey(bindings: Bindings): string {
   );
 }
 
-function deriveDatabase(clauses: Clause[], options: EvaluateOptions): Database {
+interface DerivedDatabase {
+  db: Database;
+  predicateStrata: Map<string, number>;
+}
+
+function deriveDatabase(clauses: Clause[], options: EvaluateOptions): DerivedDatabase {
   const { maxFacts = 100_000, maxIterations = 10_000 } = options;
   const facts = clauses.filter((c) => c.body.length === 0);
-  const rules = clauses.filter((c) => c.body.length > 0);
+  const stratified = stratifyProgram(clauses);
 
   const db: Database = new Map();
-  let delta: Database = new Map();
   let totalFacts = 0;
 
   for (const fact of facts) {
@@ -263,7 +347,6 @@ function deriveDatabase(clauses: Clause[], options: EvaluateOptions): Database {
       derived: false,
     };
     if (addTuple(db, key, entry)) {
-      addTuple(delta, key, entry);
       if (++totalFacts > maxFacts) {
         throw new EngineLimitError(`derivation exceeded ${maxFacts} facts`);
       }
@@ -271,53 +354,71 @@ function deriveDatabase(clauses: Clause[], options: EvaluateOptions): Database {
   }
 
   let iterations = 0;
-  while (delta.size > 0) {
-    if (++iterations > maxIterations) {
-      throw new EngineLimitError(`derivation exceeded ${maxIterations} iterations`);
-    }
-    const newDelta: Database = new Map();
-    for (const [ruleIndex, rule] of rules.entries()) {
-      const headKey = litKey(rule.head.predicate, rule.head.args.length);
-      const relationalIndexes = rule.body
-        .map((goal, i) => (isComparison(goal) ? -1 : i))
-        .filter((i) => i >= 0);
-      for (const deltaPos of relationalIndexes) {
-        const source = (goalIndex: number, key: string) =>
-          goalIndex === deltaPos ? delta.get(key) : db.get(key);
-        for (const solution of solveGoals(rule.body, 0, {}, [], source)) {
-          const tuple = substituteHead(rule.head, solution.env);
-          const entry: FactEntry = {
-            predicate: rule.head.predicate,
-            tuple,
-            derived: true,
-            rule: ruleIndex + 1,
-            because: solution.proofs.length > 0 ? solution.proofs : undefined,
-          };
-          if (addTuple(db, headKey, entry)) {
-            addTuple(newDelta, headKey, entry);
-            if (++totalFacts > maxFacts) {
-              throw new EngineLimitError(`derivation exceeded ${maxFacts} facts`);
+  const stratumOf = (key: string) => stratified.predicateStrata.get(key) ?? 0;
+  for (const rules of stratified.strata) {
+    if (rules.length === 0) continue;
+    let delta: Database = new Map(db);
+    let firstRound = true;
+    while (firstRound || delta.size > 0) {
+      if (++iterations > maxIterations) {
+        throw new EngineLimitError(`derivation exceeded ${maxIterations} iterations`);
+      }
+      const newDelta: Database = new Map();
+      for (const { clause: rule, ruleNumber } of rules) {
+        const headKey = litKey(rule.head.predicate, rule.head.args.length);
+        const positiveIndexes = rule.body
+          .map((goal, i) => (isComparison(goal) || isNegation(goal) ? -1 : i))
+          .filter((i) => i >= 0);
+        const deltaPositions =
+          positiveIndexes.length > 0 ? positiveIndexes : firstRound ? [-1] : [];
+        for (const deltaPos of deltaPositions) {
+          const source = (goalIndex: number, key: string) =>
+            deltaPos >= 0 && goalIndex === deltaPos ? delta.get(key) : db.get(key);
+          for (const solution of solveGoals(
+            rule.body,
+            0,
+            {},
+            [],
+            source,
+            stratumOf
+          )) {
+            const tuple = substituteHead(rule.head, solution.env);
+            const entry: FactEntry = {
+              predicate: rule.head.predicate,
+              tuple,
+              derived: true,
+              rule: ruleNumber,
+              because: solution.proofs.length > 0 ? solution.proofs : undefined,
+            };
+            if (addTuple(db, headKey, entry)) {
+              addTuple(newDelta, headKey, entry);
+              if (++totalFacts > maxFacts) {
+                throw new EngineLimitError(`derivation exceeded ${maxFacts} facts`);
+              }
             }
           }
         }
       }
+      delta = newDelta;
+      firstRound = false;
     }
-    delta = newDelta;
   }
 
-  return db;
+  return { db, predicateStrata: stratified.predicateStrata };
 }
 
 function queryBindingsWithProofRefs(
   db: Database,
   query: Goal[],
-  maxRows: number
-): Array<{ bindings: Bindings; proofs: FactEntry[] }> {
-  const results: Array<{ bindings: Bindings; proofs: FactEntry[] }> = [];
+  maxRows: number,
+  predicateStrata: Map<string, number>
+): Array<{ bindings: Bindings; proofs: ProofRef[] }> {
+  const results: Array<{ bindings: Bindings; proofs: ProofRef[] }> = [];
   const seen = new Set<string>();
   const fromDb = (_: number, key: string) => db.get(key);
+  const stratumOf = (key: string) => predicateStrata.get(key) ?? 0;
 
-  for (const solution of solveGoals(query, 0, {}, [], fromDb)) {
+  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf)) {
     const bindings: Bindings = {};
     for (const [name, term] of Object.entries(solution.env)) bindings[name] = term;
     const key = rowKey(bindings);
@@ -340,8 +441,10 @@ export function evaluate(
   options: EvaluateOptions = {}
 ): Bindings[] {
   const { maxRows = 1000 } = options;
-  const db = deriveDatabase(clauses, options);
-  return queryBindingsWithProofRefs(db, query, maxRows).map(({ bindings }) => bindings);
+  const { db, predicateStrata } = deriveDatabase(clauses, options);
+  return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata).map(
+    ({ bindings }) => bindings
+  );
 }
 
 export function evaluateWithProof(
@@ -350,12 +453,14 @@ export function evaluateWithProof(
   options: EvaluateOptions = {}
 ): ExplainedBindings[] {
   const { maxRows = 1000, maxProofDepth = 128, maxProofNodes = 100_000 } = options;
-  const db = deriveDatabase(clauses, options);
+  const { db, predicateStrata } = deriveDatabase(clauses, options);
   const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
-  return queryBindingsWithProofRefs(db, query, maxRows).map(({ bindings, proofs }) => ({
-    bindings,
-    proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, proofBudget)),
-  }));
+  return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata).map(
+    ({ bindings, proofs }) => ({
+      bindings,
+      proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, proofBudget)),
+    })
+  );
 }
 
 export function materializeWithProof(
@@ -363,7 +468,7 @@ export function materializeWithProof(
   options: EvaluateOptions = {}
 ): MaterializedFactWithProof[] {
   const { maxProofDepth = 128, maxProofNodes = 100_000 } = options;
-  const db = deriveDatabase(clauses, options);
+  const { db } = deriveDatabase(clauses, options);
   const facts: MaterializedFactWithProof[] = [];
   const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
 

@@ -21,6 +21,11 @@ An explanation contains:
   like or financial identifiers are redacted before journaling);
 - a query-scoped hypergraph of results, claims, entities, and support relationships.
 
+Successful `\+ literal` goals appear as atomic `absence` nodes. They record the grounded
+pattern and completed lower stratum that was checked, but never claim a stored source or
+enumerate non-matches. A failed negative goal yields no result and therefore no invented
+failure proof.
+
 ## Why a hypergraph
 
 Datalog supports zero-arity, unary, binary, and wider predicates. Converting everything
@@ -48,6 +53,7 @@ proof and graph objects.
   query-local rule order, requested namespace order, body order, then fact insertion
   order. Only that witness source is attached to the proof.
 - Comparisons filter a proof but do not create claim nodes.
+- Successful negated literals create source-free absence nodes in body order.
 - Derivation, row count, fact count, iteration count, and proof depth remain bounded and
   fail closed when their configured caps are exceeded.
 - Namespace wildcard reads are sorted before evaluation so filesystem enumeration order

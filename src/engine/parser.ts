@@ -6,8 +6,10 @@ import {
   type Literal,
   type Term,
   isComparison,
+  isNegation,
 } from './ast.js';
 import { ParseError, type Token, tokenize } from './lexer.js';
+import { stratifyProgram } from './stratify.js';
 
 class TokenStream {
   private pos = 0;
@@ -65,6 +67,10 @@ function parseLiteral(ts: TokenStream): Literal {
 }
 
 function parseGoal(ts: TokenStream): Goal {
+  if (ts.peek().kind === 'not') {
+    ts.next();
+    return { not: parseLiteral(ts) };
+  }
   // A goal starting with a bare atom + '(' or standing alone is a literal;
   // anything followed by a comparison operator is a comparison.
   const start = ts.peek();
@@ -78,7 +84,11 @@ function parseGoal(ts: TokenStream): Goal {
 }
 
 function goalVars(goal: Goal): string[] {
-  const terms = isComparison(goal) ? [goal.left, goal.right] : goal.args;
+  const terms = isComparison(goal)
+    ? [goal.left, goal.right]
+    : isNegation(goal)
+      ? goal.not.args
+      : goal.args;
   return terms.filter((t): t is Term & { type: 'var' } => t.type === 'var').map((t) => t.name);
 }
 
@@ -93,22 +103,49 @@ function checkClause(clause: Clause, line: number): void {
     }
     return;
   }
-  const bound = new Set(
-    clause.body.filter((g) => !isComparison(g)).flatMap(goalVars)
-  );
-  for (const goal of [clause.head, ...clause.body.filter(isComparison)]) {
+  const bound = new Set<string>();
+  for (const goal of clause.body) {
+    if (!isComparison(goal) && !isNegation(goal)) {
+      for (const name of goalVars(goal)) bound.add(name);
+      continue;
+    }
     for (const name of goalVars(goal)) {
       if (!bound.has(name)) {
         throw new ParseError(
-          `range restriction violated: variable ${name} does not appear in any body relation`,
+          `range restriction violated: variable ${name} must be bound by an earlier positive body relation`,
           line
         );
       }
     }
   }
+  for (const name of goalVars(clause.head)) {
+    if (!bound.has(name)) {
+      throw new ParseError(
+        `range restriction violated: variable ${name} does not appear in any positive body relation`,
+        line
+      );
+    }
+  }
   const headWild = clause.head.args.some((a) => a.type === 'wildcard');
   if (headWild) {
     throw new ParseError('rule heads may not contain wildcards', line);
+  }
+}
+
+function checkQuery(goals: Goal[]): void {
+  const bound = new Set<string>();
+  for (const goal of goals) {
+    if (!isComparison(goal) && !isNegation(goal)) {
+      for (const name of goalVars(goal)) bound.add(name);
+      continue;
+    }
+    for (const name of goalVars(goal)) {
+      if (!bound.has(name)) {
+        throw new ParseError(
+          `range restriction violated: variable ${name} must be bound by an earlier positive query relation`
+        );
+      }
+    }
   }
 }
 
@@ -132,6 +169,7 @@ export function parseProgram(input: string): Clause[] {
     checkClause(clause, line);
     clauses.push(clause);
   }
+  stratifyProgram(clauses);
   return clauses;
 }
 
@@ -151,5 +189,6 @@ export function parseQuery(input: string): Goal[] {
   if (trailing.kind !== 'eof') {
     throw new ParseError(`unexpected '${trailing.text}' after query`, trailing.line);
   }
+  checkQuery(goals);
   return goals;
 }

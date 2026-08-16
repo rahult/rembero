@@ -32,6 +32,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `LLM_BASE_URL` | no | `https://openrouter.ai/api/v1` |
 | `LLM_MODEL` | no | `openai/gpt-5.6-luna` |
 | `REMBERO_HOME` | no | `~/.rembero` (memories live in `$REMBERO_HOME/memory/`) |
+| `REMBERO_LLM_ALLOWED_NAMESPACES` | no | all namespaces (comma-separated allowlist when set; empty blocks all LLM export) |
 
 The raw Datalog tools (`query`, `assert_facts`, `forget`, `list_memories`) work with no
 API key at all — only natural-language `remember`/`recall` call the LLM.
@@ -71,6 +72,7 @@ node dist/cli.js remember "Rahul's dentist is Dr Chen"
 node dist/cli.js recall   "Who is Rahul's dentist?"
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
+node dist/cli.js query    'employee(X), \+ suspended(X)' # closed-world negation
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
 node dist/cli.js forget   'dentist(rahul, _)'
 node dist/cli.js list
@@ -84,7 +86,8 @@ Namespaces organize one local personal store; they are not access-control or ten
 boundaries. Use separate `REMBERO_HOME` roots and server processes when data must be
 isolated. Natural-language operations reject credential-like input before calling an
 external LLM. Raw Datalog operations remain local and should never be used to store
-secrets.
+secrets. Set `REMBERO_LLM_ALLOWED_NAMESPACES=work,shared` to keep every other namespace
+local-only; the policy covers both remembering and recalling, including wildcard reads.
 
 ## Storage
 
@@ -176,7 +179,9 @@ possible proofs. Programs are limited to 64 KiB and 16 rules; evaluation is capp
 100,000 loaded base rows, 10,000 derived rows, 1,000 fixpoint rounds, proof depth 128, and
 10 million tuple checks, and 16 MiB of output. Unsafe, malformed, mixed-head,
 arity-inconsistent, or cap-exceeding programs fail closed. Extension loading is disabled
-again immediately after the library is loaded.
+again immediately after the library is loaded. Stratified negation currently belongs to
+the portable `.dl` engine; SQLite entry points reject it explicitly until native parity
+is implemented.
 
 ## The Datalog dialect
 
@@ -184,8 +189,11 @@ again immediately after the library is loaded.
 - Atoms are lowercase (`acme`) or quoted (`'Acme Corp'`); variables uppercase (`X`, `Who`);
   `_` is a wildcard in queries and rule bodies.
 - Rules, including recursive ones: `ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).`
+- Stratified closed-world negation: `available(X) :- employee(X), \+ suspended(X).`
+  Variables in comparisons and negated literals must be bound by an earlier positive
+  goal. Recursive dependency cycles containing negation are rejected.
 - Comparisons in rule bodies and queries: `=`, `!=`, `<`, `>`, `<=`, `>=`.
-- No negation, arithmetic, or aggregation (v1). Every query terminates: evaluation is
+- No arithmetic or aggregation yet. Every query terminates: evaluation is stratified,
   semi-naive bottom-up over a finite fact universe, with belt-and-braces derivation caps.
 - Safety: facts must be ground; every head variable must appear in a positive body literal
   (range restriction). LLM output that violates this is rejected, retried once with the
@@ -218,3 +226,7 @@ npm run dev -- …  # run the CLI from source (tsx)
 The recall eval reports exact-case accuracy, binding-row precision/recall/F1, and
 answerability accuracy. It can also compare OpenRouter models or emit JSON; see
 [docs/EVALS.md](docs/EVALS.md).
+
+See [the stratified-negation contract](docs/STRATIFIED-NEGATION.md) for safety,
+closed-world, proof, and SQLite-boundary details. TypeScript consumers upgrading from
+0.1 should also read [the 0.2 migration note](docs/MIGRATING-0.2.md).

@@ -96,7 +96,8 @@ try {
   const memoryHome = join(directory, 'personal-home');
   writeFileSync(
     memoryFile,
-    'parent(a, b). parent(b, c). ancestor(X, Y) :- parent(X, Y). ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).\n'
+    'parent(a, b). parent(b, c). ancestor(X, Y) :- parent(X, Y). ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y). ' +
+      'employee(alice). employee(bob). suspended(bob). available(X) :- employee(X), \\+ suspended(X).\n'
   );
   const memoryEnv = { ...process.env, REMBERO_HOME: memoryHome };
   run(process.execPath, [installedCli, 'import', 'default', memoryFile], {
@@ -115,8 +116,22 @@ try {
   ) {
     throw new Error(`unexpected packaged personal graph: ${graphOutput}`);
   }
+  const absenceOutput = run(process.execPath, [installedCli, 'explain', 'available(X)'], {
+    cwd: directory,
+    env: memoryEnv,
+  });
+  const absenceGraph = JSON.parse(absenceOutput);
+  if (
+    absenceGraph.rows.length !== 1 ||
+    absenceGraph.rows[0].bindings.X !== 'alice' ||
+    !absenceGraph.graph.nodes.some(
+      ({ kind, predicate }) => kind === 'absence' && predicate === 'suspended'
+    )
+  ) {
+    throw new Error(`unexpected packaged negation graph: ${absenceOutput}`);
+  }
   console.log(
-    'packed install, native recursion, personal proofs, and explanation graph passed'
+    'packed install, native recursion, personal proofs, stratified negation, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

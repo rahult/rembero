@@ -41,8 +41,8 @@ Output one clause per line and nothing else — no prose, no code fences.
 - Predicates and constants: lowercase snake_case (works_at, acme). Variables: uppercase (X, Person).
 - Multi-word or case-sensitive constants must be single-quoted: 'New York'. Prefer short lowercase atoms when natural (rahul, not 'Rahul').
 - Numbers are bare: birth_year(rahul, 1985).
-- Rule bodies may use comparisons: =, !=, <, >, <=, >=. No negation, no arithmetic, no aggregation.
-- Facts must be ground (no variables). Every variable in a rule head must appear in a body relation.
+- Rule bodies may use comparisons: =, !=, <, >, <=, >=, and closed-world negation written \\+ pred(...). Use negation only for a general exception stated by the input, never to guess a missing fact.
+- Facts must be ground (no variables). Every variable in a rule head, comparison, or negated literal must be bound by an earlier positive body relation.
 - Prefer several small binary facts over one wide fact. Emit a rule only when the input states a general relationship ("every X who ... is ...").
 - For relations that should never relate a thing to itself (colleague, sibling, neighbor, ...), add an inequality to the rule body: colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
 - Reuse predicates from the existing schema below when they fit; invent new ones only when needed.
@@ -76,7 +76,7 @@ export function queryGenSystemPrompt(
       : '';
   return `You translate a question into one Datalog query over the schema below.
 Output exactly one line of the form: ?- goal1, goal2, ... .
-Use uppercase variables for the unknowns the question asks about. Only use predicates that appear in the schema, with matching arity. Comparisons =, !=, <, >, <=, >= are allowed. No negation.
+Use uppercase variables for the unknowns the question asks about. Positive goals must use predicates that appear in the schema, with matching arity. Comparisons =, !=, <, >, <=, >= are allowed. Closed-world negation is written \\+ pred(...); every variable it uses must be bound by an earlier positive goal. A negated predicate may be absent from the schema because absence is the fact being tested, but use it only when the question explicitly names that missing relation, e.g. ?- employee(X), \\+ suspended(X).
 If the question cannot be expressed with these predicates, output exactly: ?- ${UNANSWERABLE}.${grounding}
 
 Schema:

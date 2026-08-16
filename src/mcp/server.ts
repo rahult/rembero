@@ -1,8 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import type { LlmClient } from '../llm/client.js';
-import type { MemoryStore } from '../store/store.js';
+import type { PipelineDeps } from '../llm/pipeline.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT } from '../safety.js';
 import {
   assertFactsTool,
@@ -37,8 +36,8 @@ function asError(e: unknown) {
   return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
 
-export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpServer {
-  const server = new McpServer({ name: 'rembero', version: '0.1.0' });
+export function createServer(deps: PipelineDeps): McpServer {
+  const server = new McpServer({ name: 'rembero', version: '0.2.0' });
 
   server.registerTool(
     'remember',
@@ -113,7 +112,7 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
     {
       title: 'Query',
       description:
-        "Run a raw Datalog query and get variable bindings, e.g. 'works_at(X, acme)' or 'works_at(X, C), lives_in(X, sydney)'.",
+        "Run a raw Datalog query and get variable bindings, e.g. 'works_at(X, acme)', 'works_at(X, C), lives_in(X, sydney)', or 'employee(X), \\+ suspended(X)'.",
       inputSchema: { query: boundedText(), namespaces: namespacesField },
     },
     async ({ query, namespaces }) => {
@@ -181,7 +180,7 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
   return server;
 }
 
-export async function serveStdio(deps: { store: MemoryStore; llm: LlmClient }): Promise<void> {
+export async function serveStdio(deps: PipelineDeps): Promise<void> {
   const server = createServer(deps);
   await server.connect(new StdioServerTransport());
   // stdout is the MCP channel — diagnostics must use stderr

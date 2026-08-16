@@ -17,7 +17,11 @@ export interface Comparison {
   right: Term;
 }
 
-export type Goal = Literal | Comparison;
+export interface Negation {
+  not: Literal;
+}
+
+export type Goal = Literal | Comparison | Negation;
 
 export interface Clause {
   head: Literal;
@@ -26,6 +30,10 @@ export interface Clause {
 
 export function isComparison(goal: Goal): goal is Comparison {
   return 'op' in goal;
+}
+
+export function isNegation(goal: Goal): goal is Negation {
+  return 'not' in goal;
 }
 
 export function predKey(lit: Literal): string {
@@ -51,6 +59,7 @@ export function serializeGoal(goal: Goal): string {
   if (isComparison(goal)) {
     return `${serializeTerm(goal.left)} ${goal.op} ${serializeTerm(goal.right)}`;
   }
+  if (isNegation(goal)) return `\\+ ${serializeGoal(goal.not)}`;
   if (goal.args.length === 0) return goal.predicate;
   return `${goal.predicate}(${goal.args.map(serializeTerm).join(', ')})`;
 }
@@ -79,7 +88,9 @@ export function canonicalKey(clause: Clause): string {
   const renameGoal = (goal: Goal): Goal =>
     isComparison(goal)
       ? { op: goal.op, left: rename(goal.left), right: rename(goal.right) }
-      : { predicate: goal.predicate, args: goal.args.map(rename) };
+      : isNegation(goal)
+        ? { not: { predicate: goal.not.predicate, args: goal.not.args.map(rename) } }
+        : { predicate: goal.predicate, args: goal.args.map(rename) };
   return serializeClause({
     head: renameGoal(clause.head) as Literal,
     body: clause.body.map(renameGoal),

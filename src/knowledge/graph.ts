@@ -1,7 +1,9 @@
 import {
+  type AbsenceProof,
   type Bindings,
   type Clause,
   type DerivationProof,
+  type ProofStep,
   type Term,
   canonicalKey,
   evaluateWithProof,
@@ -12,13 +14,16 @@ import {
 import type { MemorySource } from '../store/store.js';
 
 export interface SourcedDerivationProof extends Omit<DerivationProof, 'because'> {
-  because?: SourcedDerivationProof[];
+  because?: SourcedProofStep[];
   sources?: MemorySource[];
 }
 
+export type SourcedAbsenceProof = AbsenceProof;
+export type SourcedProofStep = SourcedDerivationProof | SourcedAbsenceProof;
+
 export interface ExplainedKnowledgeRow {
   bindings: Record<string, string>;
-  proofs: SourcedDerivationProof[];
+  proofs: SourcedProofStep[];
 }
 
 export interface ExplanationRule {
@@ -49,7 +54,19 @@ export interface EntityGraphNode {
   valueType: 'atom' | 'number';
 }
 
-export type ExplanationGraphNode = ResultGraphNode | ClaimGraphNode | EntityGraphNode;
+export interface AbsenceGraphNode {
+  id: string;
+  kind: 'absence';
+  predicate: string;
+  pattern: (string | number | null)[];
+  stratum: number;
+}
+
+export type ExplanationGraphNode =
+  | ResultGraphNode
+  | ClaimGraphNode
+  | EntityGraphNode
+  | AbsenceGraphNode;
 
 export interface ExplanationGraphEdge {
   id: string;
@@ -79,10 +96,15 @@ function proofClauseKey(proof: DerivationProof): string {
   return canonicalKey({ head: { predicate: proof.predicate, args }, body: [] });
 }
 
+function isAbsenceProof(proof: ProofStep | SourcedProofStep): proof is AbsenceProof {
+  return 'negated' in proof;
+}
+
 function addSources(
-  proof: DerivationProof,
+  proof: ProofStep,
   sourceIndex: Map<string, MemorySource[]>
-): SourcedDerivationProof {
+): SourcedProofStep {
+  if (isAbsenceProof(proof)) return { ...proof, pattern: [...proof.pattern] };
   const sources = proof.rule === undefined ? sourceIndex.get(proofClauseKey(proof)) : undefined;
   const witnessSources = sources?.slice(0, 1);
   return {
@@ -121,6 +143,16 @@ function claimId(proof: SourcedDerivationProof): string {
   ])}`;
 }
 
+function absenceId(proof: SourcedAbsenceProof): string {
+  return `absence:${JSON.stringify([
+    proof.predicate,
+    proof.pattern.map((value) =>
+      value === null ? ['wildcard'] : typedValue(value)
+    ),
+    proof.stratum,
+  ])}`;
+}
+
 function resultId(bindings: Record<string, string>): string {
   return `result:${JSON.stringify(Object.entries(bindings))}`;
 }
@@ -145,7 +177,29 @@ export function buildExplanationGraph(rows: ExplainedKnowledgeRow[]): Explanatio
   const edges = new Map<string, ExplanationGraphEdge>();
 
   const addEdge = (value: ExplanationGraphEdge) => edges.set(value.id, value);
-  const addProof = (proof: SourcedDerivationProof): string => {
+  const addProof = (proof: SourcedProofStep): string => {
+    if (isAbsenceProof(proof)) {
+      const id = absenceId(proof);
+      nodes.set(id, {
+        id,
+        kind: 'absence',
+        predicate: proof.predicate,
+        pattern: proof.pattern,
+        stratum: proof.stratum,
+      });
+      for (const [position, value] of proof.pattern.entries()) {
+        if (value === null) continue;
+        const target = entityId(value);
+        nodes.set(target, {
+          id: target,
+          kind: 'entity',
+          value,
+          valueType: typeof value === 'number' ? 'number' : 'atom',
+        });
+        addEdge(edge('arg', id, target, position));
+      }
+      return id;
+    }
     const id = claimId(proof);
     nodes.set(id, {
       id,

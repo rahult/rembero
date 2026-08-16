@@ -6,6 +6,7 @@ import {
   parseQuery,
   serializeTerm,
   EngineLimitError,
+  type EvaluateOptions,
   type Bindings,
   materializeWithProof,
 } from '../src/engine/index.js';
@@ -22,14 +23,14 @@ function rows(bindings: Bindings[]): string[] {
     .sort();
 }
 
-function run(program: string, query: string, options?: { maxFacts?: number }) {
+function run(program: string, query: string, options?: EvaluateOptions) {
   return evaluate(parseProgram(program), parseQuery(query), options);
 }
 
 function explain(
   program: string,
   query: string,
-  options?: { maxFacts?: number; maxProofDepth?: number; maxProofNodes?: number }
+  options?: EvaluateOptions
 ) {
   return evaluateWithProof(parseProgram(program), parseQuery(query), options);
 }
@@ -138,6 +139,117 @@ describe('evaluate: comparison builtins', () => {
 
   it('supports equality on ground terms', () => {
     expect(rows(run(db, 'age(X, A), A = 38'))).toEqual(['A=38 X=rahul']);
+  });
+});
+
+describe('evaluate: stratified negation', () => {
+  const employment = `
+    employee(alice).
+    employee(bob).
+    employee(carol).
+    suspended(carol).
+    desk(alice, 101).
+    eligible(X) :- employee(X), \\+ suspended(X).
+    employee_without_desk(X) :- employee(X), \\+ desk(X, _).
+  `;
+
+  it('filters on completed lower-stratum relations', () => {
+    expect(rows(run(employment, 'eligible(X)'))).toEqual(['X=alice', 'X=bob']);
+    expect(rows(run(employment, 'employee_without_desk(X)'))).toEqual([
+      'X=bob',
+      'X=carol',
+    ]);
+  });
+
+  it('answers ground negative queries under the closed-world assumption', () => {
+    expect(run(employment, '\\+ suspended(alice)')).toEqual([{}]);
+    expect(run(employment, '\\+ suspended(carol)')).toEqual([]);
+  });
+
+  it('supports ground rules whose body is only an absence check', () => {
+    expect(run('safe :- \\+ outage.', 'safe')).toEqual([{}]);
+    expect(run('outage. safe :- \\+ outage.', 'safe')).toEqual([]);
+    expect(explain('safe :- \\+ outage.', 'safe')).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'safe',
+            values: [],
+            rule: 1,
+            because: [
+              { negated: true, predicate: 'outage', pattern: [], stratum: 0 },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('combines same-stratum recursion with a lower-stratum negative filter', () => {
+    const db = `
+      edge(a, b). edge(b, c). edge(c, d). blocked(d).
+      reachable(X, Y) :- edge(X, Y), \\+ blocked(Y).
+      reachable(X, Y) :- edge(X, Z), reachable(Z, Y), \\+ blocked(Y).
+    `;
+    expect(rows(run(db, 'reachable(a, Y)'))).toEqual(['Y=b', 'Y=c']);
+    expect(run(db, 'reachable(a, d)')).toEqual([]);
+  });
+
+  it('emits an atomic absence proof rather than inventing source support', () => {
+    expect(explain(employment, 'eligible(bob)')).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'eligible',
+            values: ['bob'],
+            rule: 1,
+            because: [
+              { predicate: 'employee', values: ['bob'] },
+              {
+                negated: true,
+                predicate: 'suspended',
+                pattern: ['bob'],
+                stratum: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(explain(employment, 'employee_without_desk(bob)')[0].proofs[0]).toMatchObject({
+      predicate: 'employee_without_desk',
+      because: [
+        { predicate: 'employee', values: ['bob'] },
+        {
+          negated: true,
+          predicate: 'desk',
+          pattern: ['bob', null],
+          stratum: 0,
+        },
+      ],
+    });
+  });
+
+  it('evaluates successive negative dependencies in completed strata', () => {
+    const db = `
+      person(alice). person(bob). person(carol).
+      suspended(carol). retired(bob).
+      active(X) :- person(X), \\+ suspended(X).
+      billable(X) :- active(X), \\+ retired(X).
+      mention(X) :- billable(X).
+    `;
+    expect(rows(run(db, 'mention(X)'))).toEqual(['X=alice']);
+    const proof = explain(db, 'mention(alice)')[0].proofs[0];
+    expect(JSON.stringify(proof)).toContain('"predicate":"suspended"');
+    expect(JSON.stringify(proof)).toContain('"predicate":"retired"');
+  });
+
+  it('counts absence nodes against the global proof budget', () => {
+    expect(() => explain(employment, 'eligible(bob)', { maxProofNodes: 2 })).toThrow(
+      EngineLimitError
+    );
   });
 });
 
@@ -283,6 +395,15 @@ describe('evaluateWithProof', () => {
         ],
       },
     ]);
+  });
+
+  it('keeps the first rule as witness when duplicate rules derive the same tuple', () => {
+    const db = `
+      base(a).
+      pick(X) :- base(X).
+      pick(X) :- base(X).
+    `;
+    expect(explain(db, 'pick(a)')[0].proofs[0]).toMatchObject({ rule: 1 });
   });
 
   it('enforces the proof depth cap during serialization', () => {

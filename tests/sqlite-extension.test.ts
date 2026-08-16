@@ -362,6 +362,9 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
       expect(() => database.datalogQuery('bad(X) :- edge(X).')).toThrow(/expects 2 columns/i);
       expect(() => database.datalogQuery('bad(X) :- missing(X).')).toThrow(/missing/i);
       expect(() => database.datalogQuery('not datalog')).toThrow(/expected/i);
+      expect(() =>
+        database.datalogQuery('allowed(X) :- edge(X, Y), \\+ blocked(Y).')
+      ).toThrow(/portable Datalog engine, not the SQLite extension/i);
       expect(() => database.datalogQuery('bad(X) :- edge(X, Y), X > 1e999.')).toThrow(
         /out of range/i
       );

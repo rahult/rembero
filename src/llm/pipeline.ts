@@ -4,6 +4,7 @@ import {
   type Goal,
   evaluate,
   isComparison,
+  isNegation,
   parseProgram,
   parseQuery,
   serializeClause,
@@ -28,6 +29,8 @@ import {
 export interface PipelineDeps {
   store: MemoryStore;
   llm: LlmClient;
+  /** When set, natural-language operations may export only these namespaces to the LLM. */
+  llmAllowedNamespaces?: ReadonlySet<string>;
 }
 
 export interface RememberResult {
@@ -63,6 +66,21 @@ function stripFences(text: string): string {
     .trim();
 }
 
+function assertLlmNamespacesAllowed(
+  deps: PipelineDeps,
+  namespaces: string[] | '*'
+): void {
+  const allowed = deps.llmAllowedNamespaces;
+  if (allowed === undefined) return;
+  const selected = namespaces === '*' ? deps.store.listNamespaces() : namespaces;
+  const denied = selected.find((namespace) => !allowed.has(namespace));
+  if (denied !== undefined) {
+    throw new Error(
+      `namespace '${denied}' is local-only under REMBERO_LLM_ALLOWED_NAMESPACES`
+    );
+  }
+}
+
 /** Ask the LLM, validate its output; on failure, retry once with the error message. */
 async function completeWithRetry<T>(
   llm: LlmClient,
@@ -91,6 +109,7 @@ export async function rememberText(
   text: string,
   namespace = 'default'
 ): Promise<RememberResult> {
+  assertLlmNamespacesAllowed(deps, [namespace]);
   assertSafeForExternalLlm(text, 'memory text');
   const schema = buildSchemaSummary(deps.store.load(namespace));
   assertSafeForExternalLlm(schema, 'memory schema');
@@ -139,11 +158,82 @@ export async function rememberText(
   return { added: added.map(serializeClause), duplicates, retracted, opId };
 }
 
-function validateQueryPredicates(goals: Goal[], clauses: Clause[]): void {
+function canonicalWord(word: string): string {
+  const irregular: Record<string, string> = {
+    are: 'be',
+    been: 'be',
+    had: 'have',
+    has: 'have',
+    is: 'be',
+    was: 'be',
+    were: 'be',
+  };
+  if (irregular[word]) return irregular[word];
+  if (word.length > 5 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
+  if (word.length > 5 && word.endsWith('ing')) return word.slice(0, -3);
+  if (word.length > 4 && word.endsWith('ed')) return word.slice(0, -2);
+  if (word.length > 4 && word.endsWith('s')) return word.slice(0, -1);
+  return word;
+}
+
+function words(text: string): string[] {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map(canonicalWord);
+}
+
+function editDistance(left: string, right: string): number {
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1)
+      );
+    }
+    previous = current;
+  }
+  return previous[right.length];
+}
+
+function validateQueryPredicates(goals: Goal[], clauses: Clause[], question: string): void {
   const known = new Set(clauses.map((c) => `${c.head.predicate}/${c.head.args.length}`));
+  const questionWords = new Set(words(question));
   for (const goal of goals) {
     if (isComparison(goal)) continue;
-    const key = `${goal.predicate}/${goal.args.length}`;
+    const literal = isNegation(goal) ? goal.not : goal;
+    const key = `${literal.predicate}/${literal.args.length}`;
+    if (known.has(key)) continue;
+    if (isNegation(goal)) {
+      const sameArity = clauses
+        .map((clause) => clause.head)
+        .filter((head) => head.args.length === literal.args.length)
+        .map((head) => head.predicate);
+      const lookalike = sameArity.find(
+        (predicate) =>
+          predicate !== literal.predicate && editDistance(predicate, literal.predicate) <= 1
+      );
+      if (lookalike !== undefined) {
+        throw new Error(
+          `unknown negated predicate ${key} resembles ${lookalike}/${literal.args.length}; correct the predicate name`
+        );
+      }
+      const predicateWords = words(literal.predicate);
+      if (
+        predicateWords.length === 0 ||
+        !predicateWords.every((word) => questionWords.has(word))
+      ) {
+        throw new Error(
+          `unknown negated predicate ${key} must be explicitly named by the question`
+        );
+      }
+      continue;
+    }
     if (!known.has(key)) {
       throw new Error(
         `unknown predicate ${key} — available: ${[...known].sort().join(', ') || '(none)'}`
@@ -160,6 +250,7 @@ export async function retrieveQuestion(
   namespaces: string[] | '*' = ['default'],
   options: RecallOptions = {}
 ): Promise<RetrievalResult> {
+  assertLlmNamespacesAllowed(deps, namespaces);
   assertSafeForExternalLlm(question, 'recall question');
   const clauses = deps.store.clausesFor(namespaces);
   if (clauses.length === 0) {
@@ -177,7 +268,7 @@ export async function retrieveQuestion(
   const validateResponse = (response: string): Goal[] | null => {
     if (UNANSWERABLE_RE.test(response)) return null;
     const parsed = parseQuery(response);
-    validateQueryPredicates(parsed, clauses);
+    validateQueryPredicates(parsed, clauses, question);
     return parsed;
   };
   const evaluateQuery = (goals: Goal[], queryText: string): RetrievalResult => {

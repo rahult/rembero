@@ -1,4 +1,4 @@
-import { isComparison, parseQuery, type Goal, type Term } from '../engine/index.js';
+import { isComparison, isNegation, parseQuery, type Goal, type Term } from '../engine/index.js';
 import type { QueryPromptVariant } from '../llm/prompts.js';
 
 export const RECALL_EVAL_PROGRAM = `
@@ -244,7 +244,9 @@ function visitGoal(goal: Goal, order: string[], seen: Set<string>): void {
     visitTerm(goal.left, order, seen);
     visitTerm(goal.right, order, seen);
   } else {
-    for (const term of goal.args) visitTerm(term, order, seen);
+    for (const term of (isNegation(goal) ? goal.not.args : goal.args)) {
+      visitTerm(term, order, seen);
+    }
   }
 }
 

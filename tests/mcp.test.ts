@@ -24,6 +24,7 @@ describe('MCP explanation surfaces', () => {
       opId: 'mcp-source',
       sourceText: 'My cat is called Luna.',
     });
+    store.assert('default', 'employee(alice). employee(bob). suspended(bob).');
     const server = createServer({
       store,
       llm: new ScriptedLlm(['?- pet(rahul, Name).', 'Your cat is Luna.']),
@@ -49,6 +50,23 @@ describe('MCP explanation surfaces', () => {
         predicate: 'pet',
         sources: [{ opId: 'mcp-source' }],
       });
+
+      const negated = await client.callTool({
+        name: 'explain_query',
+        arguments: { query: 'employee(X), \\+ suspended(X)' },
+      });
+      const negatedText = negated.content.find((item) => item.type === 'text');
+      const negatedPayload = JSON.parse(
+        negatedText?.type === 'text' ? negatedText.text : ''
+      );
+      expect(negatedPayload.rows).toEqual([
+        expect.objectContaining({ bindings: { X: 'alice' } }),
+      ]);
+      expect(negatedPayload.graph.nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'absence', predicate: 'suspended' }),
+        ])
+      );
 
       const recalled = await client.callTool({
         name: 'recall_explain',

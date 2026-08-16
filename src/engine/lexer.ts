@@ -17,6 +17,7 @@ export type TokenKind =
   | '.'
   | ':-'
   | '?-'
+  | 'not'
   | 'cmp'
   | 'eof';
 
@@ -110,6 +111,11 @@ export function tokenize(input: string): Token[] {
     }
     if (input.startsWith('?-', i)) {
       push('?-', '?-');
+      i += 2;
+      continue;
+    }
+    if (input.startsWith('\\+', i)) {
+      push('not', '\\+');
       i += 2;
       continue;
     }

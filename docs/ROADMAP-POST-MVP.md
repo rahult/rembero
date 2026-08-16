@@ -8,9 +8,9 @@ independently shippable as a minor release.
 
 The engine's expressiveness ceiling is the first thing power users will hit.
 
-1. **Stratified negation** (`\+ goal` in rule bodies): "employees with no assigned desk".
-   Requires a stratification check (reject cyclic negation) and per-stratum fixpoint
-   evaluation. The single most-requested Datalog feature.
+1. **Stratified negation** (`\+ goal` in rule bodies): complete. The portable engine
+   rejects negative cycles, evaluates strata bottom-up, and emits explicit absence proof
+   nodes for rules such as "employees with no assigned desk".
 2. **Aggregation**: `count`, `min`, `max`, `sum` as query-level operators (not in rules,
    keeping termination trivial): "how many people work at Acme?"
 3. **Arithmetic in comparisons**: `A > B + 5` style right-hand expressions; still
@@ -89,4 +89,4 @@ mutation/source IDs, and query-scoped hypergraphs across the library, CLI, and M
 is the foundation for conflict views, temporal history, and alternative proof inspection
 without replacing the readable personal knowledge base with a second graph store.
 
-The next reasoning milestone is stratified negation, followed by query-level aggregation.
+The next reasoning milestone is query-level aggregation, followed by arithmetic filters.

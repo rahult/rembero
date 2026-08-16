@@ -38,3 +38,16 @@ export function assertNamespaceCount(namespaces: string[] | '*'): void {
     throw new Error(`namespace list exceeds ${MAX_NAMESPACE_COUNT} entries`);
   }
 }
+
+export function llmNamespaceAllowlistFromEnv(
+  env: NodeJS.ProcessEnv = process.env
+): ReadonlySet<string> | undefined {
+  const configured = env.REMBERO_LLM_ALLOWED_NAMESPACES;
+  if (configured === undefined) return undefined;
+  return new Set(
+    configured
+      .split(',')
+      .map((namespace) => namespace.trim())
+      .filter(Boolean)
+  );
+}

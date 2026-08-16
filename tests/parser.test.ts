@@ -4,6 +4,7 @@ import {
   parseQuery,
   serializeClause,
   ParseError,
+  StratificationError,
 } from '../src/engine/index.js';
 
 describe('parseProgram', () => {
@@ -79,6 +80,36 @@ describe('parseProgram', () => {
     expect(() => parseProgram('adult(X) :- person(X), Y > 18.')).toThrow(/range/i);
   });
 
+  it('parses and serializes stratified negation', () => {
+    const [rule] = parseProgram(
+      'available(X) :- employee(X), \\+ suspended(X), \\+ desk(X, _).'
+    );
+    expect(rule.body[1]).toEqual({
+      not: {
+        predicate: 'suspended',
+        args: [{ type: 'var', name: 'X' }],
+      },
+    });
+    expect(serializeClause(rule)).toBe(
+      'available(X) :- employee(X), \\+ suspended(X), \\+ desk(X, _).'
+    );
+  });
+
+  it('requires negation and comparisons to use earlier positive bindings', () => {
+    expect(() => parseProgram('available(X) :- \\+ suspended(X), employee(X).')).toThrow(
+      /earlier positive/i
+    );
+    expect(() => parseProgram('adult(X) :- A >= 18, age(X, A).')).toThrow(
+      /earlier positive/i
+    );
+  });
+
+  it('rejects recursion through negation', () => {
+    expect(() => parseProgram('p :- \\+ p.')).toThrow(StratificationError);
+    expect(() => parseProgram('p :- \\+ q. q :- \\+ p.')).toThrow(StratificationError);
+    expect(() => parseProgram('p :- q. q :- \\+ p.')).toThrow(StratificationError);
+  });
+
   it('rejects missing final period', () => {
     expect(() => parseProgram('person(rahul)')).toThrow(ParseError);
   });
@@ -114,6 +145,14 @@ describe('parseQuery', () => {
   it('allows wildcards in queries', () => {
     const q = parseQuery('works_at(rahul, _)');
     expect(q[0].args[1].type).toBe('wildcard');
+  });
+
+  it('allows safe query negation and rejects unbound negative variables', () => {
+    expect(parseQuery('employee(X), \\+ suspended(X)')).toHaveLength(2);
+    expect(parseQuery('\\+ suspended(rahul)')).toEqual([
+      { not: { predicate: 'suspended', args: [{ type: 'atom', value: 'rahul' }] } },
+    ]);
+    expect(() => parseQuery('\\+ suspended(X)')).toThrow(/earlier positive/i);
   });
 
   it('rejects empty queries', () => {

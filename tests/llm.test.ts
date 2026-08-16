@@ -131,6 +131,16 @@ describe('rememberText', () => {
     expect(existsSync(join(root, 'journal.log'))).toBe(false);
   });
 
+  it('keeps namespaces outside the explicit LLM allowlist local-only', async () => {
+    const llm = new ScriptedLlm([]);
+    const deps = { store, llm, llmAllowedNamespaces: new Set(['shared']) };
+
+    await expect(rememberText(deps, 'Alice works at Acme', 'private')).rejects.toThrow(
+      /namespace 'private' is local-only/i
+    );
+    expect(llm.calls).toHaveLength(0);
+  });
+
   it('treats "% nothing" as a no-op', async () => {
     const llm = new ScriptedLlm(['% nothing']);
     const result = await rememberText({ store, llm }, 'hello there!');
@@ -168,6 +178,22 @@ describe('recallQuestion', () => {
     expect(llm.calls).toHaveLength(0);
   });
 
+  it('rejects wildcard recall when it includes a local-only namespace', async () => {
+    const scoped = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-scoped-')));
+    scoped.assert('shared', 'project(atlas).');
+    scoped.assert('private', 'health_note(alice, stable).');
+    const llm = new ScriptedLlm([]);
+
+    await expect(
+      retrieveQuestion(
+        { store: scoped, llm, llmAllowedNamespaces: new Set(['shared']) },
+        'What projects are stored?',
+        '*'
+      )
+    ).rejects.toThrow(/namespace 'private' is local-only/i);
+    expect(llm.calls).toHaveLength(0);
+  });
+
   it('generates a query, evaluates it, and phrases the answer', async () => {
     const llm = new ScriptedLlm(['?- colleague(rahul, Who).', 'Maya is Rahul’s colleague.']);
     const result = await recallQuestion({ store, llm }, 'Who are Rahul’s colleagues?');
@@ -199,6 +225,78 @@ describe('recallQuestion', () => {
     const llm = new ScriptedLlm(['?- works_at(rahul, Company).']);
     await retrieveQuestion({ store, llm }, 'Where does Rahul work?');
     expect(llm.calls[0][0].content).toContain('Datalog variables represent requested unknown');
+  });
+
+  it('can generate and explain a safe closed-world negation query', async () => {
+    const employment = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-negation-')));
+    employment.assert('default', 'employee(alice). employee(bob). suspended(bob).', {
+      opId: 'employment-source',
+    });
+    const llm = new ScriptedLlm(['?- employee(X), \\+ suspended(X).']);
+
+    const result = await retrieveQuestion(
+      { store: employment, llm },
+      'Which employees are not suspended?',
+      ['default'],
+      { explain: true }
+    );
+
+    expect(result.query).toBe('employee(X), \\+ suspended(X)');
+    expect(result.bindings).toEqual([{ X: 'alice' }]);
+    expect(result.explanation?.rows[0].proofs).toEqual([
+      expect.objectContaining({ predicate: 'employee' }),
+      {
+        negated: true,
+        predicate: 'suspended',
+        pattern: ['alice'],
+        stratum: 0,
+      },
+    ]);
+    expect(llm.calls[0][0].content).toContain('Closed-world negation is written \\+');
+  });
+
+  it('allows a negated relation with no stored facts under closed-world recall', async () => {
+    const employment = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-absent-relation-')));
+    employment.assert('default', 'employee(alice). employee(bob).');
+    const llm = new ScriptedLlm(['?- employee(X), \\+ suspended(X).']);
+
+    const result = await retrieveQuestion(
+      { store: employment, llm },
+      'Which employees are not suspended?'
+    );
+
+    expect(result.bindings).toEqual([{ X: 'alice' }, { X: 'bob' }]);
+  });
+
+  it('retries a misspelled negated predicate instead of proving the typo by absence', async () => {
+    const employment = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-negation-typo-')));
+    employment.assert('default', 'employee(alice). employee(bob). suspended(bob).');
+    const llm = new ScriptedLlm([
+      '?- employee(X), \\+ suspendd(X).',
+      '?- employee(X), \\+ suspended(X).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: employment, llm },
+      'Which employees are not suspended?'
+    );
+
+    expect(result.bindings).toEqual([{ X: 'alice' }]);
+    expect(llm.calls).toHaveLength(2);
+    expect(llm.calls[1].at(-1)?.content).toContain('resembles suspended/1');
+  });
+
+  it('rejects an absent negated relation that the question did not name', async () => {
+    const employment = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-negation-ungrounded-')));
+    employment.assert('default', 'employee(alice).');
+    const llm = new ScriptedLlm([
+      '?- employee(X), \\+ blacklisted(X).',
+      '?- employee(X), \\+ blacklisted(X).',
+    ]);
+
+    await expect(
+      retrieveQuestion({ store: employment, llm }, 'Which employees are not suspended?')
+    ).rejects.toThrow('must be explicitly named by the question');
   });
 
   it('short-circuits on unanswerable without calling the engine or phrasing', async () => {

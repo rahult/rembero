@@ -22,6 +22,31 @@ export interface DatalogExplanation {
   proof: DatalogProof;
 }
 
+function assertPortableEngineOnlySyntax(program: string): void {
+  let quoted = false;
+  for (let index = 0; index < program.length; index++) {
+    const char = program[index];
+    if (quoted) {
+      if (char === "'" && program[index + 1] === "'") index++;
+      else if (char === "'") quoted = false;
+      continue;
+    }
+    if (char === "'") {
+      quoted = true;
+      continue;
+    }
+    if (char === '%') {
+      while (index < program.length && program[index] !== '\n') index++;
+      continue;
+    }
+    if (char === '\\' && program[index + 1] === '+') {
+      throw new Error(
+        'stratified negation is currently supported by the portable Datalog engine, not the SQLite extension'
+      );
+    }
+  }
+}
+
 function platformLibraryName(): string {
   switch (process.platform) {
     case 'darwin':
@@ -74,6 +99,7 @@ export class DatalogDatabase {
   }
 
   datalogSql(rule: string): string {
+    assertPortableEngineOnlySyntax(rule);
     const row = this.database.prepare('SELECT datalog_sql(?) AS sql').get(rule) as
       | { sql: unknown }
       | undefined;
@@ -84,6 +110,7 @@ export class DatalogDatabase {
   }
 
   datalogQuery(rule: string): DatalogRow[] {
+    assertPortableEngineOnlySyntax(rule);
     const row = this.database.prepare('SELECT datalog_query(?) AS result').get(rule) as
       | { result: unknown }
       | undefined;
@@ -98,6 +125,7 @@ export class DatalogDatabase {
   }
 
   datalogExplain(program: string): DatalogExplanation[] {
+    assertPortableEngineOnlySyntax(program);
     const row = this.database.prepare('SELECT datalog_explain(?) AS result').get(program) as
       | { result: unknown }
       | undefined;

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { serializeClause } from './engine/index.js';
 import { loadEnv } from './env.js';
 import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
@@ -7,6 +7,7 @@ import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { serveStdio } from './mcp/server.js';
 import { explainQueryTool, forgetTool, listMemoriesTool, queryTool } from './mcp/tools.js';
 import { MemoryStore } from './store/store.js';
+import { MAX_INPUT_BYTES, llmNamespaceAllowlistFromEnv } from './safety.js';
 import { buildSqliteExtension, openDatalogDatabase } from './sqlite/extension.js';
 
 const USAGE = `rembero — logic-based memory for chats and agents
@@ -63,27 +64,36 @@ async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
   const store = new MemoryStore();
+  const llmAllowedNamespaces = llmNamespaceAllowlistFromEnv();
   const text = args.positional.join(' ');
   const namespaces = args.namespaces ?? (args.namespace ? [args.namespace] : undefined);
 
   switch (command) {
     case 'serve':
-      await serveStdio({ store, llm: lazyClientFromEnv() });
+      await serveStdio({ store, llm: lazyClientFromEnv(), llmAllowedNamespaces });
       return; // keep process alive; transport owns stdio
     case 'remember': {
-      const result = await rememberText({ store, llm: clientFromEnv() }, text, args.namespace);
+      const result = await rememberText(
+        { store, llm: clientFromEnv(), llmAllowedNamespaces },
+        text,
+        args.namespace
+      );
       console.log(JSON.stringify(result, null, 2));
       return;
     }
     case 'recall': {
-      const result = await recallQuestion({ store, llm: clientFromEnv() }, text, namespaces);
+      const result = await recallQuestion(
+        { store, llm: clientFromEnv(), llmAllowedNamespaces },
+        text,
+        namespaces
+      );
       console.log(result.answer);
       console.log(`  (query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length})`);
       return;
     }
     case 'recall-explain': {
       const result = await recallQuestion(
-        { store, llm: clientFromEnv() },
+        { store, llm: clientFromEnv(), llmAllowedNamespaces },
         text,
         namespaces,
         { explain: true }
@@ -120,6 +130,10 @@ async function main(): Promise<void> {
         console.error('usage: rembero import <namespace> <file.dl>');
         process.exitCode = 1;
         return;
+      }
+      const size = statSync(file).size;
+      if (size > MAX_INPUT_BYTES) {
+        throw new Error(`import file exceeds ${MAX_INPUT_BYTES} bytes`);
       }
       const result = store.assert(ns, readFileSync(file, 'utf8'));
       console.log(`imported ${result.added.length} clause(s), ${result.duplicates} duplicate(s) skipped`);

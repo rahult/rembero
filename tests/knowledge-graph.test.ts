@@ -128,6 +128,56 @@ describe('explainable personal knowledge graph', () => {
     ]);
   });
 
+  it('represents successful negation as an absence node without fake sources', () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-absence-')));
+    store.assert(
+      'work',
+      'employee(alice). employee(bob). suspended(bob). available(X) :- employee(X), \\+ suspended(X).',
+      { opId: 'employment-source' }
+    );
+
+    const result = explainKnowledge(
+      store.load('work'),
+      'available(Person)',
+      store.sourcesFor(['work'])
+    );
+    const absence = result.graph.nodes.find((node) => node.kind === 'absence');
+    const available = result.graph.nodes.find(
+      (node) => node.kind === 'claim' && node.predicate === 'available'
+    );
+
+    expect(result.rows).toEqual([
+      {
+        bindings: { Person: 'alice' },
+        proofs: [
+          expect.objectContaining({
+            predicate: 'available',
+            because: expect.arrayContaining([
+              {
+                negated: true,
+                predicate: 'suspended',
+                pattern: ['alice'],
+                stratum: 0,
+              },
+            ]),
+          }),
+        ],
+      },
+    ]);
+    expect(absence).toMatchObject({
+      kind: 'absence',
+      predicate: 'suspended',
+      pattern: ['alice'],
+      stratum: 0,
+    });
+    expect(
+      result.graph.edges.some(
+        (edge) => edge.kind === 'because' && edge.from === available?.id && edge.to === absence?.id
+      )
+    ).toBe(true);
+    expect(absence).not.toHaveProperty('sources');
+  });
+
   it('exposes the same graph through the built CLI', () => {
     const home = mkdtempSync(join(tmpdir(), 'rembero-graph-cli-'));
     const store = new MemoryStore(join(home, 'memory'));
