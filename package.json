@@ -14,6 +14,7 @@
   "files": [
     "dist",
     "native",
+    "docs/EVALS.md",
     "README.md",
     "LICENSE"
   ],
@@ -25,6 +26,7 @@
     "test": "vitest run",
     "test:sqlite": "vitest run tests/sqlite-extension.test.ts",
     "test:package": "npm run build && node scripts/package-smoke.mjs",
+    "eval:recall": "npm run build && node dist/evals/run-recall.js",
     "test:watch": "vitest",
     "dev": "tsx src/cli.ts",
     "prepublishOnly": "npm test && npm run build"

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
 import { serializeClause } from '../src/engine/index.js';
 import { buildSchemaSummary } from '../src/llm/prompts.js';
-import { rememberText, recallQuestion } from '../src/llm/pipeline.js';
+import { rememberText, recallQuestion, retrieveQuestion } from '../src/llm/pipeline.js';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { OpenRouterClient } from '../src/llm/client.js';
 
@@ -150,6 +150,28 @@ describe('recallQuestion', () => {
     expect(phrasing[phrasing.length - 1].content).toContain('maya');
   });
 
+  it('can evaluate retrieval without a phrasing call and applies the grounded prompt', async () => {
+    const llm = new ScriptedLlm(['?- works_at(rahul, Company).']);
+    const result = await retrieveQuestion(
+      { store, llm },
+      'Where does Rahul work?',
+      ['default'],
+      { queryPromptVariant: 'grounded' }
+    );
+    expect(result).toEqual({
+      query: 'works_at(rahul, Company)',
+      bindings: [{ Company: 'acme' }],
+    });
+    expect(llm.calls).toHaveLength(1);
+    expect(llm.calls[0][0].content).toContain('schema examples as syntax evidence only');
+  });
+
+  it('uses the grounded query prompt by default', async () => {
+    const llm = new ScriptedLlm(['?- works_at(rahul, Company).']);
+    await retrieveQuestion({ store, llm }, 'Where does Rahul work?');
+    expect(llm.calls[0][0].content).toContain('Datalog variables represent requested unknown');
+  });
+
   it('short-circuits on unanswerable without calling the engine or phrasing', async () => {
     const llm = new ScriptedLlm(['?- unanswerable.']);
     const result = await recallQuestion({ store, llm }, 'What is the meaning of life?');
@@ -197,10 +219,25 @@ describe('recallQuestion', () => {
     expect(result.answer).toBe("I don't have that in memory.");
   });
 
-  it('accepts unanswerable as the fallback response and skips phrasing', async () => {
-    const llm = new ScriptedLlm(['?- works_at(zoe, X).', '?- unanswerable.']);
+  it('preserves a valid empty query when the fallback repeats it unchanged', async () => {
+    const llm = new ScriptedLlm([
+      '?- works_at(zoe, X).',
+      '?- works_at(zoe, X).',
+      "I don't have that in memory.",
+    ]);
     const result = await recallQuestion({ store, llm }, 'Where does Zoe work?');
     expect(result.bindings).toEqual([]);
+    expect(result.query).toBe('works_at(zoe, X)');
+    expect(result.answer).toMatch(/don't have/i);
+    expect(llm.calls).toHaveLength(3);
+    expect(llm.calls[1].at(-1)?.content).toContain('empty result is valid evidence');
+  });
+
+  it('accepts structurally unanswerable as the fallback response and skips phrasing', async () => {
+    const llm = new ScriptedLlm(['?- works_at(zoe, X).', '?- unanswerable.']);
+    const result = await recallQuestion({ store, llm }, 'Why does Zoe work there?');
+    expect(result.bindings).toEqual([]);
+    expect(result.query).toBeNull();
     expect(result.answer).toMatch(/no (relevant )?memor/i);
     expect(llm.calls).toHaveLength(2);
   });

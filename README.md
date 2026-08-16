@@ -194,5 +194,10 @@ npm test          # vitest suite (engine, store, pipeline, tools)
 npm run build     # tsc
 npm run build:sqlite # compile the native SQLite extension
 npm run test:sqlite  # native + Node adapter + CLI end-to-end checks
+npm run eval:recall # live labeled comparison of baseline and grounded recall prompts
 npm run dev -- …  # run the CLI from source (tsx)
 ```
+
+The recall eval reports exact-case accuracy, binding-row precision/recall/F1, and
+answerability accuracy. It can also compare OpenRouter models or emit JSON; see
+[docs/EVALS.md](docs/EVALS.md).

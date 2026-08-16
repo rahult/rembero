@@ -3,6 +3,8 @@ import { type Clause, predKey, serializeClause } from '../engine/index.js';
 export const NOTHING_SENTINEL = '% nothing';
 export const UNANSWERABLE = 'unanswerable';
 
+export type QueryPromptVariant = 'baseline' | 'grounded';
+
 /** Predicates with arities and up to 3 sample facts each, plus all rules verbatim. */
 export function buildSchemaSummary(clauses: Clause[]): string {
   const facts = clauses.filter((c) => c.body.length === 0);
@@ -55,11 +57,27 @@ Existing schema:
 ${schemaSummary}`;
 }
 
-export function queryGenSystemPrompt(schemaSummary: string): string {
+export function queryGenSystemPrompt(
+  schemaSummary: string,
+  variant: QueryPromptVariant = 'grounded'
+): string {
+  const grounding =
+    variant === 'grounded'
+      ? `
+- Treat schema examples as syntax evidence only, never as the answer. Do not copy an example constant unless the question names it.
+- Bind every entity named in the question as a lowercase or quoted constant, even when the natural-language name is capitalized. Datalog variables represent requested unknown answers, not capitalized words.
+- A named entity may be absent from the examples and is still a valid constant. If the predicate exists, query that entity and let an empty result show that no fact matches.
+- Questions beginning with does, is, are, was, were, or can are normally yes/no questions. When their relation and arguments are all named, emit a ground query with zero variables and every named argument fixed.
+- Pattern examples: "Does Alex work at Globex?" becomes ?- works_at(alex, globex). "Where does Nia work?" becomes ?- works_at(nia, Company). The first has no requested unknown; the second has exactly one.
+- A why/reason question is unanswerable unless the schema has a predicate that stores a cause or reason. A related fact does not explain why it is true.
+- Prefer the predicate whose meaning directly matches the question, including a derived predicate when one is available.
+- Add multiple goals only when the question requires a join or an explicit constraint.
+- If the schema can express the question, emit the query even when it may return no rows. Use unanswerable only when no shown predicate can express the question.`
+      : '';
   return `You translate a question into one Datalog query over the schema below.
 Output exactly one line of the form: ?- goal1, goal2, ... .
 Use uppercase variables for the unknowns the question asks about. Only use predicates that appear in the schema, with matching arity. Comparisons =, !=, <, >, <=, >= are allowed. No negation.
-If the question cannot be expressed with these predicates, output exactly: ?- ${UNANSWERABLE}.
+If the question cannot be expressed with these predicates, output exactly: ?- ${UNANSWERABLE}.${grounding}
 
 Schema:
 ${schemaSummary}`;

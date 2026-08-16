@@ -20,6 +20,7 @@ import {
   extractionSystemPrompt,
   phrasingUserPrompt,
   queryGenSystemPrompt,
+  type QueryPromptVariant,
 } from './prompts.js';
 
 export interface PipelineDeps {
@@ -37,6 +38,15 @@ export interface RecallResult {
   answer: string;
   query: string | null;
   bindings: Record<string, string>[];
+}
+
+export interface RetrievalResult {
+  query: string | null;
+  bindings: Record<string, string>[];
+}
+
+export interface RecallOptions {
+  queryPromptVariant?: QueryPromptVariant;
 }
 
 function stripFences(text: string): string {
@@ -128,18 +138,22 @@ function validateQueryPredicates(goals: Goal[], clauses: Clause[]): void {
 
 const UNANSWERABLE_RE = new RegExp(`^(\\?-)?\\s*${UNANSWERABLE}\\s*\\.?$`);
 
-export async function recallQuestion(
+export async function retrieveQuestion(
   deps: PipelineDeps,
   question: string,
-  namespaces: string[] | '*' = ['default']
-): Promise<RecallResult> {
+  namespaces: string[] | '*' = ['default'],
+  options: RecallOptions = {}
+): Promise<RetrievalResult> {
   const clauses = deps.store.clausesFor(namespaces);
   if (clauses.length === 0) {
-    return { answer: 'I have no relevant memories to answer that.', query: null, bindings: [] };
+    return { query: null, bindings: [] };
   }
   const schema = buildSchemaSummary(clauses);
   const messages: ChatMessage[] = [
-    { role: 'system', content: queryGenSystemPrompt(schema) },
+    {
+      role: 'system',
+      content: queryGenSystemPrompt(schema, options.queryPromptVariant),
+    },
     { role: 'user', content: question },
   ];
   const validateResponse = (response: string): Goal[] | null => {
@@ -148,18 +162,13 @@ export async function recallQuestion(
     validateQueryPredicates(parsed, clauses);
     return parsed;
   };
-  const noMemories: RecallResult = {
-    answer: 'I have no relevant memories to answer that.',
-    query: null,
-    bindings: [],
-  };
   const evalRows = (goals: Goal[]) =>
     evaluate(clauses, goals).map((b: Bindings) =>
       Object.fromEntries(Object.entries(b).map(([name, term]) => [name, serializeTerm(term)]))
     );
 
   let goals = await completeWithRetry(deps.llm, messages, validateResponse);
-  if (goals === null) return noMemories;
+  if (goals === null) return { query: null, bindings: [] };
 
   let queryText = goals.map(serializeGoal).join(', ');
   let rows = evalRows(goals);
@@ -171,18 +180,39 @@ export async function recallQuestion(
       { role: 'assistant', content: `?- ${queryText}.` },
       {
         role: 'user',
-        content: `The query ${queryText} returned no results. Try ONE alternative query — different predicates or fewer constraints — or output exactly: ?- ${UNANSWERABLE}.`,
+        content: `The query ${queryText} returned no results. If it correctly expresses the question, repeat it unchanged: an empty result is valid evidence that no stored fact matches. Try ONE alternative only if the first query mistranslated the question. Output exactly ?- ${UNANSWERABLE}. only when the schema cannot express the question at all, never merely because the result was empty.`,
       },
     ];
     goals = await completeWithRetry(deps.llm, fallbackMessages, validateResponse);
-    if (goals === null) return noMemories;
+    if (goals === null) return { query: null, bindings: [] };
     queryText = goals.map(serializeGoal).join(', ');
     rows = evalRows(goals);
   }
 
+  return { query: queryText, bindings: rows };
+}
+
+export async function recallQuestion(
+  deps: PipelineDeps,
+  question: string,
+  namespaces: string[] | '*' = ['default'],
+  options: RecallOptions = {}
+): Promise<RecallResult> {
+  const retrieval = await retrieveQuestion(deps, question, namespaces, options);
+  if (retrieval.query === null) {
+    return {
+      answer: 'I have no relevant memories to answer that.',
+      query: null,
+      bindings: [],
+    };
+  }
+
   const answer = await deps.llm.complete([
     { role: 'system', content: PHRASING_SYSTEM_PROMPT },
-    { role: 'user', content: phrasingUserPrompt(question, queryText, rows) },
+    {
+      role: 'user',
+      content: phrasingUserPrompt(question, retrieval.query, retrieval.bindings),
+    },
   ]);
-  return { answer: answer.trim(), query: queryText, bindings: rows };
+  return { answer: answer.trim(), ...retrieval };
 }

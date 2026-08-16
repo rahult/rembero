@@ -49,9 +49,9 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 
 1. **Schema pruning for recall**: rank predicates by lexical/embedding similarity to the
    question, send only the top slice.
-2. **Eval harness**: a fixture set of (statement → expected clauses) and (question →
-   expected answer) pairs, run against the live model in CI (nightly, not per-push), so
-   prompt changes are measured instead of vibed.
+2. **Eval harness**: recall now has a checked-in labeled corpus, precision/recall/F1 and
+   answerability metrics, prompt/model comparisons, and deterministic metric tests. Add
+   extraction fixtures and a credentialed nightly CI run before v0.5.
 3. **Model flexibility**: verify the pipeline against 2-3 other OpenRouter models;
    document which work well as cheaper `LLM_MODEL` choices.
 

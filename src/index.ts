@@ -21,9 +21,13 @@ export {
 } from './llm/client.js';
 export {
   type PipelineDeps,
+  type RecallOptions,
   type RecallResult,
   type RememberResult,
+  type RetrievalResult,
   recallQuestion,
   rememberText,
+  retrieveQuestion,
 } from './llm/pipeline.js';
+export { type QueryPromptVariant } from './llm/prompts.js';
 export { createServer, serveStdio } from './mcp/server.js';
