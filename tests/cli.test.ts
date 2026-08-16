@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -8,6 +8,8 @@ import {
   assertBoundedOutput,
   stringifyBoundedResult,
 } from '../src/safety.js';
+import { MemoryStore } from '../src/store/store.js';
+import { serializeClause } from '../src/engine/index.js';
 
 describe('CLI ingress limits', () => {
   it('fails closed before returning an oversized JSON result', () => {
@@ -48,5 +50,128 @@ describe('CLI ingress limits', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/import file exceeds 65536 bytes/i);
     expect(existsSync(join(home, 'memory', 'default.dl'))).toBe(false);
+  });
+});
+
+describe('auto-capture CLI', () => {
+  it('fails closed when a settings option is missing its path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-hooks-missing-'));
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'init-hooks', '--settings'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, CLAUDE_CONFIG_DIR: root },
+      }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('--settings requires a value');
+    expect(existsSync(join(root, 'settings.json'))).toBe(false);
+  });
+
+  it('installs and removes only its managed Claude hook', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-hooks-'));
+    const settingsPath = join(root, 'settings.json');
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'existing' }] }] } }),
+      'utf8'
+    );
+
+    const install = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'init-hooks',
+        '--settings',
+        settingsPath,
+        '--namespace',
+        'personal',
+        '--daily-cap',
+        '3',
+        '--tail-bytes',
+        '8192',
+      ],
+      { encoding: 'utf8', env: { ...process.env } }
+    );
+    expect(install.status).toBe(0);
+    expect(install.stdout).toContain('installed Rembero Claude hook');
+    const installed = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    const handlers = installed.hooks.Stop.flatMap(
+      (group: { hooks: Record<string, unknown>[] }) => group.hooks
+    );
+    expect(handlers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ command: 'existing' }),
+        expect.objectContaining({
+          type: 'command',
+          async: true,
+          args: expect.arrayContaining(['remember', '--batch', 'personal']),
+        }),
+      ])
+    );
+
+    const remove = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'init-hooks', '--remove', '--settings', settingsPath],
+      { encoding: 'utf8', env: { ...process.env } }
+    );
+    expect(remove.status).toBe(0);
+    const removed = JSON.parse(readFileSync(settingsPath, 'utf8'));
+    expect(removed.hooks.Stop).toEqual([
+      { hooks: [{ type: 'command', command: 'existing' }] },
+    ]);
+  });
+
+  it('lists and prunes numbered auto-captured facts end to end', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-review-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    const captureId = 'capture-review-cli';
+    const opId = 'operation-review-cli';
+    const now = new Date();
+    store.note('personal', 'auto_capture', {
+      captureId,
+      status: 'started',
+      source: 'claude-stop',
+      sessionId: 'session-review-cli',
+    }, now);
+    store.assert('personal', 'prefers_theme(user, dark).', {
+      captureId,
+      opId,
+      origin: 'claude-stop',
+      sourceText: 'Auto-captured from a Claude Code Stop hook',
+      at: now,
+    });
+    store.finishAutoCapture('personal', captureId, 'captured', { added: 1 }, now);
+
+    const review = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'review', '--namespace', 'personal', '--json'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+    expect(review.status).toBe(0);
+    expect(JSON.parse(review.stdout).facts).toEqual([
+      expect.objectContaining({
+        clause: 'prefers_theme(user, dark).',
+        current: true,
+      }),
+    ]);
+
+    const prune = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'review', '--namespace', 'personal', '--forget', '1'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+    expect(prune.status).toBe(0);
+    expect(prune.stdout).toContain('removed 1 auto-captured fact');
+    expect(store.load('personal').map(serializeClause)).toEqual([]);
   });
 });

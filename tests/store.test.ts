@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -214,6 +215,13 @@ describe('journal', () => {
     writeFileSync(join(root, 'journal.log'), '{broken\n', 'utf8');
     expect(() => store.sourcesFor(['default'])).toThrow(/journal\.log line 1/);
   });
+
+  it('checks journal capacity before mutating memory or its cache', () => {
+    writeFileSync(join(root, 'journal.log'), 'x'.repeat(16 * 1024 * 1024), 'utf8');
+    expect(() => store.assert('default', 'f(a).')).toThrow(/journal\.log would exceed/i);
+    expect(store.load('default')).toEqual([]);
+    expect(() => readFileSync(join(root, 'default.dl'), 'utf8')).toThrow();
+  });
 });
 
 describe('round-trip hardening', () => {
@@ -268,6 +276,54 @@ describe('namespaces', () => {
     s2.assert('default', 'h(c).'); // stale cache must reload before writing
     const clauses = new MemoryStore(root).load('default').map(serializeClause).sort();
     expect(clauses).toEqual(['f(a).', 'g(b).', 'h(c).']);
+  });
+
+  it('serializes simultaneous writers from separate processes', async () => {
+    const script = `
+      import { MemoryStore } from './dist/store/store.js';
+      new MemoryStore(process.env.TEST_MEMORY_ROOT).assert(
+        'default',
+        \`concurrent(\${process.env.TEST_FACT}).\`
+      );
+    `;
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        new Promise<void>((resolve, reject) => {
+          const child = spawn(
+            process.execPath,
+            ['--input-type=module', '--eval', script],
+            {
+              cwd: process.cwd(),
+              env: {
+                ...process.env,
+                TEST_MEMORY_ROOT: root,
+                TEST_FACT: `writer_${index}`,
+              },
+              stdio: ['ignore', 'ignore', 'pipe'],
+            }
+          );
+          let stderr = '';
+          child.stderr.setEncoding('utf8');
+          child.stderr.on('data', (chunk) => {
+            stderr += chunk;
+          });
+          child.on('error', reject);
+          child.on('close', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`concurrent writer exited ${code}: ${stderr}`));
+          });
+        })
+      )
+    );
+
+    expect(
+      new MemoryStore(root)
+        .load('default')
+        .map(serializeClause)
+        .sort()
+    ).toEqual(
+      Array.from({ length: 8 }, (_, index) => `concurrent(writer_${index}).`).sort()
+    );
   });
 
   it('sees facts asserted by another store instance', () => {

@@ -26,6 +26,7 @@ import {
   extractionSystemPrompt,
   phrasingUserPrompt,
   queryGenSystemPrompt,
+  transcriptExtractionSystemPrompt,
   type QueryPromptVariant,
 } from './prompts.js';
 
@@ -41,6 +42,11 @@ export interface RememberResult {
   duplicates: number;
   retracted: number;
   opId?: string;
+}
+
+export interface RememberTranscriptOptions {
+  captureId: string;
+  at?: Date;
 }
 
 export interface RecallResult {
@@ -159,6 +165,62 @@ export async function rememberText(
   }
   const { added, duplicates } = deps.store.assert(namespace, extraction.clauses, context);
   return { added: added.map(serializeClause), duplicates, retracted, opId };
+}
+
+/**
+ * Extract only additive, ground facts from an untrusted transcript tail.
+ * The raw transcript is never persisted as per-fact provenance.
+ */
+export async function rememberTranscriptText(
+  deps: PipelineDeps,
+  transcript: string,
+  namespace: string,
+  options: RememberTranscriptOptions
+): Promise<RememberResult> {
+  assertLlmNamespacesAllowed(deps, [namespace]);
+  assertSafeForExternalLlm(transcript, 'transcript');
+  const schema = buildSchemaSummary(deps.store.load(namespace));
+  assertSafeForExternalLlm(schema, 'memory schema');
+  const messages: ChatMessage[] = [
+    { role: 'system', content: transcriptExtractionSystemPrompt(schema) },
+    { role: 'user', content: transcript },
+  ];
+  const clauses = await completeWithRetry(
+    deps.llm,
+    messages,
+    (response): Clause[] | null => {
+      if (response === NOTHING_SENTINEL) return null;
+      if (response.split('\n').some((line) => /^\s*retract\b/i.test(line))) {
+        throw new Error('auto-capture accepts additive ground facts only; retractions are forbidden');
+      }
+      const parsed = parseProgram(response);
+      if (parsed.some((clause) => clause.body.length > 0)) {
+        throw new Error('auto-capture accepts additive ground facts only; rules are forbidden');
+      }
+      if (parsed.length > 12) {
+        throw new Error('auto-capture accepts at most 12 additive ground facts');
+      }
+      return parsed;
+    }
+  );
+  if (clauses === null || clauses.length === 0) {
+    return { added: [], duplicates: 0, retracted: 0 };
+  }
+
+  const opId = deps.store.createOperationId();
+  const { added, duplicates } = deps.store.assert(namespace, clauses, {
+    opId,
+    captureId: options.captureId,
+    origin: 'claude-stop',
+    sourceText: 'Auto-captured from a Claude Code Stop hook',
+    at: options.at,
+  });
+  return {
+    added: added.map(serializeClause),
+    duplicates,
+    retracted: 0,
+    opId,
+  };
 }
 
 function canonicalWord(word: string): string {

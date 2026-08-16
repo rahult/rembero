@@ -33,6 +33,8 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `LLM_MODEL` | no | `openai/gpt-5.6-luna` |
 | `REMBERO_HOME` | no | `~/.rembero` (memories live in `$REMBERO_HOME/memory/`) |
 | `REMBERO_LLM_ALLOWED_NAMESPACES` | no | all namespaces (comma-separated allowlist when set; empty blocks all LLM export) |
+| `REMBERO_AUTO_CAPTURE_DAILY_CAP` | no | `10` unique attempts per namespace/UTC day |
+| `REMBERO_AUTO_CAPTURE_TAIL_BYTES` | no | `24576` bytes (maximum `49152`) |
 
 The raw Datalog tools (`query`, `assert_facts`, `forget`, `list_memories`) work with no
 API key at all — only natural-language `remember`/`recall` call the LLM.
@@ -65,6 +67,33 @@ deterministic derivation proofs, durable source statements, and a query-scoped p
 knowledge graph. Facts remain authoritative in the same portable `.dl` files; the graph
 is derived and cannot drift into a second source of truth.
 
+### Optional ambient capture
+
+Manual `remember` remains the default. To opt into ambient capture at the end of Claude
+Code turns:
+
+```bash
+rembero init-hooks --namespace personal
+```
+
+This safely merges one asynchronous Stop hook into your personal Claude settings. It
+reads only a bounded trusted transcript tail, removes code/tool noise, rejects secrets,
+deduplicates repeated Stop events, applies a per-namespace daily request cap, and accepts
+only additive ground facts explicitly grounded in the user's words. It never installs at
+package-install time and never performs automatic retractions.
+
+Every capture, empty result, failure, cap, and duplicate is visible locally:
+
+```bash
+rembero review --namespace personal
+rembero review --namespace personal --forget 2,5
+rembero init-hooks --remove
+```
+
+The raw transcript is not persisted as per-fact provenance. See the
+[auto-capture contract](docs/AUTO-CAPTURE.md) for settings scopes, quotas, review JSON,
+and the async-hook lifecycle boundary.
+
 ## CLI
 
 ```bash
@@ -78,6 +107,9 @@ node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
 node dist/cli.js forget   'dentist(rahul, _)'
 node dist/cli.js list
+node dist/cli.js review --namespace personal           # inspect ambient captures
+node dist/cli.js review --namespace personal --forget 2 # explicit prune by number
+node dist/cli.js init-hooks --namespace personal       # opt in to Claude Stop capture
 node dist/cli.js serve                                # MCP server on stdio
 ```
 
@@ -97,7 +129,9 @@ Memories live in plain text at `~/.rembero/memory/<namespace>.dl`, one canonical
 line — readable, hand-editable, diffable. Duplicate facts (and alpha-equivalent rules) are
 deduplicated on write. Files are written atomically. Journaled mutations carry stable
 operation IDs; facts captured through `remember` retain their source statement for later
-explanation. Credential-like source text is redacted before journaling. See
+explanation. Cross-process writers are serialized so background capture cannot overwrite
+a simultaneous manual mutation. Credential-like source text is redacted before
+journaling, and journal capacity is checked before mutation. See
 [the explainable graph contract](docs/EXPLAINABLE-KNOWLEDGE-GRAPH.md).
 
 ## SQLite extension (experimental)
@@ -245,4 +279,4 @@ contract](docs/QUERY-AGGREGATION.md) for exact reduction and explanation semanti
 [the arithmetic comparison contract](docs/ARITHMETIC-COMPARISONS.md) for numeric,
 precedence, safety, and portability details. TypeScript consumers should read the
 [0.2](docs/MIGRATING-0.2.md), [0.3](docs/MIGRATING-0.3.md), and
-[0.4](docs/MIGRATING-0.4.md) migration notes as applicable.
+[0.4](docs/MIGRATING-0.4.md) / [0.5](docs/MIGRATING-0.5.md) migration notes as applicable.

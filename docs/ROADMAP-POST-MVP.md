@@ -1,4 +1,4 @@
-# Rembero post-MVP roadmap (v0.4 →)
+# Rembero post-MVP roadmap (v0.5 →)
 
 MVP shipped: public repo, CI, GitHub release v0.1.0, npm package ready (publish pending
 auth). What follows is ordered by user value per unit of effort — each phase is
@@ -21,18 +21,20 @@ The engine's expressiveness ceiling is the first thing power users will hit.
 4. **Engine perf pass**: first-argument indexing for relations (today: linear scan per
    goal). Only matters past ~10k facts; benchmark first.
 
-## Phase 7 — Auto-capture  *(v0.5, ~2 days)*
+## Phase 7 — Auto-capture  *(v0.5)*
 
 Today the agent decides when to call `remember`. Auto-capture makes memory ambient:
 
-1. A **Claude Code Stop hook** that hands the session transcript tail to
-   `rembero remember --batch` in the background — fully opt-in via
-   `rembero init-hooks`.
-2. **Noise controls**: extraction prompt tuned for transcripts (ignore code, errors,
-   pleasantries); per-namespace daily cap; `journal.log` records every auto-capture so
-   nothing is invisible.
-3. **Review flow**: `rembero review` lists facts captured in the last N days for
-   quick pruning (`forget` by number).
+1. **Complete:** `rembero init-hooks` idempotently merges one safe exec-form asynchronous
+   Claude Code Stop hook; removal touches only Rembero's managed entry. The hook sends
+   Stop JSON on stdin to `rembero remember --batch`.
+2. **Complete:** only a bounded regular transcript beneath Claude's configured projects
+   root is read. Tool/thinking/code noise is removed, credential-like text fails closed,
+   duplicate fingerprints and per-namespace UTC-day quotas are reserved before the LLM
+   call, and extraction accepts additive ground facts only.
+3. **Complete:** every capture is journaled as started/captured/empty/failed/skipped with
+   stable IDs and no raw transcript copy. `rembero review` shows recent attempts and
+   numbers current/removed facts; `--forget <n,...>` performs explicit journaled pruning.
 
 ## Phase 8 — Time & provenance  *(v0.6, ~2 days)*
 

@@ -37,7 +37,7 @@ function asError(e: unknown) {
 }
 
 export function createServer(deps: PipelineDeps): McpServer {
-  const server = new McpServer({ name: 'rembero', version: '0.4.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.5.0' });
 
   server.registerTool(
     'remember',

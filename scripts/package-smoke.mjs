@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -45,6 +45,43 @@ try {
     { cwd: directory }
   );
   const installedCli = join(directory, 'node_modules', 'rembero', 'dist', 'cli.js');
+  const claudeSettings = join(directory, 'claude', 'settings.json');
+  run(
+    process.execPath,
+    [
+      installedCli,
+      'init-hooks',
+      '--settings',
+      claudeSettings,
+      '--namespace',
+      'personal',
+      '--daily-cap',
+      '3',
+      '--tail-bytes',
+      '8192',
+    ],
+    { cwd: directory }
+  );
+  const hookSettings = JSON.parse(readFileSync(claudeSettings, 'utf8'));
+  const hookHandler = hookSettings.hooks?.Stop?.flatMap(({ hooks }) => hooks).find(
+    ({ args }) => Array.isArray(args) && args.includes('rembero-auto-capture-v1')
+  );
+  if (
+    hookHandler?.async !== true ||
+    hookHandler.command !== process.execPath ||
+    !hookHandler.args.includes('personal')
+  ) {
+    throw new Error('packaged auto-capture hook installation failed');
+  }
+  run(
+    process.execPath,
+    [installedCli, 'init-hooks', '--remove', '--settings', claudeSettings],
+    { cwd: directory }
+  );
+  const removedSettings = JSON.parse(readFileSync(claudeSettings, 'utf8'));
+  if (removedSettings.hooks?.Stop !== undefined) {
+    throw new Error('packaged auto-capture hook removal failed');
+  }
   const extensionPath = run(process.execPath, [installedCli, 'sqlite-build'], {
     cwd: directory,
   });
@@ -183,7 +220,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, native recursion, personal proofs, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, safe auto-capture hook lifecycle, native recursion, personal proofs, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });
