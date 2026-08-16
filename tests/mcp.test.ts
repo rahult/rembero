@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.11.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.12.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -90,7 +90,10 @@ describe('MCP explanation surfaces', () => {
 
       const integrity = await client.callTool({
         name: 'check_integrity',
-        arguments: { maxViolations: 10 },
+        arguments: {
+          maxViolations: 10,
+          graphSelector: { kind: 'result', row: 1 },
+        },
       });
       const integrityText = integrity.content.find((item) => item.type === 'text');
       const integrityPayload = JSON.parse(
@@ -104,6 +107,7 @@ describe('MCP explanation surfaces', () => {
           {
             sources: [{ opId: 'mcp-integrity-policy' }],
             rows: [{ bindings: { X: 'bob' } }],
+            graphSelection: { selector: { kind: 'result', row: 1 } },
           },
         ],
       });
@@ -185,14 +189,20 @@ describe('MCP explanation surfaces', () => {
 
       const recalled = await client.callTool({
         name: 'recall_explain',
-        arguments: { question: 'What is my cat called?' },
+        arguments: {
+          question: 'What is my cat called?',
+          graphSelector: { kind: 'result', row: 1 },
+        },
       });
       const recallText = recalled.content.find((item) => item.type === 'text');
       const recallPayload = JSON.parse(recallText?.type === 'text' ? recallText.text : '');
       expect(recallPayload).toMatchObject({
         answer: 'Your cat is Luna.',
         bindings: [{ Name: 'luna' }],
-        explanation: { rows: [{ bindings: { Name: 'luna' } }] },
+        explanation: {
+          rows: [{ bindings: { Name: 'luna' } }],
+          graphSelection: { selector: { kind: 'result', row: 1 } },
+        },
       });
 
       store.assert('default', 'works_at(mira, acme).', {
@@ -265,7 +275,10 @@ describe('MCP explanation surfaces', () => {
     try {
       const rejected = await client.callTool({
         name: 'assert_facts',
-        arguments: { clauses: 'suspended(mira).' },
+        arguments: {
+          clauses: 'suspended(mira).',
+          graphSelector: { kind: 'result', row: 1 },
+        },
       });
       expect(rejected.isError).toBe(true);
       const text = rejected.content.find((item) => item.type === 'text');
@@ -275,7 +288,12 @@ describe('MCP explanation surfaces', () => {
         mode: 'strict',
         introducedViolationCount: 1,
         candidate: {
-          checks: [{ rows: [{ bindings: { Person: 'mira' } }] }],
+          checks: [
+            {
+              rows: [{ bindings: { Person: 'mira' } }],
+              graphSelection: { selector: { kind: 'result', row: 1 } },
+            },
+          ],
         },
       });
       expect(store.load('default')).toEqual(before);

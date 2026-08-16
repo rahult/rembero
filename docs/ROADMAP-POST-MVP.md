@@ -131,6 +131,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    author identity metadata, invalid canonical views fail closed, and SQLite rejects the
    feature until parity exists.
 
+## Phase 15 — Query-scoped graph navigation  *(v0.12)*
+
+1. **Complete — result and support closures**: library, CLI, and MCP callers can select
+   one result's complete support or navigate from a known graph node while rows, proofs,
+   rules, and stored facts remain unchanged.
+2. **Complete — bounded neighborhoods**: deterministic undirected breadth-first slices
+   are capped at depth 8, reject unknown or oversized node IDs, and preserve source graph
+   ordering.
+3. **Complete — integrity and recall coverage**: recall explanations, integrity audits,
+   and atomic write rejections expose the same selector and selection metadata without a
+   graph sidecar.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

@@ -33,6 +33,7 @@ import {
   type EntityResolver,
 } from '../knowledge/identity.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
+import type { ExplanationGraphSelector } from '../knowledge/graph-navigation.js';
 
 export type LlmToolDeps = PipelineDeps;
 
@@ -98,6 +99,7 @@ export function recallExplainTool(
     schemaPredicateLimit?: number;
     proofLimit?: number;
     entityIdentity?: EntityIdentityMode;
+    graphSelector?: ExplanationGraphSelector;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -110,6 +112,7 @@ export function recallExplainTool(
     ...(args.entityIdentity === undefined
       ? {}
       : { entityIdentity: args.entityIdentity }),
+    ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
   });
 }
 
@@ -166,6 +169,7 @@ export function explainQueryTool(
     namespaces?: string[] | '*';
     proofLimit?: number;
     entityIdentity?: EntityIdentityMode;
+    graphSelector?: ExplanationGraphSelector;
   }
 ): ExplainKnowledgeResult {
   assertBoundedInput(args.query, 'query');
@@ -179,6 +183,7 @@ export function explainQueryTool(
     {
       ...(args.proofLimit === undefined ? {} : { maxProofsPerRow: args.proofLimit }),
       ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
     }
   );
 }
@@ -190,6 +195,7 @@ export function checkIntegrityTool(
     proofLimit?: number;
     maxViolations?: number;
     entityIdentity?: EntityIdentityMode;
+    graphSelector?: ExplanationGraphSelector;
   }
 ): IntegrityCheckResult {
   const namespaces = namespacesOrDefault(args.namespaces);
@@ -206,6 +212,7 @@ export function checkIntegrityTool(
         ? {}
         : { maxViolations: args.maxViolations }),
       ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
     }
   );
 }

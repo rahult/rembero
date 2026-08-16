@@ -130,6 +130,16 @@ export {
   type SourcedQueryProof,
 } from './knowledge/graph.js';
 export {
+  MAX_GRAPH_NEIGHBOR_DEPTH,
+  MAX_GRAPH_NODE_ID_BYTES,
+  MAX_GRAPH_RESULT_ROW,
+  selectExplanationGraph,
+  selectKnowledgeGraph,
+  type ExplanationGraphSelection,
+  type ExplanationGraphSelector,
+  type GraphSelectableExplanation,
+} from './knowledge/graph-navigation.js';
+export {
   ENTITY_ALIAS_PREDICATE,
   ENTITY_POSITION_PREDICATE,
   MAX_ENTITY_ALIASES,

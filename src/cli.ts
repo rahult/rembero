@@ -27,6 +27,12 @@ import {
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
 import type { EntityIdentityMode } from './knowledge/identity.js';
+import {
+  MAX_GRAPH_NEIGHBOR_DEPTH,
+  MAX_GRAPH_NODE_ID_BYTES,
+  MAX_GRAPH_RESULT_ROW,
+  type ExplanationGraphSelector,
+} from './knowledge/graph-navigation.js';
 import { serveStdio } from './mcp/server.js';
 import {
   checkIntegrityTool,
@@ -81,6 +87,10 @@ Options:
       --integrity-mode <mode>  Write guard: off, strict, or no_new_violations
       --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
       --entity-identity <mode>  Read projection: off (default) or canonical
+      --graph-result <n>  Export the complete support graph for result row n
+      --graph-support <node-id>  Export the support closure for one graph node
+      --graph-neighbors <node-id>  Export a bounded undirected neighborhood
+      --graph-depth <n>   Neighborhood depth (default: 1; max: ${MAX_GRAPH_NEIGHBOR_DEPTH})
       --limit <n>          History event limit (maximum: 1000)
       --extension <path>   Path to the compiled Rembero SQLite extension
       --daily-cap <n>      Max auto-capture attempts per namespace/UTC day (default: 10)
@@ -112,6 +122,10 @@ interface ParsedArgs {
   integrityMode?: string;
   integrityNamespaces?: string[] | '*';
   entityIdentity?: string;
+  graphResult?: string;
+  graphSupport?: string;
+  graphNeighbors?: string;
+  graphDepth?: string;
   limit?: string;
 }
 
@@ -167,6 +181,18 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.integrityNamespaces = value === '*' ? '*' : value.split(',');
     } else if (arg === '--entity-identity') {
       parsed.entityIdentity = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--graph-result') {
+      parsed.graphResult = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--graph-support') {
+      parsed.graphSupport = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--graph-neighbors') {
+      parsed.graphNeighbors = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--graph-depth') {
+      parsed.graphDepth = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--limit') {
       parsed.limit = valueAfter(i, arg);
@@ -244,18 +270,69 @@ function entityIdentityOption(
   throw new Error("--entity-identity must be 'off' or 'canonical'");
 }
 
+function graphNodeIdOption(value: string, label: string): string {
+  if (value.length === 0) throw new Error(`${label} must not be empty`);
+  if (Buffer.byteLength(value, 'utf8') > MAX_GRAPH_NODE_ID_BYTES) {
+    throw new Error(`${label} exceeds ${MAX_GRAPH_NODE_ID_BYTES} bytes`);
+  }
+  return value;
+}
+
+function graphSelectorOption(args: ParsedArgs): ExplanationGraphSelector | undefined {
+  const selected = [args.graphResult, args.graphSupport, args.graphNeighbors].filter(
+    (value) => value !== undefined
+  );
+  if (selected.length > 1) {
+    throw new Error(
+      '--graph-result, --graph-support, and --graph-neighbors are mutually exclusive'
+    );
+  }
+  if (args.graphDepth !== undefined && args.graphNeighbors === undefined) {
+    throw new Error('--graph-depth requires --graph-neighbors');
+  }
+  if (args.graphResult !== undefined) {
+    const row = integerOption(args.graphResult, 0, 'graph result row');
+    if (row < 1 || row > MAX_GRAPH_RESULT_ROW) {
+      throw new Error(`graph result row must be from 1 to ${MAX_GRAPH_RESULT_ROW}`);
+    }
+    return { kind: 'result', row };
+  }
+  if (args.graphSupport !== undefined) {
+    return {
+      kind: 'support',
+      nodeId: graphNodeIdOption(args.graphSupport, 'graph support node id'),
+    };
+  }
+  if (args.graphNeighbors !== undefined) {
+    const depth = integerOption(args.graphDepth, 1, 'graph neighbor depth');
+    if (depth < 1 || depth > MAX_GRAPH_NEIGHBOR_DEPTH) {
+      throw new Error(`graph neighbor depth must be from 1 to ${MAX_GRAPH_NEIGHBOR_DEPTH}`);
+    }
+    return {
+      kind: 'neighbors',
+      nodeId: graphNodeIdOption(args.graphNeighbors, 'graph neighbor node id'),
+      depth,
+    };
+  }
+  return undefined;
+}
+
 function integrityEnforcementOption(
   mode: string | undefined,
   namespaces: string[] | '*' | undefined,
   fallback: IntegrityEnforcementOptions | undefined,
   proofLimit: string | undefined,
-  maxViolations: string | undefined
+  maxViolations: string | undefined,
+  graphSelector: ExplanationGraphSelector | undefined
 ): IntegrityEnforcementOptions | false | undefined {
   const proofLimitValue = proofLimitOption(proofLimit);
   const maxViolationsValue = maxViolationsOption(maxViolations);
   if (mode === undefined) {
     if (
-      (namespaces !== undefined || proofLimitValue !== undefined || maxViolationsValue !== undefined) &&
+      (namespaces !== undefined ||
+        proofLimitValue !== undefined ||
+        maxViolationsValue !== undefined ||
+        graphSelector !== undefined) &&
       fallback === undefined
     ) {
       throw new Error(
@@ -271,13 +348,15 @@ function integrityEnforcementOption(
             ? {}
             : { maxProofsPerRow: proofLimitValue }),
           ...(maxViolationsValue === undefined ? {} : { maxViolations: maxViolationsValue }),
+          ...(graphSelector === undefined ? {} : { graphSelector }),
         };
   }
   if (mode === 'off') {
     if (
       namespaces !== undefined ||
       proofLimitValue !== undefined ||
-      maxViolationsValue !== undefined
+      maxViolationsValue !== undefined ||
+      graphSelector !== undefined
     ) {
       throw new Error("--integrity-mode 'off' cannot use integrity write options");
     }
@@ -291,6 +370,7 @@ function integrityEnforcementOption(
     ...(namespaces === undefined ? {} : { namespaces }),
     ...(proofLimitValue === undefined ? {} : { maxProofsPerRow: proofLimitValue }),
     ...(maxViolationsValue === undefined ? {} : { maxViolations: maxViolationsValue }),
+    ...(graphSelector === undefined ? {} : { graphSelector }),
   };
 }
 
@@ -325,6 +405,7 @@ async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
   const store = new MemoryStore();
+  const graphSelector = graphSelectorOption(args);
   const entityIdentitySetting = entityIdentityOption(args.entityIdentity);
   const entityIdentity = entityIdentitySetting === false
     ? undefined
@@ -332,12 +413,19 @@ async function main(): Promise<void> {
   const writeCommand = ['serve', 'remember', 'assert', 'forget', 'import', 'review'].includes(
     command ?? ''
   );
+  const graphCommand = ['recall-explain', 'explain', 'check'].includes(command ?? '');
+  if (graphSelector !== undefined && !writeCommand && !graphCommand) {
+    throw new Error(
+      'graph selection is available for recall-explain, explain, check, and integrity-guarded writes'
+    );
+  }
   const rawIntegritySetting = integrityEnforcementOption(
     args.integrityMode,
     args.integrityNamespaces,
     integrityEnforcementFromEnv(),
     writeCommand ? args.proofLimit : undefined,
-    writeCommand ? args.maxViolations : undefined
+    writeCommand ? args.maxViolations : undefined,
+    writeCommand ? graphSelector : undefined
   );
   const integritySetting =
     rawIntegritySetting === undefined || rawIntegritySetting === false
@@ -455,6 +543,7 @@ async function main(): Promise<void> {
         {
           explain: true,
           ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(graphSelector === undefined ? {} : { graphSelector }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -484,6 +573,7 @@ async function main(): Promise<void> {
           query: text,
           namespaces,
           ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(graphSelector === undefined ? {} : { graphSelector }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -498,6 +588,7 @@ async function main(): Promise<void> {
           namespaces,
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(maxViolations === undefined ? {} : { maxViolations }),
+          ...(graphSelector === undefined ? {} : { graphSelector }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

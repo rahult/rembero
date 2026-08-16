@@ -75,6 +75,10 @@ deterministic derivation proofs, durable source statements, and a query-scoped p
 knowledge graph. Facts remain authoritative in the same portable `.dl` files; the graph
 is derived and cannot drift into a second source of truth.
 
+Large explanations can be exported as deterministic subgraphs without changing their
+rows or proofs. MCP graph selectors choose a result support chain, a node's complete
+support closure, or a bounded neighborhood.
+
 Natural-language recall returns an explicit status: `answered`, `no_match`,
 `unanswerable`, or `schema_budget_exhausted`. The last status is an honest bounded-result
 signal, not a claim that no relevant memory exists.
@@ -123,6 +127,8 @@ node dist/cli.js query    'employee(X), \+ suspended(X)' # closed-world negation
 node dist/cli.js query    'age(X, A), age(dana, D), A > D + 5' # numeric arithmetic filter
 node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
+node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete support
+node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
 node dist/cli.js forget   'dentist(rahul, _)'
 node dist/cli.js history  'works_at(mira, _)' --json
@@ -181,6 +187,13 @@ typed-by-policy argument positions. Raw reads remain literal by default; opt in 
 library/MCP option. Proofs retain the exact literal source and graphs annotate canonical
 entities with alias provenance. History always stays literal. See
 [the entity identity contract](docs/ENTITY-IDENTITY.md).
+
+Version 0.12 adds bounded graph navigation to explanation, recall, integrity, and
+write-rejection evidence. Use `--graph-result`, `--graph-support`, or
+`--graph-neighbors` (with optional `--graph-depth`) in the CLI, or the equivalent
+`graphSelector` object in MCP/library calls. Selection never changes result rows, proofs,
+rules, or stored facts; it only projects the returned graph. See
+[the graph-navigation contract](docs/GRAPH-NAVIGATION.md).
 
 `-n <ns>` / `--namespace <ns>` selects the namespace to write to; `--namespaces a,b` or
 `--namespaces '*'` selects which namespaces recall, query, check, list, and history read

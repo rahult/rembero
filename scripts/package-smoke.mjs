@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IntegrityViolationError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, parseProgram, parseQuerySpec, selectRecallSchema } from 'rembero'; " +
+      "import { IntegrityViolationError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuerySpec, selectExplanationGraph, selectRecallSchema } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -48,7 +48,10 @@ try {
         "if (integrity.status !== 'violations' || integrity.violationCount !== 1) throw new Error('public integrity API failed'); " +
         "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed'); " +
         "const identity = canonicalizeKnowledge(parseProgram(\"rembero_alias('Mira Patel', mira). rembero_entity_position(works_at, 2, 0). works_at('Mira Patel', acme).\")); " +
-        "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed');",
+        "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed'); " +
+        "const fullGraph = explainKnowledge(parseProgram('edge(a, b). edge(b, c).'), 'edge(X, Y)'); " +
+        "const selectedGraph = selectExplanationGraph(fullGraph, { kind: 'result', row: 1 }); " +
+        "if (selectedGraph.rows.length !== 2 || selectedGraph.graphSelection?.selector?.row !== 1 || selectedGraph.graph.nodes.length >= fullGraph.graph.nodes.length) throw new Error('public graph navigation API failed');",
     ],
     { cwd: directory }
   );
@@ -205,6 +208,19 @@ try {
   ) {
     throw new Error(`unexpected packaged personal graph: ${graphOutput}`);
   }
+  const selectedGraphOutput = run(
+    process.execPath,
+    [installedCli, 'explain', 'ancestor(a, Y)', '--graph-result', '1'],
+    { cwd: directory, env: memoryEnv }
+  );
+  const selectedGraph = JSON.parse(selectedGraphOutput);
+  if (
+    selectedGraph.rows.length !== 2 ||
+    selectedGraph.graphSelection?.selector?.row !== 1 ||
+    selectedGraph.graph.nodes.length >= graph.graph.nodes.length
+  ) {
+    throw new Error(`unexpected packaged graph selection: ${selectedGraphOutput}`);
+  }
   const absenceOutput = run(process.execPath, [installedCli, 'explain', 'available(X)'], {
     cwd: directory,
     env: memoryEnv,
@@ -258,7 +274,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

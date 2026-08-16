@@ -136,6 +136,74 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('exports one complete result support graph without changing query rows', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-graph-select-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      `parent(alice, bob). parent(bob, carol). parent(carol, dan).
+       ancestor(X, Y) :- parent(X, Y).
+       ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).`
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'explain',
+        'ancestor(alice, Descendant)',
+        '--graph-result',
+        '2',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.rows.map((row: { bindings: Record<string, string> }) => row.bindings)).toEqual([
+      { Descendant: 'bob' },
+      { Descendant: 'carol' },
+      { Descendant: 'dan' },
+    ]);
+    expect(payload.graphSelection).toMatchObject({
+      selector: { kind: 'result', row: 2 },
+    });
+    expect(payload.graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'claim', predicate: 'parent', values: ['bob', 'carol'] }),
+      ])
+    );
+    expect(payload.graph.nodes).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'claim', predicate: 'parent', values: ['carol', 'dan'] }),
+      ])
+    );
+  });
+
+  it('rejects ambiguous graph selectors before evaluating a query', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-graph-invalid-'));
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'explain',
+        'answer(a)',
+        '--graph-result',
+        '1',
+        '--graph-support',
+        'claim:answer',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: join(root, 'home') },
+      }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/mutually exclusive/i);
+  });
+
   it('keeps literal queries unchanged and enables explicit canonical identity reads', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-identity-'));
     const home = join(root, 'home');

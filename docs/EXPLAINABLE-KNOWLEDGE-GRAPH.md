@@ -11,6 +11,20 @@ rembero recall-explain "Who are Rahul's colleagues?"
 
 The equivalent MCP tools are `explain_query` and `recall_explain`.
 
+Version 0.12 can select a deterministic subgraph for transport or focused inspection:
+
+```bash
+rembero explain 'ancestor(alice, Descendant)' --graph-result 2
+rembero explain 'ancestor(alice, Descendant)' --graph-support '<node-id>'
+rembero explain 'ancestor(alice, Descendant)' --graph-neighbors '<node-id>' --graph-depth 2
+```
+
+Selection preserves the complete result, proof, and rule arrays. A result or support
+selector follows the complete explanation support closure; a neighborhood selector is
+an undirected breadth-first slice capped at depth 8. The response records the normalized
+selector, focus node IDs, and original graph sizes. See
+[the graph-navigation contract](GRAPH-NAVIGATION.md).
+
 An explanation contains:
 
 - the query bindings;
@@ -97,3 +111,5 @@ violating row carries its ordinary proof/source graph, grouped beneath the exact
 that rejected that state. No conflict graph is persisted globally and ordinary query
 graphs remain unchanged. Version 0.10 returns that same ephemeral graph in atomic
 write-rejection evidence; it does not materialize enforcement state as another graph.
+Version 0.12 adds pure navigation over these ephemeral graphs while preserving the same
+portable authority and deterministic node/edge ordering.

@@ -31,6 +31,12 @@ import {
   type IntegrityEnforcementOptions,
 } from '../knowledge/enforcement.js';
 import type { EntityIdentityMode } from '../knowledge/identity.js';
+import {
+  MAX_GRAPH_NEIGHBOR_DEPTH,
+  MAX_GRAPH_NODE_ID_BYTES,
+  MAX_GRAPH_RESULT_ROW,
+  type ExplanationGraphSelector,
+} from '../knowledge/graph-navigation.js';
 
 const namespaceField = z
   .string()
@@ -73,6 +79,24 @@ const entityIdentityField = z
   .literal('canonical')
   .optional()
   .describe('Project aliases only at explicitly declared predicate positions');
+const graphSelectorField = z
+  .discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('result'),
+      row: z.number().int().min(1).max(MAX_GRAPH_RESULT_ROW),
+    }),
+    z.object({
+      kind: z.literal('support'),
+      nodeId: z.string().min(1).max(MAX_GRAPH_NODE_ID_BYTES),
+    }),
+    z.object({
+      kind: z.literal('neighbors'),
+      nodeId: z.string().min(1).max(MAX_GRAPH_NODE_ID_BYTES),
+      depth: z.number().int().min(1).max(MAX_GRAPH_NEIGHBOR_DEPTH).optional(),
+    }),
+  ])
+  .optional()
+  .describe('Select one complete result support chain, node support closure, or bounded neighborhood');
 const boundedText = (description?: string) => {
   const field = z.string().max(MAX_INPUT_BYTES);
   return description ? field.describe(description) : field;
@@ -109,7 +133,8 @@ function requestedIntegrity(
   namespaces: string[] | '*' | undefined,
   proofLimit: number | undefined,
   maxViolations: number | undefined,
-  entityIdentity: EntityIdentityMode | undefined
+  entityIdentity: EntityIdentityMode | undefined,
+  graphSelector: ExplanationGraphSelector | undefined
 ): IntegrityEnforcementOptions | undefined {
   const activeFallback = fallback === false ? undefined : fallback;
   if (mode === undefined) {
@@ -118,7 +143,8 @@ function requestedIntegrity(
       (
         namespaces !== undefined ||
         proofLimit !== undefined ||
-        maxViolations !== undefined
+        maxViolations !== undefined ||
+        graphSelector !== undefined
       )
     ) {
       throw new Error('integrity write options require integrityMode or a server default');
@@ -131,6 +157,7 @@ function requestedIntegrity(
           ...(proofLimit === undefined ? {} : { maxProofsPerRow: proofLimit }),
           ...(maxViolations === undefined ? {} : { maxViolations }),
           ...(entityIdentity === undefined ? {} : { entityIdentity }),
+          ...(graphSelector === undefined ? {} : { graphSelector }),
         };
   }
   if (activeFallback?.mode === 'strict' && mode !== 'strict') {
@@ -143,6 +170,7 @@ function requestedIntegrity(
     ...(proofLimit === undefined ? {} : { maxProofsPerRow: proofLimit }),
     ...(maxViolations === undefined ? {} : { maxViolations }),
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(graphSelector === undefined ? {} : { graphSelector }),
   };
 }
 
@@ -165,7 +193,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.11.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.12.0' });
 
   server.registerTool(
     'remember',
@@ -181,6 +209,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
       },
     },
     async ({
@@ -191,6 +220,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       proofLimit,
       maxViolations,
       entityIdentity,
+      graphSelector,
     }) => {
       try {
         return asContent(
@@ -203,7 +233,8 @@ export function createServer(deps: PipelineDeps): McpServer {
               integrityNamespaces,
               proofLimit,
               maxViolations,
-              entityIdentity
+              entityIdentity,
+              graphSelector
             ),
             entityIdentity,
           })
@@ -255,9 +286,10 @@ export function createServer(deps: PipelineDeps): McpServer {
         schemaPredicateLimit: schemaPredicateLimitField,
         proofLimit: proofLimitField,
         entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
       },
     },
-    async ({ question, namespaces, schemaPredicateLimit, proofLimit, entityIdentity }) => {
+    async ({ question, namespaces, schemaPredicateLimit, proofLimit, entityIdentity, graphSelector }) => {
       try {
         return asContent(
           await recallExplainTool(resolvedDeps, {
@@ -266,6 +298,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             schemaPredicateLimit,
             proofLimit,
             entityIdentity,
+            graphSelector,
           })
         );
       } catch (e) {
@@ -288,6 +321,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
       },
     },
     async ({
@@ -298,6 +332,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       proofLimit,
       maxViolations,
       entityIdentity,
+      graphSelector,
     }) => {
       try {
         return asContent(
@@ -310,7 +345,8 @@ export function createServer(deps: PipelineDeps): McpServer {
               integrityNamespaces,
               proofLimit,
               maxViolations,
-              entityIdentity
+              entityIdentity,
+              graphSelector
             ),
           })
         );
@@ -352,9 +388,10 @@ export function createServer(deps: PipelineDeps): McpServer {
         namespaces: namespacesField,
         proofLimit: proofLimitField,
         entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
       },
     },
-    async ({ query, namespaces, proofLimit, entityIdentity }) => {
+    async ({ query, namespaces, proofLimit, entityIdentity, graphSelector }) => {
       try {
         return asContent(
           explainQueryTool(resolvedDeps, {
@@ -362,6 +399,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             namespaces,
             proofLimit,
             entityIdentity,
+            graphSelector,
           })
         );
       } catch (e) {
@@ -381,9 +419,10 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
       },
     },
-    async ({ namespaces, proofLimit, maxViolations, entityIdentity }) => {
+    async ({ namespaces, proofLimit, maxViolations, entityIdentity, graphSelector }) => {
       try {
         return asContent(
           checkIntegrityTool(resolvedDeps, {
@@ -391,6 +430,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             proofLimit,
             maxViolations,
             entityIdentity,
+            graphSelector,
           })
         );
       } catch (e) {
@@ -413,6 +453,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
       },
     },
     async ({
@@ -423,6 +464,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       proofLimit,
       maxViolations,
       entityIdentity,
+      graphSelector,
     }) => {
       try {
         return asContent(
@@ -435,7 +477,8 @@ export function createServer(deps: PipelineDeps): McpServer {
               integrityNamespaces,
               proofLimit,
               maxViolations,
-              entityIdentity
+              entityIdentity,
+              graphSelector
             ),
           })
         );

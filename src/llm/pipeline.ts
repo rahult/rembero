@@ -26,6 +26,7 @@ import {
   literalKnowledge,
   type EntityIdentityMode,
 } from '../knowledge/identity.js';
+import type { ExplanationGraphSelector } from '../knowledge/graph-navigation.js';
 import { assertSafeForExternalLlm } from '../safety.js';
 import {
   NOTHING_SENTINEL,
@@ -137,6 +138,7 @@ export interface RecallOptions {
   schemaPredicateLimit?: number;
   schemaByteLimit?: number;
   entityIdentity?: EntityIdentityMode | false;
+  graphSelector?: ExplanationGraphSelector;
 }
 
 function stripFences(text: string): string {
@@ -536,6 +538,9 @@ export async function retrieveQuestion(
               ? {}
               : { maxProofsPerRow: options.proofLimit }),
             ...(entityIdentity === undefined ? {} : { entityIdentity }),
+            ...(options.graphSelector === undefined
+              ? {}
+              : { graphSelector: options.graphSelector }),
           }
         );
         const bindings = explanation.rows.map((row) => row.bindings);

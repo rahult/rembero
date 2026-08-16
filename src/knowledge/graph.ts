@@ -26,6 +26,11 @@ import {
   type EntityRewrite,
   type EntityResolver,
 } from './identity.js';
+import {
+  selectExplanationGraph,
+  type ExplanationGraphSelection,
+  type ExplanationGraphSelector,
+} from './graph-navigation.js';
 
 export interface SourcedDerivationProof extends Omit<DerivationProof, 'because'> {
   because?: SourcedProofStep[];
@@ -148,10 +153,12 @@ export interface ExplainKnowledgeResult {
   rows: ExplainedKnowledgeRow[];
   rules: ExplanationRule[];
   graph: ExplanationGraph;
+  graphSelection?: ExplanationGraphSelection;
 }
 
 export interface ExplainKnowledgeOptions extends EvaluateOptions {
   entityIdentity?: EntityIdentityMode;
+  graphSelector?: ExplanationGraphSelector;
 }
 
 function proofClauseKey(proof: DerivationProof): string {
@@ -557,7 +564,7 @@ export function explainKnowledge(
   sourceIndex: Map<string, MemorySource[]> = new Map(),
   options: ExplainKnowledgeOptions = {}
 ): ExplainKnowledgeResult {
-  const { entityIdentity, ...evaluateOptions } = options;
+  const { entityIdentity, graphSelector, ...evaluateOptions } = options;
   const view = entityIdentity === 'canonical'
     ? canonicalizeKnowledge(clauses, sourceIndex)
     : literalKnowledge(clauses, sourceIndex);
@@ -593,7 +600,7 @@ export function explainKnowledge(
           }),
     };
   });
-  return {
+  const result: ExplainKnowledgeResult = {
     rows,
     rules: view.clauses
       .filter(
@@ -609,4 +616,7 @@ export function explainKnowledge(
       entityIdentity === 'canonical' ? view.resolver : undefined
     ),
   };
+  return graphSelector === undefined
+    ? result
+    : selectExplanationGraph(result, graphSelector);
 }

@@ -28,6 +28,10 @@ import {
   type EntityIdentityMode,
   type EntityRewrite,
 } from './identity.js';
+import type {
+  ExplanationGraphSelection,
+  ExplanationGraphSelector,
+} from './graph-navigation.js';
 
 export const DEFAULT_MAX_INTEGRITY_VIOLATIONS = 1_000;
 export const MAX_INTEGRITY_VIOLATIONS = 10_000;
@@ -41,6 +45,8 @@ export interface IntegrityCheckOptions
   maxViolations?: number;
   /** Opt-in deterministic projection through explicit entity-position declarations. */
   entityIdentity?: EntityIdentityMode;
+  /** Optional deterministic subgraph selection for every constraint result. */
+  graphSelector?: ExplanationGraphSelector;
 }
 
 export interface IntegrityConstraintCheck {
@@ -57,6 +63,7 @@ export interface IntegrityConstraintCheck {
   rows: ExplainedKnowledgeRow[];
   rules: ExplanationRule[];
   graph: ExplanationGraph;
+  graphSelection?: ExplanationGraphSelection;
 }
 
 function constraintBindingOrder(goals: Goal[]): string[] {
@@ -186,6 +193,9 @@ export function checkIntegrity(
       rows: explanation.rows,
       rules: explanation.rules,
       graph: explanation.graph,
+      ...(explanation.graphSelection === undefined
+        ? {}
+        : { graphSelection: explanation.graphSelection }),
     });
   }
 
