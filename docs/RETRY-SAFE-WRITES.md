@@ -42,11 +42,16 @@ const replay = store.assert('personal', 'prefers_theme(rahul, dark).', {
 });
 ```
 
-CLI `assert`, `forget`, and `import` accept `--op-id`. A conflicting reuse writes a JSON
+CLI `assert`, `supersede`, `forget`, and `import` accept `--op-id`. A conflicting reuse writes a JSON
 error to stderr and exits `4`.
 
-MCP `assert_facts` and `forget` accept `opId`. Conflicts return `isError: true` with a
+MCP `assert_facts`, `supersede_facts`, and `forget` accept `opId`. Conflicts return `isError: true` with a
 JSON `operation_conflict` payload.
+
+For explicit supersession timestamps, the canonical UTC instant is part of the normalized
+request: retrying an operation ID with a different supplied instant conflicts. When the
+caller omits the instant, the first durable result remains replayable without comparing a
+new wall-clock value. Explicit and omitted timestamps are distinct request shapes.
 
 Natural-language `remember` and ambient capture keep their existing extraction and
 reservation contracts; v0.13 does not treat a nondeterministic LLM request as a raw

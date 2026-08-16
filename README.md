@@ -42,8 +42,8 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_INTEGRITY_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view when enforcement is active |
 | `REMBERO_ENTITY_IDENTITY` | no | `off`; use `canonical` for explicit position-scoped alias projection |
 
-The raw Datalog tools (`assert`, `query`, `check`, `assert_facts`, `forget`,
-`list_memories`) work with no API key at all — only natural-language
+The raw Datalog tools (`assert`, `supersede`, `query`, `check`, `assert_facts`,
+`supersede_facts`, `forget`, `list_memories`) work with no API key at all — only natural-language
 `remember`/`recall` call the LLM.
 
 ## Use from Claude Code (MCP)
@@ -65,13 +65,14 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 - Never store secrets or transient details. When unsure whether to remember, ask.
 ```
 
-Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`, `query`,
-`explain_query`, `check_integrity`, `history`, `forget`, and `list_memories`.
+Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
+`supersede_facts`, `query`, `explain_query`, `check_integrity`, `history`, `forget`,
+and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
-Raw MCP writes accept an optional caller-stable `opId`. Retrying `assert_facts` or
-`forget` with the same namespace, operation, ID, and normalized request returns the
+Raw MCP writes accept an optional caller-stable `opId`. Retrying `assert_facts`,
+`supersede_facts`, or `forget` with the same namespace, operation, ID, and normalized request returns the
 original result without applying the mutation again. Reusing an ID for a different
 request returns a structured `operation_conflict` error.
 
@@ -126,6 +127,8 @@ node dist/cli.js assert   ':- status(Person, active), status(Person, terminated)
 node dist/cli.js check    --proof-limit 2 --max-violations 100
 node dist/cli.js assert   'status(mira, terminated).' --integrity-mode strict
 node dist/cli.js assert   'status(mira, active).' --op-id change-123 # retry-safe
+node dist/cli.js supersede 'works_at(mira, initech).' \
+  --pattern 'works_at(mira, _)' --at '2026-08-16T16:59:00.000Z' --op-id job-42
 node dist/cli.js remember 'Mira is now terminated' --integrity-mode no_new_violations
 node dist/cli.js explain  'path(a, X)' --proof-limit 4 # inspect every bounded proof path
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
@@ -147,12 +150,19 @@ node dist/cli.js init-hooks --namespace personal       # opt in to Claude Stop c
 node dist/cli.js serve                                # MCP server on stdio
 ```
 
-Manual supersession deletes the old fact by default. Opt into valid-time archives with
+Natural-language supersession deletes the old fact by default. Opt into valid-time archives with
 `REMBERO_VALID_TIME_MODE=archive_until` or `remember --valid-time-mode archive_until`.
 An update then keeps the preceding fact as an ordinary
 `<predicate>_until(..., '<ISO instant>').` clause. `history` replays the bounded journal
 in authoritative append order, while past-tense recall can query and explain those
 portable archive facts. See [the temporal history contract](docs/TEMPORAL-HISTORY.md).
+
+Version 0.16 makes that correction primitive directly available without an LLM. CLI
+`supersede` and MCP `supersede_facts` atomically end up to 64 matched ground facts,
+preserve each as `_until`, and add explicit replacement clauses under the same integrity,
+retry, journal, and crash-recovery boundary as other writes. A caller-supplied `at` must
+be a canonical UTC instant; it is descriptive valid-time metadata, never an ordering
+authority. See [the temporal-correction contract](docs/TEMPORAL-CORRECTIONS.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

@@ -17,6 +17,7 @@ import {
   recallExplainTool,
   rememberTool,
   recallTool,
+  supersedeFactsTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -96,6 +97,130 @@ describe('MCP tool handlers', () => {
     expect(forgotten).toEqual({ removed: 2, opId: 'tool-forget' });
   });
 
+  it('supersedes explicit facts atomically with exact archives and retry safety', () => {
+    store.assert(
+      'personal',
+      'works_at(mira, acme). title(mira, engineer).',
+      { opId: 'prior-employment' }
+    );
+    const request = {
+      patterns: ['works_at(mira, _)', 'title(mira, _)'],
+      replacements: 'works_at(mira, initech). title(mira, lead).',
+      namespace: 'personal',
+      at: '2026-08-16T16:59:00.000Z',
+      opId: 'employment-correction',
+    };
+
+    const first = supersedeFactsTool({ store }, request);
+    const replay = supersedeFactsTool({ store }, request);
+
+    expect(replay).toEqual(first);
+    expect(first).toEqual({
+      added: ['works_at(mira, initech).', 'title(mira, lead).'],
+      duplicates: 0,
+      retracted: 2,
+      archived: [
+        "works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').",
+        "title_until(mira, engineer, '2026-08-16T16:59:00.000Z').",
+      ],
+      opId: 'employment-correction',
+    });
+    expect(store.load('personal').map(serializeClause).sort()).toEqual([
+      'title(mira, lead).',
+      "title_until(mira, engineer, '2026-08-16T16:59:00.000Z').",
+      'works_at(mira, initech).',
+      "works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').",
+    ].sort());
+    expect(() =>
+      supersedeFactsTool({ store }, { ...request, replacements: 'works_at(mira, other).' })
+    ).toThrow(OperationConflictError);
+    expect(() =>
+      supersedeFactsTool(
+        { store },
+        { ...request, at: '2026-08-16T17:00:00.000Z' }
+      )
+    ).toThrow(OperationConflictError);
+    const { at: _at, ...withoutAt } = request;
+    expect(() => supersedeFactsTool({ store }, withoutAt)).toThrow(OperationConflictError);
+
+    store.assert('personal', 'status(mira, active).');
+    const implicitTime = {
+      patterns: ['status(mira, _)'],
+      replacements: 'status(mira, paused).',
+      namespace: 'personal',
+      opId: 'implicit-time-correction',
+    };
+    expect(supersedeFactsTool({ store }, implicitTime)).toEqual(
+      supersedeFactsTool({ store }, implicitTime)
+    );
+
+    store.assert('personal', 'temporary_assignment(mira, atlas).');
+    expect(
+      supersedeFactsTool(
+        { store },
+        {
+          patterns: ['temporary_assignment(mira, _)'],
+          namespace: 'personal',
+          at: '2026-08-17T00:00:00.000Z',
+          opId: 'assignment-ended',
+        }
+      )
+    ).toEqual({
+      added: [],
+      duplicates: 0,
+      retracted: 1,
+      archived: [
+        "temporary_assignment_until(mira, atlas, '2026-08-17T00:00:00.000Z').",
+      ],
+      opId: 'assignment-ended',
+    });
+
+    store.assert('personal', 'stable(value).');
+    const noOp = supersedeFactsTool(
+      { store },
+      {
+        patterns: ['arrived(_)'],
+        replacements: 'stable(value).',
+        namespace: 'personal',
+        opId: 'no-op-correction',
+      }
+    );
+    expect(noOp).toMatchObject({ retracted: 0, added: [], duplicates: 1 });
+    store.assert('personal', 'arrived(later).');
+    expect(
+      supersedeFactsTool(
+        { store },
+        {
+          patterns: ['arrived(_)'],
+          replacements: 'stable(value).',
+          namespace: 'personal',
+          opId: 'no-op-correction',
+        }
+      )
+    ).toEqual(noOp);
+    expect(store.load('personal').map(serializeClause)).toContain('arrived(later).');
+    expect(
+      store.load('personal').map(serializeClause).some((clause) =>
+        clause.startsWith('arrived_until(')
+      )
+    ).toBe(false);
+  });
+
+  it('rejects ambiguous supersession timestamps before mutation', () => {
+    store.assert('default', 'status(mira, active).');
+    expect(() =>
+      supersedeFactsTool(
+        { store },
+        {
+          patterns: ['status(mira, _)'],
+          replacements: 'status(mira, paused).',
+          at: '2026-08-16 16:59:00',
+        }
+      )
+    ).toThrow(/canonical UTC timestamp/i);
+    expect(store.load('default').map(serializeClause)).toEqual(['status(mira, active).']);
+  });
+
   it('write tools share atomic integrity enforcement and structured rejection', () => {
     store.assert(
       'default',
@@ -123,6 +248,22 @@ describe('MCP tool handlers', () => {
         { pattern: 'manager(mira, _)' }
       )
     ).toThrow(IntegrityViolationError);
+
+    store.assert('default', 'status(mira, active). :- status(X, suspended).');
+    expect(() =>
+      supersedeFactsTool(
+        { store, integrityEnforcement: { mode: 'strict' } },
+        {
+          patterns: ['status(mira, _)'],
+          replacements: 'status(mira, suspended).',
+          at: '2026-08-16T16:59:00.000Z',
+        }
+      )
+    ).toThrow(IntegrityViolationError);
+    expect(store.load('default').map(serializeClause)).toContain('status(mira, active).');
+    expect(store.load('default').map(serializeClause)).not.toContain(
+      "status_until(mira, active, '2026-08-16T16:59:00.000Z')."
+    );
   });
 
   it('query evaluates raw Datalog and returns bindings', () => {

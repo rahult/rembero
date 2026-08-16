@@ -42,10 +42,12 @@ import {
   historyTool,
   listMemoriesTool,
   queryTool,
+  supersedeFactsTool,
 } from './mcp/tools.js';
 import {
   MAX_HISTORY_EVENTS,
   MAX_OPERATION_ID_BYTES,
+  MAX_SUPERSEDE_PATTERNS,
   MemoryStore,
   IncompleteHistoryError,
   OperationConflictError,
@@ -69,6 +71,7 @@ Usage:
   rembero recall-explain <question>      Recall with proofs, sources, and a graph
   rembero query <datalog>                Run a raw Datalog query
   rembero assert <datalog>               Store raw Datalog facts, rules, or constraints
+  rembero supersede [datalog]            End matching facts; optionally add replacements
   rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
   rembero check                          Check explicit integrity constraints with evidence
   rembero forget <pattern>               Retract facts matching a pattern
@@ -94,7 +97,9 @@ Options:
       --integrity-mode <mode>  Write guard: off, strict, or no_new_violations
       --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
       --entity-identity <mode>  Read projection: off (default) or canonical
-      --op-id <id>        Stable idempotency key for assert, forget, or import retries
+      --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
+      --at <ISO>           Canonical UTC valid-until instant for supersede
+      --op-id <id>        Stable idempotency key for assert, supersede, forget, or import retries
       --as-of-sequence <n> Read the knowledge view after global journal entry n (0 = empty)
       --graph-result <n>  Export the complete support graph for result row n
       --graph-support <node-id>  Export the support closure for one graph node
@@ -138,10 +143,18 @@ interface ParsedArgs {
   graphDepth?: string;
   limit?: string;
   asOfSequence?: string;
+  patterns: string[];
+  at?: string;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const parsed: ParsedArgs = { positional: [], batch: false, json: false, remove: false };
+  const parsed: ParsedArgs = {
+    positional: [],
+    batch: false,
+    json: false,
+    remove: false,
+    patterns: [],
+  };
   const valueAfter = (index: number, flag: string): string => {
     const value = argv[index + 1];
     if (value === undefined) throw new Error(`${flag} requires a value`);
@@ -195,6 +208,12 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--op-id') {
       parsed.opId = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--pattern') {
+      parsed.patterns.push(valueAfter(i, arg));
+      i += 1;
+    } else if (arg === '--at') {
+      parsed.at = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--graph-result') {
       parsed.graphResult = valueAfter(i, arg);
@@ -440,9 +459,15 @@ async function main(): Promise<void> {
   const entityIdentity = entityIdentitySetting === false
     ? undefined
     : entityIdentitySetting;
-  const writeCommand = ['serve', 'remember', 'assert', 'forget', 'import', 'review'].includes(
-    command ?? ''
-  );
+  const writeCommand = [
+    'serve',
+    'remember',
+    'assert',
+    'supersede',
+    'forget',
+    'import',
+    'review',
+  ].includes(command ?? '');
   const graphCommand = ['recall-explain', 'explain', 'check'].includes(command ?? '');
   if (graphSelector !== undefined && !writeCommand && !graphCommand) {
     throw new Error(
@@ -451,9 +476,20 @@ async function main(): Promise<void> {
   }
   if (
     operationId !== undefined &&
-    !['assert', 'forget', 'import'].includes(command ?? '')
+    !['assert', 'supersede', 'forget', 'import'].includes(command ?? '')
   ) {
-    throw new Error('--op-id is available for assert, forget, and import');
+    throw new Error('--op-id is available for assert, supersede, forget, and import');
+  }
+  if (args.patterns.length > 0 && command !== 'supersede') {
+    throw new Error('--pattern is available only for supersede');
+  }
+  if (args.at !== undefined && command !== 'supersede') {
+    throw new Error('--at is available only for supersede');
+  }
+  if (command === 'supersede' && args.validTimeMode !== undefined) {
+    throw new Error(
+      '--valid-time-mode does not apply to supersede; it always preserves _until history'
+    );
   }
   if (
     recordedSequence !== undefined &&
@@ -661,6 +697,20 @@ async function main(): Promise<void> {
         { pattern: text, namespace: args.namespace, opId: operationId }
       );
       console.log(`removed ${result.removed} clause(s)`);
+      return;
+    }
+    case 'supersede': {
+      const result = supersedeFactsTool(
+        { store, integrityEnforcement },
+        {
+          patterns: args.patterns,
+          replacements: text,
+          namespace: args.namespace,
+          at: args.at,
+          opId: operationId,
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }
     case 'history': {

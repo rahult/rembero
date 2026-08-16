@@ -17,6 +17,7 @@ export {
   type RecordedKnowledgeSnapshot,
   MAX_HISTORY_EVENTS,
   MAX_OPERATION_ID_BYTES,
+  MAX_SUPERSEDE_PATTERNS,
   OperationConflictError,
   IncompleteHistoryError,
   type AutoCaptureBatch,

@@ -190,6 +190,133 @@ describe('CLI ingress limits', () => {
     expect(replayForget.stdout).toBe(firstForget.stdout);
   });
 
+  it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('personal', 'works_at(mira, acme). title(mira, engineer).', {
+      opId: 'prior-employment',
+    });
+    const run = (replacement: string, at = '2026-08-16T16:59:00.000Z') =>
+      spawnSync(
+        process.execPath,
+        [
+          resolve('dist/cli.js'),
+          'supersede',
+          replacement,
+          '--namespace',
+          'personal',
+          '--pattern',
+          'works_at(mira, _)',
+          '--pattern',
+          'title(mira, _)',
+          '--at',
+          at,
+          '--op-id',
+          'cli-employment-correction',
+        ],
+        { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+      );
+
+    const first = run('works_at(mira, initech). title(mira, lead).');
+    const replay = run('works_at(mira, initech). title(mira, lead).');
+    const conflict = run('works_at(mira, other). title(mira, lead).');
+
+    expect(first.status).toBe(0);
+    expect(JSON.parse(first.stdout)).toEqual({
+      added: ['works_at(mira, initech).', 'title(mira, lead).'],
+      duplicates: 0,
+      retracted: 2,
+      archived: [
+        "works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').",
+        "title_until(mira, engineer, '2026-08-16T16:59:00.000Z').",
+      ],
+      opId: 'cli-employment-correction',
+    });
+    expect(replay.status).toBe(0);
+    expect(replay.stdout).toBe(first.stdout);
+    expect(conflict.status).toBe(4);
+    expect(JSON.parse(conflict.stderr)).toMatchObject({
+      error: 'operation_conflict',
+      operation: 'supersede',
+      namespace: 'personal',
+      opId: 'cli-employment-correction',
+    });
+    expect(new MemoryStore(join(home, 'memory')).load('personal').map(serializeClause).sort())
+      .toEqual([
+        'title(mira, lead).',
+        "title_until(mira, engineer, '2026-08-16T16:59:00.000Z').",
+        'works_at(mira, initech).',
+        "works_at_until(mira, acme, '2026-08-16T16:59:00.000Z').",
+      ].sort());
+
+    new MemoryStore(join(home, 'memory')).assert(
+      'personal',
+      'temporary_assignment(mira, atlas).'
+    );
+    const ended = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'supersede',
+        '--namespace',
+        'personal',
+        '--pattern',
+        'temporary_assignment(mira, _)',
+        '--at',
+        '2026-08-17T00:00:00.000Z',
+        '--op-id',
+        'cli-assignment-ended',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(ended.status).toBe(0);
+    expect(JSON.parse(ended.stdout)).toEqual({
+      added: [],
+      duplicates: 0,
+      retracted: 1,
+      archived: [
+        "temporary_assignment_until(mira, atlas, '2026-08-17T00:00:00.000Z').",
+      ],
+      opId: 'cli-assignment-ended',
+    });
+  });
+
+  it('requires supersede patterns and a canonical UTC timestamp', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-invalid-'));
+    const home = join(root, 'home');
+    new MemoryStore(join(home, 'memory')).assert('default', 'status(mira, active).');
+    const run = (extra: string[]) =>
+      spawnSync(
+        process.execPath,
+        [resolve('dist/cli.js'), 'supersede', 'status(mira, paused).', ...extra],
+        { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+      );
+
+    const noPattern = run([]);
+    expect(noPattern.status).toBe(1);
+    expect(noPattern.stderr).toMatch(/requires at least one fact pattern/i);
+    const invalidAt = run([
+      '--pattern',
+      'status(mira, _)',
+      '--at',
+      '2026-08-16 16:59:00',
+    ]);
+    expect(invalidAt.status).toBe(1);
+    expect(invalidAt.stderr).toMatch(/canonical UTC timestamp/i);
+    const destructiveMode = run([
+      '--pattern',
+      'status(mira, _)',
+      '--valid-time-mode',
+      'delete',
+    ]);
+    expect(destructiveMode.status).toBe(1);
+    expect(destructiveMode.stderr).toMatch(/always preserves _until history/i);
+    expect(new MemoryStore(join(home, 'memory')).load('default').map(serializeClause)).toEqual([
+      'status(mira, active).',
+    ]);
+  });
+
   it('rejects operation ids on commands without idempotent write semantics', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-op-id-command-'));
     const result = spawnSync(
@@ -202,7 +329,9 @@ describe('CLI ingress limits', () => {
     );
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/--op-id is available for assert, forget, and import/i);
+    expect(result.stderr).toMatch(
+      /--op-id is available for assert, supersede, forget, and import/i
+    );
   });
 
   it('queries an exact recorded snapshot without changing current knowledge', () => {

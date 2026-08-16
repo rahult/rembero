@@ -20,6 +20,7 @@ import type {
   MemorySource,
   MemoryStore,
   RecordedSnapshotMetadata,
+  SupersedeResult,
 } from '../store/store.js';
 import type { Clause } from '../engine/index.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
@@ -175,6 +176,61 @@ export function assertFactsTool(
     }
   );
   return { added: added.map(serializeClause), duplicates, opId };
+}
+
+export function validTimeInstant(value: string): Date {
+  assertBoundedInput(value, 'valid-time instant');
+  const instant = new Date(value);
+  if (!Number.isFinite(instant.getTime()) || instant.toISOString() !== value) {
+    throw new Error(
+      'valid-time instant must be a canonical UTC timestamp such as 2026-08-16T16:59:00.000Z'
+    );
+  }
+  return instant;
+}
+
+export interface SupersedeFactsResult {
+  added: string[];
+  duplicates: number;
+  retracted: number;
+  archived: string[];
+  opId: string;
+}
+
+export function supersedeFactsTool(
+  deps: StoreToolDeps,
+  args: {
+    patterns: string[];
+    replacements?: string;
+    namespace?: string;
+    at?: string;
+    opId?: string;
+    integrityEnforcement?: IntegrityEnforcementOptions;
+  }
+): SupersedeFactsResult {
+  for (const pattern of args.patterns) assertBoundedInput(pattern, 'supersede pattern');
+  assertBoundedInput(args.patterns.join('\n'), 'supersede patterns');
+  const replacements = args.replacements ?? '';
+  assertBoundedInput(replacements, 'replacement clauses');
+  const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
+  const integrity = configured === false ? undefined : configured;
+  const result: SupersedeResult = deps.store.supersede(
+    args.namespace ?? 'default',
+    args.patterns,
+    replacements,
+    {
+      ...(args.at === undefined ? {} : { at: validTimeInstant(args.at) }),
+      ...(args.opId === undefined ? {} : { opId: args.opId }),
+      ...(integrity === undefined ? {} : { integrity }),
+    }
+  );
+  return {
+    added: result.added.map(serializeClause),
+    duplicates: result.duplicates,
+    retracted: result.retracted,
+    archived: result.archived.map(serializeClause),
+    opId: result.opId,
+  };
 }
 
 export function queryTool(

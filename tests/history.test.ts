@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serializeClause, type Clause } from '../src/engine/index.js';
-import { MemoryStore } from '../src/store/store.js';
+import { MemoryStore, OperationConflictError } from '../src/store/store.js';
 
 type V6Store = MemoryStore & {
   supersede: (
@@ -211,6 +211,46 @@ describe('MemoryStore.supersede', () => {
         context
       )
     ).toThrow(/already used for another mutation/i);
+  });
+
+  it('fails closed for legacy supersede retries unless the original timestamp is supplied', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-supersede-legacy-retry-'));
+    const store = new MemoryStore(root);
+    const at = new Date('2026-08-16T16:59:00.000Z');
+    store.assert('default', 'works_at(mira, acme).');
+    const first = store.supersede(
+      'default',
+      ['works_at(mira, _)'],
+      'works_at(mira, initech).',
+      { opId: 'legacy-supersede', at }
+    );
+
+    const journalPath = join(root, 'journal.log');
+    const entries = journalLines(root);
+    delete entries.at(-1)?.atProvided;
+    writeFileSync(
+      journalPath,
+      `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
+      'utf8'
+    );
+
+    const legacyStore = new MemoryStore(root);
+    expect(() =>
+      legacyStore.supersede(
+        'default',
+        ['works_at(mira, _)'],
+        'works_at(mira, initech).',
+        { opId: 'legacy-supersede' }
+      )
+    ).toThrow(OperationConflictError);
+    expect(
+      legacyStore.supersede(
+        'default',
+        ['works_at(mira, _)'],
+        'works_at(mira, initech).',
+        { opId: 'legacy-supersede', at }
+      )
+    ).toEqual(first);
   });
 
   it('checks journal capacity before changing current or archived facts', () => {

@@ -99,6 +99,7 @@ export class OperationConflictError extends Error {
 }
 
 export type ValidTimeMode = 'delete' | 'archive_until';
+export const MAX_SUPERSEDE_PATTERNS = 64;
 
 export interface SupersedeResult {
   added: Clause[];
@@ -1368,13 +1369,16 @@ export class MemoryStore {
     context: MutationContext
   ): SupersedeResult {
     if (patterns.length === 0) throw new Error('supersede requires at least one fact pattern');
-    if (patterns.length > 64) throw new Error('supersede accepts at most 64 fact patterns');
+    if (patterns.length > MAX_SUPERSEDE_PATTERNS) {
+      throw new Error(`supersede accepts at most ${MAX_SUPERSEDE_PATTERNS} fact patterns`);
+    }
     const parsedPatterns = patterns.map((pattern) => ({
       literal: parseFactPattern(pattern, 'supersede pattern'),
     }));
     const requestedPatterns = parsedPatterns.map((pattern) => serializeGoal(pattern.literal));
     const parsedReplacements =
       typeof replacements === 'string' ? parseProgram(replacements) : replacements;
+    const explicitOpId = context.opId !== undefined;
     const opId = validateOperationId(context.opId ?? this.createOperationId());
     const at = validDate(
       context.at ?? new Date(),
@@ -1393,18 +1397,23 @@ export class MemoryStore {
       };
 
       return this.withLock('journal', () => {
-        const priorOperation = this.readJournalUnlocked().find(
-          (journalEntry) =>
-            journalEntry.op === 'supersede' &&
-            journalEntry.namespace === namespace &&
-            journalEntry.opId === opId
-        );
+        const priorOperation = explicitOpId
+          ? this.readJournalUnlocked().find(
+              (journalEntry) =>
+                journalEntry.op === 'supersede' &&
+                journalEntry.namespace === namespace &&
+                journalEntry.opId === opId
+            )
+          : undefined;
         if (priorOperation !== undefined) {
           if (
             !Array.isArray(priorOperation.patterns) ||
             !priorOperation.patterns.every((value) => typeof value === 'string') ||
             !Array.isArray(priorOperation.replacementRequested) ||
-            !priorOperation.replacementRequested.every((value) => typeof value === 'string')
+            !priorOperation.replacementRequested.every((value) => typeof value === 'string') ||
+            typeof priorOperation.ts !== 'string' ||
+            (priorOperation.atProvided !== undefined &&
+              typeof priorOperation.atProvided !== 'boolean')
           ) {
             throw new Error(`supersede operation '${opId}' has invalid durable parameters`);
           }
@@ -1414,7 +1423,11 @@ export class MemoryStore {
             JSON.stringify(priorOperation.replacementRequested) !==
               JSON.stringify(requestedReplacementClauses) ||
             (priorOperation.validTimeMode ?? 'archive_until') !==
-              (archive ? 'archive_until' : 'delete')
+              (archive ? 'archive_until' : 'delete') ||
+            (priorOperation.atProvided === undefined && context.at === undefined) ||
+            (typeof priorOperation.atProvided === 'boolean' &&
+              priorOperation.atProvided !== (context.at !== undefined)) ||
+            (context.at !== undefined && priorOperation.ts !== validUntil)
           ) {
             throw new OperationConflictError('supersede', namespace, opId);
           }
@@ -1500,7 +1513,7 @@ export class MemoryStore {
         }
 
         const allAdded = [...archivedAdded, ...replacementAdded];
-        if (ended.length > 0 || allAdded.length > 0) {
+        if (ended.length > 0 || allAdded.length > 0 || explicitOpId) {
           const archivedAddedKeys = new Set(archivedAdded.map(canonicalKey));
           const proposedTemporalSources = new Map<string, TemporalMemorySource>();
           for (const [index, clause] of archives.entries()) {
@@ -1527,6 +1540,7 @@ export class MemoryStore {
             {
               opId,
               validTimeMode: archive ? 'archive_until' : 'delete',
+              atProvided: context.at !== undefined,
               patterns: requestedPatterns,
               ended: ended.map((clause) => ({
                 clause: serializeClause(clause),
@@ -1557,7 +1571,11 @@ export class MemoryStore {
           if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
             throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
           }
-          this.commitMutation(namespace, entry, journalEntry);
+          if (ended.length === 0 && allAdded.length === 0) {
+            this.appendJournalUnlocked(journalEntry);
+          } else {
+            this.commitMutation(namespace, entry, journalEntry);
+          }
         }
 
         return {

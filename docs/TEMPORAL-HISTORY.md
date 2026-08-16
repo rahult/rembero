@@ -8,10 +8,14 @@ export REMBERO_VALID_TIME_MODE=archive_until
 rembero remember "Mira now works at Initech"
 ```
 
-The same mode can be selected for one CLI call with
+The same mode can be selected for one natural-language CLI call with
 `--valid-time-mode archive_until`. Library callers pass
 `{ validTimeMode: 'archive_until' }` to `rememberText`. MCP servers read the
 environment variable when they start.
+
+For explicit LLM-free corrections, version 0.16 adds CLI `supersede` and MCP
+`supersede_facts`. These always archive matched facts and accept the replacement clauses
+directly. See [temporal corrections](TEMPORAL-CORRECTIONS.md).
 
 ## Stored representation
 
@@ -102,11 +106,12 @@ Sources attached to an archived fact include additive temporal metadata:
 
 ## Authority boundaries
 
-- Valid-time archiving applies only to validated manual `remember`
-  supersessions.
+- Valid-time archiving applies to validated manual `remember` supersessions and explicit
+  raw `supersede`/`supersede_facts` calls.
 - `forget` remains destructive because explicit removal is not supersession.
 - Auto-capture remains additive-only and cannot silently close facts.
-- Raw `assert_facts` remains literal: callers explicitly choose every clause.
+- Raw `assert_facts` remains literal. Raw supersession requires callers to choose every
+  match pattern, replacement clause, and optional valid-until instant explicitly.
 - `_until` predicates are system-managed in extraction prompts.
 - This is valid-time supersession, not a full bi-temporal interval model.
 - Version 0.14 adds a separate recorded-time read axis based on authoritative journal

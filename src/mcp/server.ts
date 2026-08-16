@@ -22,8 +22,13 @@ import {
   recallExplainTool,
   recallTool,
   rememberTool,
+  supersedeFactsTool,
 } from './tools.js';
-import { IncompleteHistoryError, MAX_HISTORY_EVENTS } from '../store/store.js';
+import {
+  IncompleteHistoryError,
+  MAX_HISTORY_EVENTS,
+  MAX_SUPERSEDE_PATTERNS,
+} from '../store/store.js';
 import { MAX_INTEGRITY_VIOLATIONS } from '../knowledge/integrity.js';
 import {
   IntegrityViolationError,
@@ -117,6 +122,11 @@ const recordedSequenceField = z
   .min(0)
   .optional()
   .describe('Read the deterministic knowledge snapshot after global journal entry n; 0 is empty');
+const validTimeInstantField = z
+  .string()
+  .max(64)
+  .optional()
+  .describe('Canonical UTC valid-until instant, e.g. 2026-08-16T16:59:00.000Z');
 
 function asContent(result: unknown) {
   return { content: [{ type: 'text' as const, text: stringifyBoundedResult(result, 'MCP result') }] };
@@ -211,7 +221,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.15.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.16.0' });
 
   server.registerTool(
     'remember',
@@ -388,6 +398,71 @@ export function createServer(deps: PipelineDeps): McpServer {
               graphSelector
             ),
           })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'supersede_facts',
+    {
+      title: 'Supersede facts',
+      description:
+        "Atomically end current ground facts matching one or more patterns, preserve each as a system-managed '_until' fact, and add explicit replacement clauses. No LLM is used. Append order remains authoritative; the optional UTC timestamp is descriptive valid-time metadata.",
+      inputSchema: {
+        patterns: z
+          .array(boundedText("A positive fact pattern, e.g. 'works_at(mira, _)'"))
+          .min(1)
+          .max(MAX_SUPERSEDE_PATTERNS),
+        replacements: boundedText('Optional ground facts or other Datalog clauses to add')
+          .optional(),
+        namespace: namespaceField,
+        at: validTimeInstantField,
+        opId: operationIdField,
+        integrityMode: integrityModeField,
+        integrityNamespaces: integrityNamespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
+      },
+    },
+    async ({
+      patterns,
+      replacements,
+      namespace,
+      at,
+      opId,
+      integrityMode,
+      integrityNamespaces,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      graphSelector,
+    }) => {
+      try {
+        return asContent(
+          supersedeFactsTool(
+            { store: resolvedDeps.store },
+            {
+              patterns,
+              replacements,
+              namespace,
+              at,
+              opId,
+              integrityEnforcement: requestedIntegrity(
+                resolvedDeps.integrityEnforcement,
+                integrityMode,
+                integrityNamespaces,
+                proofLimit,
+                maxViolations,
+                entityIdentity,
+                graphSelector
+              ),
+            }
+          )
         );
       } catch (e) {
         return asError(e);

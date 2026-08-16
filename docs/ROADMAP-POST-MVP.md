@@ -169,6 +169,26 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    legacy unjournaled writes, corrupt records, and invalid positions cannot masquerade as
    authoritative history.
 
+## Phase 18 — SQLite semantic parity  *(v0.15)*
+
+1. **Complete — deterministic portable bridge**: advanced SQLite adapter queries reuse
+   the bounded portable evaluator for raw conjunctions, stratified negation, arithmetic,
+   aggregates, and multi-predicate fixpoints without introducing another durable store.
+2. **Complete — explicit execution boundary**: ordinary rules retain the native C path,
+   `sqliteDatalogExecutionMode` exposes the selection, and unsupported SQLite values fail
+   closed rather than being silently coerced.
+
+## Phase 19 — Explicit temporal corrections  *(v0.16)*
+
+1. **Complete — primary interface parity**: CLI `supersede` and MCP `supersede_facts`
+   expose the existing atomic archive-and-replace store primitive without an LLM.
+2. **Complete — deterministic valid-time ingress**: callers may supply one canonical UTC
+   instant and up to 64 positive fact patterns; ambiguous timestamps and invalid patterns
+   fail before mutation while append order remains authoritative.
+3. **Complete — authority and retry parity**: raw corrections share integrity enforcement,
+   cross-process locks, crash recovery, exact journal lineage, idempotent operation replay,
+   structured conflicts, package smoke tests, and historical recall/proof behavior.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

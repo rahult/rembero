@@ -199,16 +199,42 @@ try {
   run(
     process.execPath,
     [
-      '--input-type=module',
-      '--eval',
-      "import { join } from 'node:path'; import { MemoryStore } from 'rembero'; " +
-        "const store = new MemoryStore(join(process.env.REMBERO_HOME, 'memory')); " +
-        "store.assert('default', 'works_at(mira, acme).', { opId: 'before' }); " +
-        "const result = store.supersede('default', ['works_at(mira, _)'], 'works_at(mira, initech).', { opId: 'after', at: new Date('2026-08-16T16:59:00.000Z') }); " +
-        "if (result.archived.length !== 1 || store.history('works_at(mira, _)').events.length !== 3) throw new Error('public temporal API failed');",
+      installedCli,
+      'assert',
+      'works_at(mira, acme).',
+      '--op-id',
+      'before',
     ],
     { cwd: directory, env: temporalEnv }
   );
+  const supersedeArgs = [
+    installedCli,
+    'supersede',
+    'works_at(mira, initech).',
+    '--pattern',
+    'works_at(mira, _)',
+    '--at',
+    '2026-08-16T16:59:00.000Z',
+    '--op-id',
+    'after',
+  ];
+  const supersedeOutput = run(process.execPath, supersedeArgs, {
+    cwd: directory,
+    env: temporalEnv,
+  });
+  const supersedeReplay = run(process.execPath, supersedeArgs, {
+    cwd: directory,
+    env: temporalEnv,
+  });
+  const superseded = JSON.parse(supersedeOutput);
+  if (
+    supersedeReplay !== supersedeOutput ||
+    superseded.retracted !== 1 ||
+    superseded.archived[0] !==
+      "works_at_until(mira, acme, '2026-08-16T16:59:00.000Z')."
+  ) {
+    throw new Error(`unexpected packaged supersede result: ${supersedeOutput}`);
+  }
   const temporalOutput = run(
     process.execPath,
     [installedCli, 'history', 'works_at(mira, _)', '--json'],
@@ -341,7 +367,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

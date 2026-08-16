@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.15.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.16.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -57,6 +57,7 @@ describe('MCP explanation surfaces', () => {
           'recall_explain',
           'check_integrity',
           'history',
+          'supersede_facts',
         ])
       );
 
@@ -93,6 +94,98 @@ describe('MCP explanation surfaces', () => {
         operation: 'assert',
         namespace: 'default',
         opId: 'mcp-assert-retry',
+      });
+
+      await client.callTool({
+        name: 'assert_facts',
+        arguments: { clauses: 'status(mira, active).', opId: 'mcp-status-source' },
+      });
+      const superseded = await client.callTool({
+        name: 'supersede_facts',
+        arguments: {
+          patterns: ['status(mira, _)'],
+          replacements: 'status(mira, paused).',
+          at: '2026-08-16T16:59:00.000Z',
+          opId: 'mcp-status-correction',
+        },
+      });
+      const supersededText = superseded.content.find((item) => item.type === 'text');
+      const supersededPayload = JSON.parse(
+        supersededText?.type === 'text' ? supersededText.text : ''
+      );
+      expect(supersededPayload).toEqual({
+        added: ['status(mira, paused).'],
+        duplicates: 0,
+        retracted: 1,
+        archived: [
+          "status_until(mira, active, '2026-08-16T16:59:00.000Z').",
+        ],
+        opId: 'mcp-status-correction',
+      });
+      const supersededReplay = await client.callTool({
+        name: 'supersede_facts',
+        arguments: {
+          patterns: ['status(mira, _)'],
+          replacements: 'status(mira, paused).',
+          at: '2026-08-16T16:59:00.000Z',
+          opId: 'mcp-status-correction',
+        },
+      });
+      const supersededReplayText = supersededReplay.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          supersededReplayText?.type === 'text' ? supersededReplayText.text : ''
+        )
+      ).toEqual(supersededPayload);
+      const supersedeConflict = await client.callTool({
+        name: 'supersede_facts',
+        arguments: {
+          patterns: ['status(mira, _)'],
+          replacements: 'status(mira, away).',
+          at: '2026-08-16T16:59:00.000Z',
+          opId: 'mcp-status-correction',
+        },
+      });
+      expect(supersedeConflict.isError).toBe(true);
+      const supersedeConflictText = supersedeConflict.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          supersedeConflictText?.type === 'text' ? supersedeConflictText.text : ''
+        )
+      ).toMatchObject({
+        error: 'operation_conflict',
+        operation: 'supersede',
+        namespace: 'default',
+        opId: 'mcp-status-correction',
+      });
+      expect(store.load('default').map(({ head }) => head.predicate)).toEqual(
+        expect.arrayContaining(['status', 'status_until'])
+      );
+      await client.callTool({
+        name: 'assert_facts',
+        arguments: { clauses: 'temporary_assignment(mira, atlas).' },
+      });
+      const ended = await client.callTool({
+        name: 'supersede_facts',
+        arguments: {
+          patterns: ['temporary_assignment(mira, _)'],
+          at: '2026-08-17T00:00:00.000Z',
+          opId: 'mcp-assignment-ended',
+        },
+      });
+      const endedText = ended.content.find((item) => item.type === 'text');
+      expect(JSON.parse(endedText?.type === 'text' ? endedText.text : '')).toEqual({
+        added: [],
+        duplicates: 0,
+        retracted: 1,
+        archived: [
+          "temporary_assignment_until(mira, atlas, '2026-08-17T00:00:00.000Z').",
+        ],
+        opId: 'mcp-assignment-ended',
       });
 
       const forgotten = await client.callTool({
@@ -367,6 +460,28 @@ describe('MCP explanation surfaces', () => {
             },
           ],
         },
+      });
+      expect(store.load('default')).toEqual(before);
+
+      const rejectedSupersede = await client.callTool({
+        name: 'supersede_facts',
+        arguments: {
+          patterns: ['active(mira)'],
+          replacements: 'active(mira). suspended(mira).',
+          at: '2026-08-16T16:59:00.000Z',
+          opId: 'rejected-temporal-correction',
+          graphSelector: { kind: 'result', row: 1 },
+        },
+      });
+      expect(rejectedSupersede.isError).toBe(true);
+      const supersedeText = rejectedSupersede.content.find((item) => item.type === 'text');
+      const supersedePayload = JSON.parse(
+        supersedeText?.type === 'text' ? supersedeText.text : ''
+      );
+      expect(supersedePayload).toMatchObject({
+        error: 'integrity_violation',
+        mode: 'strict',
+        introducedViolationCount: 1,
       });
       expect(store.load('default')).toEqual(before);
 
