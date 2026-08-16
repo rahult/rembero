@@ -4,6 +4,9 @@ import {
   type Comparison,
   type Goal,
   type Literal,
+  type AggregateOperator,
+  type AggregateQuerySpec,
+  type QuerySpec,
   type Term,
   isComparison,
   isNegation,
@@ -29,9 +32,32 @@ export interface AbsenceProof {
 
 export type ProofStep = DerivationProof | AbsenceProof;
 
+export interface AggregateContribution {
+  bindings: Bindings;
+  proofs: ProofStep[];
+}
+
+export interface AggregateProof {
+  aggregated: true;
+  op: AggregateOperator;
+  input: '*' | string;
+  as: string;
+  value: string | number;
+  contributors: AggregateContribution[];
+  /** Contributor indexes equal to the selected min/max value, in stable query order. */
+  witnessPositions?: number[];
+}
+
+export type QueryProof = ProofStep | AggregateProof;
+
 export interface ExplainedBindings {
   bindings: Bindings;
   proofs: ProofStep[];
+}
+
+export interface ExplainedQueryBindings {
+  bindings: Bindings;
+  proofs: QueryProof[];
 }
 
 export interface MaterializedFactWithProof {
@@ -59,6 +85,10 @@ export interface EvaluateOptions {
   maxFacts?: number;
   maxIterations?: number;
   maxRows?: number;
+  /** Maximum candidate rows inspected before an exact aggregate fails closed. */
+  maxAggregateRows?: number;
+  /** Maximum contributor rows retained in an aggregate explanation. */
+  maxAggregateProofRows?: number;
   maxProofDepth?: number;
   maxProofNodes?: number;
 }
@@ -75,6 +105,11 @@ type ProofRef = FactEntry | AbsenceProof;
 
 interface GoalSolution {
   env: Bindings;
+  proofs: ProofRef[];
+}
+
+interface QueryRowRef {
+  bindings: Bindings;
   proofs: ProofRef[];
 }
 
@@ -412,8 +447,8 @@ function queryBindingsWithProofRefs(
   query: Goal[],
   maxRows: number,
   predicateStrata: Map<string, number>
-): Array<{ bindings: Bindings; proofs: ProofRef[] }> {
-  const results: Array<{ bindings: Bindings; proofs: ProofRef[] }> = [];
+): QueryRowRef[] {
+  const results: QueryRowRef[] = [];
   const seen = new Set<string>();
   const fromDb = (_: number, key: string) => db.get(key);
   const stratumOf = (key: string) => predicateStrata.get(key) ?? 0;
@@ -429,6 +464,122 @@ function queryBindingsWithProofRefs(
   }
 
   return results;
+}
+
+function aggregateInputRows(
+  db: Database,
+  query: Goal[],
+  maxAggregateRows: number,
+  predicateStrata: Map<string, number>
+): QueryRowRef[] {
+  if (!Number.isSafeInteger(maxAggregateRows) || maxAggregateRows < 0) {
+    throw new EngineSafetyError('maxAggregateRows must be a non-negative safe integer');
+  }
+  const results: QueryRowRef[] = [];
+  const fromDb = (_: number, key: string) => db.get(key);
+  const stratumOf = (key: string) => predicateStrata.get(key) ?? 0;
+  let inspected = 0;
+
+  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf)) {
+    if (++inspected > maxAggregateRows) {
+      throw new EngineLimitError(`aggregate input exceeded ${maxAggregateRows} rows`);
+    }
+    const bindings: Bindings = {};
+    for (const [name, term] of Object.entries(solution.env)) bindings[name] = term;
+    results.push({ bindings, proofs: solution.proofs });
+  }
+
+  return results;
+}
+
+interface AggregateResultRef {
+  bindings: Bindings;
+  value: Term;
+  contributors: QueryRowRef[];
+  witnessPositions?: number[];
+}
+
+function aggregateValue(
+  query: AggregateQuerySpec,
+  rows: QueryRowRef[]
+): AggregateResultRef | null {
+  if (query.op === 'count') {
+    const value: Term = { type: 'num', value: rows.length };
+    return { bindings: { [query.as]: value }, value, contributors: rows };
+  }
+  if (rows.length === 0) return null;
+
+  const values = rows.map(({ bindings }) => {
+    const value = bindings[query.input];
+    if (value === undefined || value.type === 'var' || value.type === 'wildcard') {
+      throw new EngineSafetyError(
+        `aggregate input ${query.input} was not grounded by the query`
+      );
+    }
+    return value;
+  });
+
+  let value: Term;
+  if (query.op === 'sum') {
+    if (values.some((term) => term.type !== 'num')) {
+      throw new EngineSafetyError('sum aggregation requires numeric input values');
+    }
+    const sum = values.reduce((total, term) => total + (term as Term & { type: 'num' }).value, 0);
+    if (!Number.isFinite(sum)) {
+      throw new EngineSafetyError('sum aggregation produced a non-finite result');
+    }
+    value = { type: 'num', value: sum };
+  } else {
+    const type = values[0].type;
+    if (values.some((term) => term.type !== type)) {
+      throw new EngineSafetyError(`${query.op} aggregation requires one scalar type`);
+    }
+    value = values[0];
+    for (const candidate of values.slice(1)) {
+      if (comparisonHolds(query.op === 'min' ? '<' : '>', candidate, value)) {
+        value = candidate;
+      }
+    }
+  }
+
+  const witnessPositions =
+    query.op === 'min' || query.op === 'max'
+      ? values.flatMap((candidate, index) => (termEq(candidate, value) ? [index] : []))
+      : undefined;
+  return {
+    bindings: { [query.as]: value },
+    value,
+    contributors: rows,
+    ...(witnessPositions === undefined ? {} : { witnessPositions }),
+  };
+}
+
+function serializeAggregateProof(
+  query: AggregateQuerySpec,
+  result: AggregateResultRef,
+  maxProofDepth: number,
+  budget: ProofBudget
+): AggregateProof {
+  if (maxProofDepth < 1) {
+    throw new EngineLimitError(`proof exceeded max depth ${maxProofDepth}`);
+  }
+  if (++budget.emittedNodes > budget.maxNodes) {
+    throw new EngineLimitError(`proof exceeded max nodes ${budget.maxNodes}`);
+  }
+  return {
+    aggregated: true,
+    op: query.op,
+    input: query.input,
+    as: query.as,
+    value: groundValue(result.value),
+    contributors: result.contributors.map(({ bindings, proofs }) => ({
+      bindings: { ...bindings },
+      proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, budget, 2)),
+    })),
+    ...(result.witnessPositions === undefined
+      ? {}
+      : { witnessPositions: [...result.witnessPositions] }),
+  };
 }
 
 /**
@@ -461,6 +612,59 @@ export function evaluateWithProof(
       proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, proofBudget)),
     })
   );
+}
+
+/** Evaluate either a relational query or one exact scalar reduction over its full result. */
+export function evaluateQuerySpec(
+  clauses: Clause[],
+  query: QuerySpec,
+  options: EvaluateOptions = {}
+): Bindings[] {
+  if (query.kind === 'relational') return evaluate(clauses, query.goals, options);
+  const { maxRows = 1000, maxAggregateRows = 100_000 } = options;
+  if (maxRows < 1) return [];
+  const { db, predicateStrata } = deriveDatabase(clauses, options);
+  const rows = aggregateInputRows(db, query.goals, maxAggregateRows, predicateStrata);
+  const result = aggregateValue(query, rows);
+  return result === null ? [] : [result.bindings];
+}
+
+/** Aggregate-aware explanation path; contributors retain their ordered relational proofs. */
+export function evaluateQuerySpecWithProof(
+  clauses: Clause[],
+  query: QuerySpec,
+  options: EvaluateOptions = {}
+): ExplainedQueryBindings[] {
+  if (query.kind === 'relational') return evaluateWithProof(clauses, query.goals, options);
+  const {
+    maxRows = 1000,
+    maxAggregateRows = 100_000,
+    maxAggregateProofRows = 256,
+    maxProofDepth = 128,
+    maxProofNodes = 100_000,
+  } = options;
+  if (maxRows < 1) return [];
+  const { db, predicateStrata } = deriveDatabase(clauses, options);
+  const rows = aggregateInputRows(db, query.goals, maxAggregateRows, predicateStrata);
+  const result = aggregateValue(query, rows);
+  if (result === null) return [];
+  if (!Number.isSafeInteger(maxAggregateProofRows) || maxAggregateProofRows < 0) {
+    throw new EngineSafetyError(
+      'maxAggregateProofRows must be a non-negative safe integer'
+    );
+  }
+  if (result.contributors.length > maxAggregateProofRows) {
+    throw new EngineLimitError(
+      `aggregate proof exceeded ${maxAggregateProofRows} contributor rows`
+    );
+  }
+  const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
+  return [
+    {
+      bindings: result.bindings,
+      proofs: [serializeAggregateProof(query, result, maxProofDepth, proofBudget)],
+    },
+  ];
 }
 
 export function materializeWithProof(

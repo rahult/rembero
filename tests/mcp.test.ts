@@ -68,6 +68,23 @@ describe('MCP explanation surfaces', () => {
         ])
       );
 
+      const aggregated = await client.callTool({
+        name: 'explain_query',
+        arguments: { query: 'count(*) as Count where employee(Person)' },
+      });
+      const aggregatedText = aggregated.content.find((item) => item.type === 'text');
+      const aggregatedPayload = JSON.parse(
+        aggregatedText?.type === 'text' ? aggregatedText.text : ''
+      );
+      expect(aggregatedPayload.rows).toEqual([
+        expect.objectContaining({ bindings: { Count: '2' } }),
+      ]);
+      expect(aggregatedPayload.graph.nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'aggregate', op: 'count', value: 2 }),
+        ])
+      );
+
       const recalled = await client.callTool({
         name: 'recall_explain',
         arguments: { question: 'What is my cat called?' },

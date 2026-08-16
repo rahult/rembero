@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   parseProgram,
   parseQuery,
+  parseQuerySpec,
   serializeClause,
+  serializeQuerySpec,
   ParseError,
   StratificationError,
 } from '../src/engine/index.js';
@@ -32,6 +34,10 @@ describe('parseProgram', () => {
     const clauses = parseProgram('age(rahul, 38). temp(sydney, -1.5).');
     expect(clauses[0].head.args[1]).toEqual({ type: 'num', value: 38 });
     expect(clauses[1].head.args[1]).toEqual({ type: 'num', value: -1.5 });
+  });
+
+  it('rejects non-finite numeric literals', () => {
+    expect(() => parseProgram(`value(${'9'.repeat(309)}).`)).toThrow(/out of range/i);
   });
 
   it('parses a rule with variables and a comparison', () => {
@@ -157,6 +163,89 @@ describe('parseQuery', () => {
 
   it('rejects empty queries', () => {
     expect(() => parseQuery('   ')).toThrow(ParseError);
+  });
+});
+
+describe('parseQuerySpec', () => {
+  it('keeps ordinary relational queries additive and unchanged', () => {
+    expect(parseQuerySpec('works_at(Person, acme)')).toEqual({
+      kind: 'relational',
+      goals: parseQuery('works_at(Person, acme)'),
+    });
+  });
+
+  it('parses and serializes scalar aggregate queries canonically', () => {
+    const count = parseQuerySpec(
+      '?- count(*) as Count where works_at(Person, acme).'
+    );
+    expect(count).toEqual({
+      kind: 'aggregate',
+      op: 'count',
+      input: '*',
+      as: 'Count',
+      goals: parseQuery('works_at(Person, acme)'),
+    });
+    expect(serializeQuerySpec(count)).toBe(
+      'count(*) as Count where works_at(Person, acme)'
+    );
+
+    const sum = parseQuerySpec(
+      'sum(Points) as Total where score(Player, Team, Points), Team = red'
+    );
+    expect(sum).toMatchObject({
+      kind: 'aggregate',
+      op: 'sum',
+      input: 'Points',
+      as: 'Total',
+    });
+    expect(serializeQuerySpec(sum)).toBe(
+      'sum(Points) as Total where score(Player, Team, Points), Team = red'
+    );
+  });
+
+  it('does not steal ordinary predicates named like aggregate operators', () => {
+    expect(parseQuerySpec('count(Item)')).toEqual({
+      kind: 'relational',
+      goals: parseQuery('count(Item)'),
+    });
+  });
+
+  it('requires safe query-only aggregate inputs and a fresh output alias', () => {
+    expect(() =>
+      parseQuerySpec('count(Person) as Total where employee(Person)')
+    ).toThrow(/count\(\*\)/i);
+    expect(() =>
+      parseQuerySpec('sum(10) as Total where score(Player, Points)')
+    ).toThrow(/variable/i);
+    expect(() =>
+      parseQuerySpec('sum(Points) as Total where score(Player, Value)')
+    ).toThrow(/bound by a positive/i);
+    expect(() =>
+      parseQuerySpec('sum(Points) as Player where score(Player, Points)')
+    ).toThrow(/fresh/i);
+    expect(() =>
+      parseQuerySpec('count(*) as Count where \\+ suspended(alice)')
+    ).toThrow(/positive relation/i);
+  });
+
+  it('allows count over a positive ground or zero-arity relation', () => {
+    expect(parseQuerySpec('count(*) as Count where works_at(alice, acme)')).toMatchObject({
+      kind: 'aggregate',
+      op: 'count',
+    });
+    expect(parseQuerySpec('count(*) as Count where initialized')).toMatchObject({
+      kind: 'aggregate',
+      op: 'count',
+    });
+  });
+
+  it('keeps aggregate syntax out of clauses and retraction-style relational parsing', () => {
+    expect(() =>
+      parseProgram('total(T) :- count(*) as T where item(X).')
+    ).toThrow(ParseError);
+    expect(() =>
+      parseQuery('count(*) as Count where employee(Person)')
+    ).toThrow(ParseError);
   });
 });
 

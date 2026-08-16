@@ -365,6 +365,12 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
       expect(() =>
         database.datalogQuery('allowed(X) :- edge(X, Y), \\+ blocked(Y).')
       ).toThrow(/portable Datalog engine, not the SQLite extension/i);
+      expect(() =>
+        database.datalogQuery('count(*) as Count where edge(X, Y)')
+      ).toThrow(/aggregation.*portable Datalog engine, not the SQLite extension/i);
+      expect(
+        database.datalogQuery("safe(X) :- edge(X, Y), X = 'count(*) as Count where'.")
+      ).toEqual([]);
       expect(() => database.datalogQuery('bad(X) :- edge(X, Y), X > 1e999.')).toThrow(
         /out of range/i
       );

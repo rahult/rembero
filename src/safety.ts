@@ -1,4 +1,5 @@
 export const MAX_INPUT_BYTES = 64 * 1024;
+export const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 export const MAX_NAMESPACE_COUNT = 32;
 export const REDACTED_SOURCE = '[sensitive source omitted]';
 
@@ -14,6 +15,29 @@ export function assertBoundedInput(value: string, label: string): void {
   if (bytes > MAX_INPUT_BYTES) {
     throw new Error(`${label} exceeds ${MAX_INPUT_BYTES} bytes`);
   }
+}
+
+export function assertBoundedOutput(
+  value: string,
+  label = 'output',
+  maxBytes = MAX_OUTPUT_BYTES
+): void {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new Error('output byte limit must be a non-negative safe integer');
+  }
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes > maxBytes) throw new Error(`${label} exceeds ${maxBytes} bytes`);
+}
+
+export function stringifyBoundedResult(
+  value: unknown,
+  label = 'result',
+  maxBytes = MAX_OUTPUT_BYTES
+): string {
+  const text = JSON.stringify(value, null, 2);
+  if (text === undefined) throw new Error(`${label} is not JSON serializable`);
+  assertBoundedOutput(text, label, maxBytes);
+  return text;
 }
 
 export function containsSensitiveText(value: string): boolean {

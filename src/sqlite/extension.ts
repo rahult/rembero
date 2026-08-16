@@ -24,19 +24,29 @@ export interface DatalogExplanation {
 
 function assertPortableEngineOnlySyntax(program: string): void {
   let quoted = false;
+  let visible = '';
   for (let index = 0; index < program.length; index++) {
     const char = program[index];
     if (quoted) {
-      if (char === "'" && program[index + 1] === "'") index++;
+      visible += ' ';
+      if (char === "'" && program[index + 1] === "'") {
+        visible += ' ';
+        index++;
+      }
       else if (char === "'") quoted = false;
       continue;
     }
     if (char === "'") {
       quoted = true;
+      visible += ' ';
       continue;
     }
     if (char === '%') {
-      while (index < program.length && program[index] !== '\n') index++;
+      while (index < program.length && program[index] !== '\n') {
+        visible += ' ';
+        index++;
+      }
+      visible += '\n';
       continue;
     }
     if (char === '\\' && program[index + 1] === '+') {
@@ -44,6 +54,16 @@ function assertPortableEngineOnlySyntax(program: string): void {
         'stratified negation is currently supported by the portable Datalog engine, not the SQLite extension'
       );
     }
+    visible += char;
+  }
+  if (
+    /\b(?:count|sum|min|max)\s*\([^)]*\)\s+as\s+[A-Z][a-zA-Z0-9_]*\s+where\b/.test(
+      visible
+    )
+  ) {
+    throw new Error(
+      'scalar aggregation is currently supported by the portable Datalog engine, not the SQLite extension'
+    );
   }
 }
 

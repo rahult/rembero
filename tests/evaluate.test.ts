@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   evaluate,
+  evaluateQuerySpec,
+  evaluateQuerySpecWithProof,
   evaluateWithProof,
   parseProgram,
   parseQuery,
+  parseQuerySpec,
   serializeTerm,
   EngineLimitError,
+  EngineSafetyError,
   type EvaluateOptions,
   type Bindings,
   materializeWithProof,
@@ -33,6 +37,14 @@ function explain(
   options?: EvaluateOptions
 ) {
   return evaluateWithProof(parseProgram(program), parseQuery(query), options);
+}
+
+function runSpec(program: string, query: string, options?: EvaluateOptions) {
+  return evaluateQuerySpec(parseProgram(program), parseQuerySpec(query), options);
+}
+
+function explainSpec(program: string, query: string, options?: EvaluateOptions) {
+  return evaluateQuerySpecWithProof(parseProgram(program), parseQuerySpec(query), options);
 }
 
 describe('evaluate: facts and joins', () => {
@@ -267,6 +279,166 @@ describe('evaluate: limits', () => {
       pair(X, Y) :- n(X), n(Y).
     `;
     expect(() => run(db, 'pair(X, Y)', { maxFacts: 10 })).toThrow(EngineLimitError);
+  });
+});
+
+describe('evaluate: scalar query aggregation', () => {
+  const employment = `
+    works_at(alice, acme).
+    works_at(bob, acme).
+    works_at(carol, initech).
+    suspended(bob).
+  `;
+
+  it('counts complete deduplicated result rows, including zero', () => {
+    expect(
+      runSpec(employment, 'count(*) as Count where works_at(Person, acme)')
+    ).toEqual([{ Count: { type: 'num', value: 2 } }]);
+    expect(
+      runSpec(employment, 'count(*) as Count where works_at(alice, acme)')
+    ).toEqual([{ Count: { type: 'num', value: 1 } }]);
+    expect(
+      runSpec(
+        employment,
+        'count(*) as Count where works_at(Person, nowhere)'
+      )
+    ).toEqual([{ Count: { type: 'num', value: 0 } }]);
+    expect(
+      runSpec(employment, 'count(*) as Count where works_at(Person, _), \\+ suspended(Person)')
+    ).toEqual([{ Count: { type: 'num', value: 2 } }]);
+  });
+
+  it('aggregates recursive query results rather than derivation multiplicity', () => {
+    const graph = `
+      edge(a, b). edge(b, c). edge(a, c). edge(c, d).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+    expect(runSpec(graph, 'count(*) as Count where path(a, Descendant)')).toEqual([
+      { Count: { type: 'num', value: 3 } },
+    ]);
+    expect(
+      runSpec(
+        'person(alice). tag(alice, one). tag(alice, two).',
+        'count(*) as Count where person(Person), tag(Person, _)'
+      )
+    ).toEqual([{ Count: { type: 'num', value: 2 } }]);
+    expect(
+      runSpec(employment, 'count(*) as Count where works_at(_, acme)')
+    ).toEqual([{ Count: { type: 'num', value: 2 } }]);
+  });
+
+  it('computes sum over numeric rows and returns no row for empty input', () => {
+    const scores = 'score(alice, 1.5). score(bob, -2). score(carol, 4).';
+    expect(runSpec(scores, 'sum(Points) as Total where score(Player, Points)')).toEqual([
+      { Total: { type: 'num', value: 3.5 } },
+    ]);
+    expect(
+      runSpec(scores, 'sum(Points) as Total where score(nobody, Points)')
+    ).toEqual([]);
+  });
+
+  it('computes numeric and atom extrema with deterministic tie positions', () => {
+    const values = 'score(a, 2). score(b, 1). score(c, 1). name(zoe). name(amy).';
+    expect(runSpec(values, 'min(Value) as Minimum where score(_, Value)')).toEqual([
+      { Minimum: { type: 'num', value: 1 } },
+    ]);
+    expect(runSpec(values, 'max(Value) as Maximum where score(_, Value)')).toEqual([
+      { Maximum: { type: 'num', value: 2 } },
+    ]);
+    expect(runSpec(values, 'min(Name) as First where name(Name)')).toEqual([
+      { First: { type: 'atom', value: 'amy' } },
+    ]);
+
+    const proof = explainSpec(values, 'min(Value) as Minimum where score(Person, Value)');
+    expect(proof[0].proofs[0]).toMatchObject({
+      aggregated: true,
+      op: 'min',
+      input: 'Value',
+      as: 'Minimum',
+      value: 1,
+      witnessPositions: [1, 2],
+    });
+  });
+
+  it('fails closed for invalid scalar domains and non-finite sums', () => {
+    expect(() =>
+      runSpec('value(1). value(one).', 'min(Value) as Minimum where value(Value)')
+    ).toThrow(EngineSafetyError);
+    expect(() =>
+      runSpec('value(one).', 'sum(Value) as Total where value(Value)')
+    ).toThrow(EngineSafetyError);
+    const huge = '9'.repeat(307);
+    const overflowing = Array.from(
+      { length: 20 },
+      (_, index) => `value(${index}, ${huge}).`
+    ).join(' ');
+    expect(() =>
+      runSpec(overflowing, 'sum(Value) as Total where value(Id, Value)')
+    ).toThrow(EngineSafetyError);
+  });
+
+  it('does not silently reuse maxRows as the aggregate input cap', () => {
+    const facts = Array.from({ length: 1005 }, (_, index) => `item(${index}).`).join(' ');
+    expect(
+      runSpec(facts, 'count(*) as Count where item(Item)', { maxRows: 1 })
+    ).toEqual([{ Count: { type: 'num', value: 1005 } }]);
+  });
+
+  it('fails closed when aggregate input exceeds its dedicated cap', () => {
+    expect(() =>
+      runSpec('item(1). item(2). item(3).', 'count(*) as Count where item(Item)', {
+        maxAggregateRows: 2,
+      })
+    ).toThrow(/aggregate input exceeded 2/i);
+  });
+
+  it('emits one bounded aggregate proof with ordered contributor evidence', () => {
+    const result = explainSpec(
+      employment,
+      'count(*) as Count where works_at(Person, acme)'
+    );
+    expect(result).toEqual([
+      {
+        bindings: { Count: { type: 'num', value: 2 } },
+        proofs: [
+          {
+            aggregated: true,
+            op: 'count',
+            input: '*',
+            as: 'Count',
+            value: 2,
+            contributors: [
+              {
+                bindings: { Person: { type: 'atom', value: 'alice' } },
+                proofs: [{ predicate: 'works_at', values: ['alice', 'acme'] }],
+              },
+              {
+                bindings: { Person: { type: 'atom', value: 'bob' } },
+                proofs: [{ predicate: 'works_at', values: ['bob', 'acme'] }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    expect(() =>
+      explainSpec(employment, 'count(*) as Count where works_at(Person, acme)', {
+        maxProofNodes: 2,
+      })
+    ).toThrow(EngineLimitError);
+  });
+
+  it('separates exact aggregate evaluation from the smaller explanation cap', () => {
+    const facts = Array.from({ length: 257 }, (_, index) => `item(${index}).`).join(' ');
+    const query = 'count(*) as Count where item(Item)';
+    expect(runSpec(facts, query)).toEqual([{ Count: { type: 'num', value: 257 } }]);
+    expect(() => explainSpec(facts, query)).toThrow(
+      /aggregate proof exceeded 256 contributor rows/i
+    );
+    expect(
+      explainSpec(facts, query, { maxAggregateProofRows: 257 })[0].proofs[0]
+    ).toMatchObject({ aggregated: true, value: 257 });
   });
 });
 

@@ -1,10 +1,14 @@
 export {
   type Clause,
+  type AggregateOperator,
+  type AggregateQuerySpec,
   type CmpOp,
   type Comparison,
   type Goal,
   type Literal,
   type Negation,
+  type QuerySpec,
+  type RelationalQuerySpec,
   type Term,
   canonicalKey,
   isComparison,
@@ -12,25 +16,32 @@ export {
   predKey,
   serializeClause,
   serializeGoal,
+  serializeQuerySpec,
   serializeTerm,
 } from './ast.js';
 export {
   type AbsenceProof,
+  type AggregateContribution,
+  type AggregateProof,
   type Bindings,
   type DerivationProof,
   type ExplainedBindings,
+  type ExplainedQueryBindings,
   type EvaluateOptions,
   type MaterializedFactWithProof,
   type ProofStep,
+  type QueryProof,
   EngineLimitError,
   EngineSafetyError,
   evaluate,
+  evaluateQuerySpec,
+  evaluateQuerySpecWithProof,
   evaluateWithProof,
   literalMatches,
   materializeWithProof,
 } from './evaluate.js';
 export { ParseError } from './lexer.js';
-export { parseProgram, parseQuery } from './parser.js';
+export { parseProgram, parseQuery, parseQuerySpec } from './parser.js';
 export {
   StratificationError,
   stratifyProgram,

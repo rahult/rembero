@@ -1,4 +1,4 @@
-import { isComparison, isNegation, parseQuery, type Goal, type Term } from '../engine/index.js';
+import { isComparison, isNegation, parseQuerySpec, type Goal, type Term } from '../engine/index.js';
 import type { QueryPromptVariant } from '../llm/prompts.js';
 
 export const RECALL_EVAL_PROGRAM = `
@@ -251,9 +251,13 @@ function visitGoal(goal: Goal, order: string[], seen: Set<string>): void {
 }
 
 export function bindingRows(bindings: Record<string, string>[], query: string): string[][] {
+  const spec = parseQuerySpec(query);
+  if (spec.kind === 'aggregate') {
+    return bindings.map((binding) => (spec.as in binding ? [binding[spec.as]] : []));
+  }
   const order: string[] = [];
   const seen = new Set<string>();
-  for (const goal of parseQuery(query)) visitGoal(goal, order, seen);
+  for (const goal of spec.goals) visitGoal(goal, order, seen);
   return bindings.map((binding) =>
     order.filter((variable) => variable in binding).map((variable) => binding[variable])
   );

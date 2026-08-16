@@ -16,6 +16,8 @@ An explanation contains:
 - the query bindings;
 - the first deterministic derivation proof for every relational query goal;
 - the query-local rule ordinals and clauses used by those proofs;
+- exact scalar aggregate proofs with every ordered contributor row when the query uses
+  `count`, `sum`, `min`, or `max`;
 - source metadata for asserted facts: namespace, operation ID, timestamp, and the
   original natural-language statement when the fact came from `remember` (credential-
   like or financial identifiers are redacted before journaling);
@@ -25,6 +27,11 @@ Successful `\+ literal` goals appear as atomic `absence` nodes. They record the 
 pattern and completed lower stratum that was checked, but never claim a stored source or
 enumerate non-matches. A failed negative goal yields no result and therefore no invented
 failure proof.
+
+Scalar query reductions appear as `aggregate` nodes. Ordered `input` edges connect the
+aggregate to contributor result rows, whose ordinary proofs retain their sources.
+`min`/`max` add `witness` edges for every tied extremum. The aggregate node itself never
+claims a source because it is a deterministic calculation over query results.
 
 ## Why a hypergraph
 
@@ -54,6 +61,8 @@ proof and graph objects.
   order. Only that witness source is attached to the proof.
 - Comparisons filter a proof but do not create claim nodes.
 - Successful negated literals create source-free absence nodes in body order.
+- Scalar aggregates inspect the complete result set up to `maxAggregateRows`; exceeding
+  the cap fails instead of returning a partial value.
 - Derivation, row count, fact count, iteration count, and proof depth remain bounded and
   fail closed when their configured caps are exceeded.
 - Namespace wildcard reads are sorted before evaluation so filesystem enumeration order

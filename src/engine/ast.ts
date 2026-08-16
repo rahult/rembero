@@ -28,6 +28,25 @@ export interface Clause {
   body: Goal[];
 }
 
+export type AggregateOperator = 'count' | 'sum' | 'min' | 'max';
+
+export interface RelationalQuerySpec {
+  kind: 'relational';
+  goals: Goal[];
+}
+
+export interface AggregateQuerySpec {
+  kind: 'aggregate';
+  op: AggregateOperator;
+  /** Count consumes complete result rows; other operators name a bound input variable. */
+  input: '*' | string;
+  /** Fresh output variable receiving the scalar result. */
+  as: string;
+  goals: Goal[];
+}
+
+export type QuerySpec = RelationalQuerySpec | AggregateQuerySpec;
+
 export function isComparison(goal: Goal): goal is Comparison {
   return 'op' in goal;
 }
@@ -68,6 +87,12 @@ export function serializeClause(clause: Clause): string {
   const head = serializeGoal(clause.head);
   if (clause.body.length === 0) return `${head}.`;
   return `${head} :- ${clause.body.map(serializeGoal).join(', ')}.`;
+}
+
+export function serializeQuerySpec(query: QuerySpec): string {
+  const goals = query.goals.map(serializeGoal).join(', ');
+  if (query.kind === 'relational') return goals;
+  return `${query.op}(${query.input}) as ${query.as} where ${goals}`;
 }
 
 /**

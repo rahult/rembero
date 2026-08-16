@@ -31,6 +31,17 @@ try {
     ['install', '--ignore-scripts', '--no-audit', '--no-fund', join(directory, archive)],
     { cwd: directory }
   );
+  run(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      "import { evaluateQuerySpec, parseProgram, parseQuerySpec } from 'rembero'; " +
+        "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
+        "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed');",
+    ],
+    { cwd: directory }
+  );
   const installedCli = join(directory, 'node_modules', 'rembero', 'dist', 'cli.js');
   const extensionPath = run(process.execPath, [installedCli, 'sqlite-build'], {
     cwd: directory,
@@ -130,8 +141,33 @@ try {
   ) {
     throw new Error(`unexpected packaged negation graph: ${absenceOutput}`);
   }
+  const aggregateOutput = run(
+    process.execPath,
+    [installedCli, 'query', 'count(*) as Count where employee(Person)'],
+    { cwd: directory, env: memoryEnv }
+  );
+  const aggregateRows = JSON.parse(aggregateOutput);
+  if (aggregateRows.length !== 1 || aggregateRows[0].Count !== '2') {
+    throw new Error(`unexpected packaged aggregate result: ${aggregateOutput}`);
+  }
+  const aggregateExplainOutput = run(
+    process.execPath,
+    [installedCli, 'explain', 'max(Person) as Last where employee(Person)'],
+    { cwd: directory, env: memoryEnv }
+  );
+  const aggregateGraph = JSON.parse(aggregateExplainOutput);
+  if (
+    aggregateGraph.rows[0]?.bindings.Last !== 'bob' ||
+    !aggregateGraph.graph.nodes.some(
+      ({ kind, op, contributorCount }) =>
+        kind === 'aggregate' && op === 'max' && contributorCount === 2
+    ) ||
+    aggregateGraph.graph.edges.filter(({ kind }) => kind === 'witness').length !== 1
+  ) {
+    throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
+  }
   console.log(
-    'packed install, native recursion, personal proofs, stratified negation, and explanation graph passed'
+    'packed install, native recursion, personal proofs, stratified negation, scalar aggregation, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

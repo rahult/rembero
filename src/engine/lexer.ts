@@ -14,6 +14,7 @@ export type TokenKind =
   | '('
   | ')'
   | ','
+  | '*'
   | '.'
   | ':-'
   | '?-'
@@ -100,7 +101,9 @@ export function tokenize(input: string): Token[] {
         while (j < input.length && /[0-9]/.test(input[j])) j++;
       }
       const text = input.slice(i, j);
-      push('num', text, Number(text));
+      const value = Number(text);
+      if (!Number.isFinite(value)) throw new ParseError(`number '${text}' is out of range`, line);
+      push('num', text, value);
       i = j;
       continue;
     }
@@ -125,7 +128,7 @@ export function tokenize(input: string): Token[] {
       i += op.length;
       continue;
     }
-    if (ch === '(' || ch === ')' || ch === ',' || ch === '.') {
+    if (ch === '(' || ch === ')' || ch === ',' || ch === '.' || ch === '*') {
       push(ch, ch);
       i++;
       continue;

@@ -227,6 +227,63 @@ describe('recallQuestion', () => {
     expect(llm.calls[0][0].content).toContain('Datalog variables represent requested unknown');
   });
 
+  it('generates exact count aggregation and treats zero as a real result', async () => {
+    const llm = new ScriptedLlm([
+      '?- count(*) as Count where works_at(Person, nowhere).',
+    ]);
+    const result = await retrieveQuestion(
+      { store, llm },
+      'How many people work at Nowhere?',
+      ['default'],
+      { explain: true }
+    );
+
+    expect(result).toMatchObject({
+      query: 'count(*) as Count where works_at(Person, nowhere)',
+      bindings: [{ Count: '0' }],
+    });
+    expect(result.explanation?.graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'aggregate',
+          op: 'count',
+          value: 0,
+          contributorCount: 0,
+        }),
+      ])
+    );
+    expect(llm.calls).toHaveLength(1);
+    expect(llm.calls[0][0].content).toContain('count(*) as Count where');
+  });
+
+  it('retries an aggregate the question did not explicitly request', async () => {
+    const llm = new ScriptedLlm([
+      '?- count(*) as Count where works_at(Person, acme).',
+      '?- works_at(Person, acme).',
+    ]);
+    const result = await retrieveQuestion({ store, llm }, 'Who works at Acme?');
+
+    expect(result.bindings).toEqual([{ Person: 'rahul' }, { Person: 'maya' }]);
+    expect(llm.calls).toHaveLength(2);
+    expect(llm.calls[1].at(-1)?.content).toContain(
+      'requires the question to explicitly request'
+    );
+  });
+
+  it('retries a relational query when the question explicitly requests a count', async () => {
+    const llm = new ScriptedLlm([
+      '?- works_at(Person, acme).',
+      '?- count(*) as Count where works_at(Person, acme).',
+    ]);
+    const result = await retrieveQuestion({ store, llm }, 'How many people work at Acme?');
+
+    expect(result.bindings).toEqual([{ Count: '2' }]);
+    expect(llm.calls).toHaveLength(2);
+    expect(llm.calls[1].at(-1)?.content).toContain(
+      'question explicitly requests count aggregation'
+    );
+  });
+
   it('can generate and explain a safe closed-world negation query', async () => {
     const employment = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-negation-')));
     employment.assert('default', 'employee(alice). employee(bob). suspended(bob).', {

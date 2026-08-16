@@ -1,6 +1,6 @@
 import {
-  evaluate,
-  parseQuery,
+  evaluateQuerySpec,
+  parseQuerySpec,
   predKey,
   serializeClause,
   serializeTerm,
@@ -74,7 +74,7 @@ export function queryTool(
 ): { bindings: Record<string, string>[] } {
   assertBoundedInput(args.query, 'query');
   const clauses = deps.store.clausesFor(namespacesOrDefault(args.namespaces));
-  const bindings = evaluate(clauses, parseQuery(args.query)).map((b) =>
+  const bindings = evaluateQuerySpec(clauses, parseQuerySpec(args.query)).map((b) =>
     Object.fromEntries(Object.entries(b).map(([name, term]) => [name, serializeTerm(term)]))
   );
   return { bindings };

@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import type { PipelineDeps } from '../llm/pipeline.js';
-import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT } from '../safety.js';
+import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT, stringifyBoundedResult } from '../safety.js';
 import {
   assertFactsTool,
   explainQueryTool,
@@ -28,7 +28,7 @@ const boundedText = (description?: string) => {
 };
 
 function asContent(result: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+  return { content: [{ type: 'text' as const, text: stringifyBoundedResult(result, 'MCP result') }] };
 }
 
 function asError(e: unknown) {
@@ -37,7 +37,7 @@ function asError(e: unknown) {
 }
 
 export function createServer(deps: PipelineDeps): McpServer {
-  const server = new McpServer({ name: 'rembero', version: '0.2.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.3.0' });
 
   server.registerTool(
     'remember',
@@ -112,7 +112,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Query',
       description:
-        "Run a raw Datalog query and get variable bindings, e.g. 'works_at(X, acme)', 'works_at(X, C), lives_in(X, sydney)', or 'employee(X), \\+ suspended(X)'.",
+        "Run a raw Datalog query and get variable bindings, e.g. 'works_at(X, acme)', 'employee(X), \\+ suspended(X)', or 'count(*) as Count where works_at(Person, acme)'.",
       inputSchema: { query: boundedText(), namespaces: namespacesField },
     },
     async ({ query, namespaces }) => {
@@ -129,7 +129,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Explain query',
       description:
-        'Run a raw Datalog query and return bindings, deterministic first-witness derivation proofs, durable memory sources, and a query-scoped knowledge graph.',
+        'Run a raw Datalog query and return bindings, deterministic derivation or aggregate proofs, durable memory sources, and a query-scoped knowledge graph.',
       inputSchema: { query: boundedText(), namespaces: namespacesField },
     },
     async ({ query, namespaces }) => {

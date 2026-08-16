@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { explainKnowledge } from '../src/knowledge/graph.js';
+import { parseProgram } from '../src/engine/index.js';
 import { MemoryStore } from '../src/store/store.js';
 
 const program = `
@@ -176,6 +177,95 @@ describe('explainable personal knowledge graph', () => {
       )
     ).toBe(true);
     expect(absence).not.toHaveProperty('sources');
+  });
+
+  it('projects scalar aggregation through contributor rows and sourced claims', () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-aggregate-')));
+    store.assert('work', 'works_at(alice, acme). works_at(bob, acme).', {
+      opId: 'work-source',
+      sourceText: 'Alice and Bob work at Acme.',
+    });
+
+    const result = explainKnowledge(
+      store.load('work'),
+      'count(*) as Count where works_at(Person, acme)',
+      store.sourcesFor(['work'])
+    );
+    const aggregate = result.graph.nodes.find((node) => node.kind === 'aggregate');
+
+    expect(result.rows).toEqual([
+      {
+        bindings: { Count: '2' },
+        proofs: [
+          expect.objectContaining({
+            aggregated: true,
+            op: 'count',
+            input: '*',
+            as: 'Count',
+            value: 2,
+            contributors: [
+              expect.objectContaining({
+                bindings: { Person: 'alice' },
+                proofs: [
+                  expect.objectContaining({
+                    predicate: 'works_at',
+                    sources: [expect.objectContaining({ opId: 'work-source' })],
+                  }),
+                ],
+              }),
+              expect.objectContaining({ bindings: { Person: 'bob' } }),
+            ],
+          }),
+        ],
+      },
+    ]);
+    expect(aggregate).toMatchObject({
+      kind: 'aggregate',
+      op: 'count',
+      value: 2,
+      contributorCount: 2,
+    });
+    expect(
+      result.graph.edges.filter(
+        (edge) => edge.kind === 'input' && edge.from === aggregate?.id
+      ).map((edge) => edge.position)
+    ).toEqual([0, 1]);
+    expect(
+      result.graph.nodes.filter((node) => node.kind === 'result')
+    ).toHaveLength(3);
+  });
+
+  it('marks every deterministic min/max tie as an aggregate witness', () => {
+    const result = explainKnowledge(
+      parseProgram('score(a, 1). score(b, 1). score(c, 2).'),
+      'min(Value) as Minimum where score(Person, Value)'
+    );
+    const aggregate = result.graph.nodes.find((node) => node.kind === 'aggregate');
+    expect(
+      result.graph.edges.filter(
+        (edge) => edge.kind === 'witness' && edge.from === aggregate?.id
+      ).map((edge) => edge.position)
+    ).toEqual([0, 1]);
+  });
+
+  it('keeps wildcard contributors distinct even when their exposed bindings match', () => {
+    const result = explainKnowledge(
+      parseProgram('employee(alice). employee(bob).'),
+      'count(*) as Count where employee(_)'
+    );
+    const aggregate = result.graph.nodes.find((node) => node.kind === 'aggregate');
+    const inputs = result.graph.edges.filter(
+      (edge) => edge.kind === 'input' && edge.from === aggregate?.id
+    );
+
+    expect(result.rows[0].bindings).toEqual({ Count: '2' });
+    expect(inputs).toHaveLength(2);
+    expect(new Set(inputs.map((edge) => edge.to)).size).toBe(2);
+    expect(
+      result.graph.nodes.filter(
+        (node) => node.kind === 'result' && Object.keys(node.bindings).length === 0
+      )
+    ).toHaveLength(2);
   });
 
   it('exposes the same graph through the built CLI', () => {

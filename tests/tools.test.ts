@@ -60,6 +60,33 @@ describe('MCP tool handlers', () => {
     expect(result.bindings).toEqual([{ X: 'b' }]);
   });
 
+  it('query and explain_query expose exact scalar aggregation', () => {
+    store.assert('default', 'works_at(alice, acme). works_at(bob, acme).', {
+      opId: 'aggregate-source',
+    });
+    const query = 'count(*) as Count where works_at(Person, acme)';
+
+    expect(queryTool({ store }, { query })).toEqual({ bindings: [{ Count: '2' }] });
+    const explained = explainQueryTool({ store }, { query });
+    expect(explained.rows[0]).toMatchObject({
+      bindings: { Count: '2' },
+      proofs: [
+        {
+          aggregated: true,
+          op: 'count',
+          value: 2,
+          contributors: [
+            { bindings: { Person: 'alice' } },
+            { bindings: { Person: 'bob' } },
+          ],
+        },
+      ],
+    });
+    expect(explained.graph.nodes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'aggregate', value: 2 })])
+    );
+  });
+
   it('rejects oversized inputs and namespace fan-out before evaluation', () => {
     expect(() =>
       queryTool({ store }, { query: 'x'.repeat(MAX_INPUT_BYTES + 1) })

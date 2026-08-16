@@ -1,13 +1,17 @@
+import { createHash } from 'node:crypto';
 import {
   type AbsenceProof,
+  type AggregateProof,
   type Bindings,
   type Clause,
   type DerivationProof,
+  type EvaluateOptions,
   type ProofStep,
+  type QueryProof,
   type Term,
   canonicalKey,
-  evaluateWithProof,
-  parseQuery,
+  evaluateQuerySpecWithProof,
+  parseQuerySpec,
   serializeClause,
   serializeTerm,
 } from '../engine/index.js';
@@ -21,9 +25,18 @@ export interface SourcedDerivationProof extends Omit<DerivationProof, 'because'>
 export type SourcedAbsenceProof = AbsenceProof;
 export type SourcedProofStep = SourcedDerivationProof | SourcedAbsenceProof;
 
+export interface SourcedAggregateProof extends Omit<AggregateProof, 'contributors'> {
+  contributors: Array<{
+    bindings: Record<string, string>;
+    proofs: SourcedProofStep[];
+  }>;
+}
+
+export type SourcedQueryProof = SourcedProofStep | SourcedAggregateProof;
+
 export interface ExplainedKnowledgeRow {
   bindings: Record<string, string>;
-  proofs: SourcedProofStep[];
+  proofs: SourcedQueryProof[];
 }
 
 export interface ExplanationRule {
@@ -62,15 +75,26 @@ export interface AbsenceGraphNode {
   stratum: number;
 }
 
+export interface AggregateGraphNode {
+  id: string;
+  kind: 'aggregate';
+  op: AggregateProof['op'];
+  input: '*' | string;
+  as: string;
+  value: string | number;
+  contributorCount: number;
+}
+
 export type ExplanationGraphNode =
   | ResultGraphNode
   | ClaimGraphNode
   | EntityGraphNode
-  | AbsenceGraphNode;
+  | AbsenceGraphNode
+  | AggregateGraphNode;
 
 export interface ExplanationGraphEdge {
   id: string;
-  kind: 'answers' | 'because' | 'arg';
+  kind: 'answers' | 'because' | 'arg' | 'input' | 'witness';
   from: string;
   to: string;
   position?: number;
@@ -100,6 +124,12 @@ function isAbsenceProof(proof: ProofStep | SourcedProofStep): proof is AbsencePr
   return 'negated' in proof;
 }
 
+function isAggregateProof(
+  proof: QueryProof | SourcedQueryProof
+): proof is AggregateProof | SourcedAggregateProof {
+  return 'aggregated' in proof;
+}
+
 function addSources(
   proof: ProofStep,
   sourceIndex: Map<string, MemorySource[]>
@@ -117,6 +147,27 @@ function addSources(
     ...(witnessSources === undefined || witnessSources.length === 0
       ? {}
       : { sources: witnessSources }),
+  };
+}
+
+function addQuerySources(
+  proof: QueryProof,
+  sourceIndex: Map<string, MemorySource[]>
+): SourcedQueryProof {
+  if (!isAggregateProof(proof)) return addSources(proof, sourceIndex);
+  return {
+    aggregated: true,
+    op: proof.op,
+    input: proof.input,
+    as: proof.as,
+    value: proof.value,
+    contributors: proof.contributors.map((contributor) => ({
+      bindings: bindingStrings(contributor.bindings),
+      proofs: contributor.proofs.map((child) => addSources(child, sourceIndex)),
+    })),
+    ...(proof.witnessPositions === undefined
+      ? {}
+      : { witnessPositions: [...proof.witnessPositions] }),
   };
 }
 
@@ -153,8 +204,32 @@ function absenceId(proof: SourcedAbsenceProof): string {
   ])}`;
 }
 
+function aggregateId(proof: SourcedAggregateProof): string {
+  const hash = createHash('sha256');
+  hash.update(JSON.stringify([proof.op, proof.input, proof.as, typedValue(proof.value)]));
+  for (const contributor of proof.contributors) {
+    hash.update(JSON.stringify(Object.entries(contributor.bindings)));
+    hash.update(
+      JSON.stringify(
+        contributor.proofs.map((child) =>
+          isAbsenceProof(child) ? absenceId(child) : claimId(child)
+        )
+      )
+    );
+  }
+  return `aggregate:${proof.op}:${hash.digest('hex')}`;
+}
+
 function resultId(bindings: Record<string, string>): string {
   return `result:${JSON.stringify(Object.entries(bindings))}`;
+}
+
+function contributorResultId(
+  aggregate: string,
+  position: number,
+  bindings: Record<string, string>
+): string {
+  return `result:input:${JSON.stringify([aggregate, position, Object.entries(bindings)])}`;
 }
 
 function edge(
@@ -227,11 +302,48 @@ export function buildExplanationGraph(rows: ExplainedKnowledgeRow[]): Explanatio
     return id;
   };
 
+  const addAggregate = (proof: SourcedAggregateProof): string => {
+    const id = aggregateId(proof);
+    nodes.set(id, {
+      id,
+      kind: 'aggregate',
+      op: proof.op,
+      input: proof.input,
+      as: proof.as,
+      value: proof.value,
+      contributorCount: proof.contributors.length,
+    });
+    const witnesses = new Set(proof.witnessPositions ?? []);
+    for (const [position, contributor] of proof.contributors.entries()) {
+      const contributorId = contributorResultId(id, position, contributor.bindings);
+      nodes.set(contributorId, {
+        id: contributorId,
+        kind: 'result',
+        bindings: contributor.bindings,
+      });
+      for (const [proofPosition, child] of contributor.proofs.entries()) {
+        addEdge(edge('answers', contributorId, addProof(child), proofPosition));
+      }
+      addEdge(edge('input', id, contributorId, position));
+      if (witnesses.has(position)) {
+        addEdge(edge('witness', id, contributorId, position));
+      }
+    }
+    return id;
+  };
+
   for (const row of rows) {
     const id = resultId(row.bindings);
     nodes.set(id, { id, kind: 'result', bindings: row.bindings });
     for (const [position, proof] of row.proofs.entries()) {
-      addEdge(edge('answers', id, addProof(proof), position));
+      addEdge(
+        edge(
+          'answers',
+          id,
+          isAggregateProof(proof) ? addAggregate(proof) : addProof(proof),
+          position
+        )
+      );
     }
   }
 
@@ -244,12 +356,13 @@ export function buildExplanationGraph(rows: ExplainedKnowledgeRow[]): Explanatio
 export function explainKnowledge(
   clauses: Clause[],
   query: string,
-  sourceIndex: Map<string, MemorySource[]> = new Map()
+  sourceIndex: Map<string, MemorySource[]> = new Map(),
+  options: EvaluateOptions = {}
 ): ExplainKnowledgeResult {
-  const explained = evaluateWithProof(clauses, parseQuery(query));
+  const explained = evaluateQuerySpecWithProof(clauses, parseQuerySpec(query), options);
   const rows = explained.map(({ bindings, proofs }) => ({
     bindings: bindingStrings(bindings),
-    proofs: proofs.map((proof) => addSources(proof, sourceIndex)),
+    proofs: proofs.map((proof) => addQuerySources(proof, sourceIndex)),
   }));
   return {
     rows,

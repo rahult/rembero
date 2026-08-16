@@ -73,6 +73,7 @@ node dist/cli.js recall   "Who is Rahul's dentist?"
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
 node dist/cli.js query    'employee(X), \+ suspended(X)' # closed-world negation
+node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
 node dist/cli.js forget   'dentist(rahul, _)'
 node dist/cli.js list
@@ -179,9 +180,9 @@ possible proofs. Programs are limited to 64 KiB and 16 rules; evaluation is capp
 100,000 loaded base rows, 10,000 derived rows, 1,000 fixpoint rounds, proof depth 128, and
 10 million tuple checks, and 16 MiB of output. Unsafe, malformed, mixed-head,
 arity-inconsistent, or cap-exceeding programs fail closed. Extension loading is disabled
-again immediately after the library is loaded. Stratified negation currently belongs to
-the portable `.dl` engine; SQLite entry points reject it explicitly until native parity
-is implemented.
+again immediately after the library is loaded. Stratified negation and scalar aggregate
+queries currently belong to the portable `.dl` engine; SQLite entry points reject them
+explicitly until native parity is implemented.
 
 ## The Datalog dialect
 
@@ -193,7 +194,11 @@ is implemented.
   Variables in comparisons and negated literals must be bound by an earlier positive
   goal. Recursive dependency cycles containing negation are rejected.
 - Comparisons in rule bodies and queries: `=`, `!=`, `<`, `>`, `<=`, `>=`.
-- No arithmetic or aggregation yet. Every query terminates: evaluation is stratified,
+- Query-level scalar aggregation (never in rules):
+  `count(*) as Count where works_at(Person, acme)`, plus `sum(Value)`, `min(Value)`,
+  and `max(Value)`. Aggregation consumes the complete logical solution set and fails
+  closed at its dedicated input cap rather than silently reusing the normal row limit.
+- No arithmetic expressions yet. Every query terminates: evaluation is stratified,
   semi-naive bottom-up over a finite fact universe, with belt-and-braces derivation caps.
 - Safety: facts must be ground; every head variable must appear in a positive body literal
   (range restriction). LLM output that violates this is rejected, retried once with the
@@ -228,5 +233,7 @@ answerability accuracy. It can also compare OpenRouter models or emit JSON; see
 [docs/EVALS.md](docs/EVALS.md).
 
 See [the stratified-negation contract](docs/STRATIFIED-NEGATION.md) for safety,
-closed-world, proof, and SQLite-boundary details. TypeScript consumers upgrading from
-0.1 should also read [the 0.2 migration note](docs/MIGRATING-0.2.md).
+closed-world, proof, and SQLite-boundary details, and [the scalar aggregation
+contract](docs/QUERY-AGGREGATION.md) for exact reduction and explanation semantics.
+TypeScript consumers should read the [0.2](docs/MIGRATING-0.2.md) and
+[0.3](docs/MIGRATING-0.3.md) migration notes as applicable.

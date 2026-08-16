@@ -7,7 +7,12 @@ import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { serveStdio } from './mcp/server.js';
 import { explainQueryTool, forgetTool, listMemoriesTool, queryTool } from './mcp/tools.js';
 import { MemoryStore } from './store/store.js';
-import { MAX_INPUT_BYTES, llmNamespaceAllowlistFromEnv } from './safety.js';
+import {
+  MAX_INPUT_BYTES,
+  assertBoundedOutput,
+  llmNamespaceAllowlistFromEnv,
+  stringifyBoundedResult,
+} from './safety.js';
 import { buildSqliteExtension, openDatalogDatabase } from './sqlite/extension.js';
 
 const USAGE = `rembero — logic-based memory for chats and agents
@@ -78,7 +83,7 @@ async function main(): Promise<void> {
         text,
         args.namespace
       );
-      console.log(JSON.stringify(result, null, 2));
+      console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }
     case 'recall': {
@@ -87,6 +92,7 @@ async function main(): Promise<void> {
         text,
         namespaces
       );
+      assertBoundedOutput(result.answer, 'CLI recall answer');
       console.log(result.answer);
       console.log(`  (query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length})`);
       return;
@@ -98,17 +104,17 @@ async function main(): Promise<void> {
         namespaces,
         { explain: true }
       );
-      console.log(JSON.stringify(result, null, 2));
+      console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }
     case 'query': {
       const result = queryTool({ store }, { query: text, namespaces });
-      console.log(JSON.stringify(result.bindings, null, 2));
+      console.log(stringifyBoundedResult(result.bindings, 'CLI result'));
       return;
     }
     case 'explain': {
       const result = explainQueryTool({ store }, { query: text, namespaces });
-      console.log(JSON.stringify(result, null, 2));
+      console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }
     case 'forget': {
@@ -158,12 +164,11 @@ async function main(): Promise<void> {
       try {
         const result = command === 'sqlite-sql'
           ? database.datalogSql(rule)
-          : JSON.stringify(
+          : stringifyBoundedResult(
               command === 'sqlite-explain'
                 ? database.datalogExplain(rule)
                 : database.datalogQuery(rule),
-              null,
-              2
+              'CLI result'
             );
         console.log(result);
       } finally {
@@ -173,7 +178,7 @@ async function main(): Promise<void> {
     }
     case 'list': {
       const result = listMemoriesTool({ store }, { namespaces });
-      console.log(JSON.stringify(result, null, 2));
+      console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }
     default:

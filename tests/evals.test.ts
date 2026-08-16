@@ -67,6 +67,12 @@ describe('recall eval corpus', () => {
       )
     ).toEqual([['dr_chen', "'New York'"]]);
     expect(bindingRows([{ Who: 'mira' }], 'colleague(rahul, Who)')).toEqual([['mira']]);
+    expect(
+      bindingRows(
+        [{ Count: '3' }],
+        'count(*) as Count where colleague(rahul, Person)'
+      )
+    ).toEqual([['3']]);
   });
 });
 

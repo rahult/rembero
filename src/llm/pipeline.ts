@@ -2,13 +2,16 @@ import {
   type Bindings,
   type Clause,
   type Goal,
-  evaluate,
+  type QuerySpec,
+  evaluateQuerySpec,
   isComparison,
   isNegation,
   parseProgram,
   parseQuery,
+  parseQuerySpec,
   serializeClause,
   serializeGoal,
+  serializeQuerySpec,
   serializeTerm,
 } from '../engine/index.js';
 import type { MemoryStore } from '../store/store.js';
@@ -242,6 +245,30 @@ function validateQueryPredicates(goals: Goal[], clauses: Clause[], question: str
   }
 }
 
+const AGGREGATE_INTENT: Record<'count' | 'sum' | 'min' | 'max', RegExp> = {
+  count: /\b(?:how many|number of|count)\b/i,
+  sum: /\b(?:sum|total)\b/i,
+  min: /\b(?:min(?:imum)?|smallest|least|lowest|earliest|youngest)\b/i,
+  max: /\b(?:max(?:imum)?|largest|greatest|highest|latest|oldest|most)\b/i,
+};
+
+function validateQuerySpec(query: QuerySpec, clauses: Clause[], question: string): void {
+  validateQueryPredicates(query.goals, clauses, question);
+  const requested = Object.entries(AGGREGATE_INTENT).find(([, pattern]) =>
+    pattern.test(question)
+  )?.[0];
+  if (query.kind === 'relational' && requested !== undefined) {
+    throw new Error(
+      `question explicitly requests ${requested} aggregation; emit the scalar aggregate query form`
+    );
+  }
+  if (query.kind === 'aggregate' && !AGGREGATE_INTENT[query.op].test(question)) {
+    throw new Error(
+      `${query.op} aggregation requires the question to explicitly request that aggregate`
+    );
+  }
+}
+
 const UNANSWERABLE_RE = new RegExp(`^(\\?-)?\\s*${UNANSWERABLE}\\s*\\.?$`);
 
 export async function retrieveQuestion(
@@ -265,13 +292,13 @@ export async function retrieveQuestion(
     },
     { role: 'user', content: question },
   ];
-  const validateResponse = (response: string): Goal[] | null => {
+  const validateResponse = (response: string): QuerySpec | null => {
     if (UNANSWERABLE_RE.test(response)) return null;
-    const parsed = parseQuery(response);
-    validateQueryPredicates(parsed, clauses, question);
+    const parsed = parseQuerySpec(response);
+    validateQuerySpec(parsed, clauses, question);
     return parsed;
   };
-  const evaluateQuery = (goals: Goal[], queryText: string): RetrievalResult => {
+  const evaluateQuery = (query: QuerySpec, queryText: string): RetrievalResult => {
     if (options.explain) {
       const explanation = explainKnowledge(
         clauses,
@@ -286,7 +313,7 @@ export async function retrieveQuestion(
     }
     return {
       query: queryText,
-      bindings: evaluate(clauses, goals).map((b: Bindings) =>
+      bindings: evaluateQuerySpec(clauses, query).map((b: Bindings) =>
         Object.fromEntries(
           Object.entries(b).map(([name, term]) => [name, serializeTerm(term)])
         )
@@ -294,11 +321,11 @@ export async function retrieveQuestion(
     };
   };
 
-  let goals = await completeWithRetry(deps.llm, messages, validateResponse);
-  if (goals === null) return { query: null, bindings: [] };
+  let query = await completeWithRetry(deps.llm, messages, validateResponse);
+  if (query === null) return { query: null, bindings: [] };
 
-  let queryText = goals.map(serializeGoal).join(', ');
-  let retrieval = evaluateQuery(goals, queryText);
+  let queryText = serializeQuerySpec(query);
+  let retrieval = evaluateQuery(query, queryText);
 
   // one shot at an alternative query before giving up on an empty result
   if (retrieval.bindings.length === 0) {
@@ -310,10 +337,10 @@ export async function retrieveQuestion(
         content: `The query ${queryText} returned no results. If it correctly expresses the question, repeat it unchanged: an empty result is valid evidence that no stored fact matches. Try ONE alternative only if the first query mistranslated the question. Output exactly ?- ${UNANSWERABLE}. only when the schema cannot express the question at all, never merely because the result was empty.`,
       },
     ];
-    goals = await completeWithRetry(deps.llm, fallbackMessages, validateResponse);
-    if (goals === null) return { query: null, bindings: [] };
-    queryText = goals.map(serializeGoal).join(', ');
-    retrieval = evaluateQuery(goals, queryText);
+    query = await completeWithRetry(deps.llm, fallbackMessages, validateResponse);
+    if (query === null) return { query: null, bindings: [] };
+    queryText = serializeQuerySpec(query);
+    retrieval = evaluateQuery(query, queryText);
   }
 
   return retrieval;

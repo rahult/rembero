@@ -3,9 +3,24 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { MAX_INPUT_BYTES } from '../src/safety.js';
+import {
+  MAX_INPUT_BYTES,
+  assertBoundedOutput,
+  stringifyBoundedResult,
+} from '../src/safety.js';
 
 describe('CLI ingress limits', () => {
+  it('fails closed before returning an oversized JSON result', () => {
+    expect(() => stringifyBoundedResult({ value: 'oversized' }, 'test result', 8)).toThrow(
+      /test result exceeds 8 bytes/i
+    );
+  });
+
+  it('fails closed before printing an oversized plain-text recall answer', () => {
+    expect(() => assertBoundedOutput('oversized', 'CLI recall answer', 8)).toThrow(
+      /CLI recall answer exceeds 8 bytes/i
+    );
+  });
   it('rejects an oversized import before reading or mutating the store', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-limit-'));
     const file = join(root, 'oversized.dl');

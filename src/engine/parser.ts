@@ -4,6 +4,9 @@ import {
   type Comparison,
   type Goal,
   type Literal,
+  type AggregateOperator,
+  type AggregateQuerySpec,
+  type QuerySpec,
   type Term,
   isComparison,
   isNegation,
@@ -149,6 +152,119 @@ function checkQuery(goals: Goal[]): void {
   }
 }
 
+const AGGREGATE_OPERATORS = new Set<AggregateOperator>(['count', 'sum', 'min', 'max']);
+
+function isAggregateOperator(value: string): value is AggregateOperator {
+  return AGGREGATE_OPERATORS.has(value as AggregateOperator);
+}
+
+function parseGoalList(ts: TokenStream): Goal[] {
+  const goals: Goal[] = [parseGoal(ts)];
+  while (ts.peek().kind === ',') {
+    ts.next();
+    goals.push(parseGoal(ts));
+  }
+  return goals;
+}
+
+function finishQuery(ts: TokenStream): void {
+  if (ts.peek().kind === '.') ts.next();
+  const trailing = ts.peek();
+  if (trailing.kind !== 'eof') {
+    throw new ParseError(`unexpected '${trailing.text}' after query`, trailing.line);
+  }
+}
+
+function positiveQueryBindings(goals: Goal[]): Set<string> {
+  const bound = new Set<string>();
+  for (const goal of goals) {
+    if (isComparison(goal) || isNegation(goal)) continue;
+    for (const name of goalVars(goal)) bound.add(name);
+  }
+  return bound;
+}
+
+function allQueryVariables(goals: Goal[]): Set<string> {
+  return new Set(goals.flatMap(goalVars));
+}
+
+function tryParseAggregateQuery(ts: TokenStream): AggregateQuerySpec | null {
+  const operator = ts.peek();
+  if (
+    operator.kind !== 'atom' ||
+    !isAggregateOperator(operator.text) ||
+    ts.peek(1).kind !== '('
+  ) {
+    return null;
+  }
+
+  // Aggregate syntax is unambiguous only once the closing parenthesis is followed by
+  // `as`; otherwise an ordinary predicate such as count(Item) remains relational.
+  let closeOffset = 2;
+  while (ts.peek(closeOffset).kind !== ')' && ts.peek(closeOffset).kind !== 'eof') {
+    closeOffset++;
+  }
+  if (
+    ts.peek(closeOffset).kind !== ')' ||
+    ts.peek(closeOffset + 1).kind !== 'atom' ||
+    ts.peek(closeOffset + 1).text !== 'as'
+  ) {
+    return null;
+  }
+
+  ts.next();
+  ts.expect('(');
+  let input: '*' | string;
+  if (operator.text === 'count') {
+    if (ts.peek().kind !== '*') {
+      throw new ParseError('count aggregation must use count(*)', ts.peek().line);
+    }
+    ts.next();
+    input = '*';
+  } else {
+    const value = ts.next();
+    if (value.kind !== 'var') {
+      throw new ParseError(`${operator.text} aggregate input must be a variable`, value.line);
+    }
+    input = value.text;
+  }
+  ts.expect(')');
+  const as = ts.expect('atom');
+  if (as.text !== 'as') {
+    throw new ParseError(`expected 'as' but found '${as.text}'`, as.line);
+  }
+  const output = ts.expect('var');
+  const where = ts.expect('atom');
+  if (where.text !== 'where') {
+    throw new ParseError(`expected 'where' but found '${where.text}'`, where.line);
+  }
+  const goals = parseGoalList(ts);
+  checkQuery(goals);
+
+  const positive = positiveQueryBindings(goals);
+  if (!goals.some((goal) => !isComparison(goal) && !isNegation(goal))) {
+    throw new ParseError('aggregate queries require at least one positive relation', operator.line);
+  }
+  if (input !== '*' && !positive.has(input)) {
+    throw new ParseError(
+      `aggregate input ${input} must be bound by a positive query relation`,
+      operator.line
+    );
+  }
+  if (allQueryVariables(goals).has(output.text)) {
+    throw new ParseError(`aggregate output ${output.text} must be a fresh variable`, output.line);
+  }
+
+  finishQuery(ts);
+  return {
+    kind: 'aggregate',
+    op: operator.text,
+    input,
+    as: output.text,
+    goals,
+  };
+}
+
 export function parseProgram(input: string): Clause[] {
   const ts = new TokenStream(tokenize(input));
   const clauses: Clause[] = [];
@@ -179,16 +295,22 @@ export function parseQuery(input: string): Goal[] {
   if (ts.peek().kind === 'eof') {
     throw new ParseError('empty query');
   }
-  const goals: Goal[] = [parseGoal(ts)];
-  while (ts.peek().kind === ',') {
-    ts.next();
-    goals.push(parseGoal(ts));
-  }
-  if (ts.peek().kind === '.') ts.next();
-  const trailing = ts.peek();
-  if (trailing.kind !== 'eof') {
-    throw new ParseError(`unexpected '${trailing.text}' after query`, trailing.line);
-  }
+  const goals = parseGoalList(ts);
+  finishQuery(ts);
   checkQuery(goals);
   return goals;
+}
+
+export function parseQuerySpec(input: string): QuerySpec {
+  const ts = new TokenStream(tokenize(input));
+  if (ts.peek().kind === '?-') ts.next();
+  if (ts.peek().kind === 'eof') throw new ParseError('empty query');
+
+  const aggregate = tryParseAggregateQuery(ts);
+  if (aggregate !== null) return aggregate;
+
+  const goals = parseGoalList(ts);
+  finishQuery(ts);
+  checkQuery(goals);
+  return { kind: 'relational', goals };
 }

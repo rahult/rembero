@@ -75,8 +75,11 @@ export function queryGenSystemPrompt(
 - If the schema can express the question, emit the query even when it may return no rows. Use unanswerable only when no shown predicate can express the question.`
       : '';
   return `You translate a question into one Datalog query over the schema below.
-Output exactly one line of the form: ?- goal1, goal2, ... .
+Output exactly one relational or scalar-aggregate query line.
+Relational form: ?- goal1, goal2, ... .
+Scalar aggregate forms: ?- count(*) as Count where goal1, goal2, ... .; ?- sum(Value) as Total where ... .; ?- min(Value) as Minimum where ... .; ?- max(Value) as Maximum where ... .
 Use uppercase variables for the unknowns the question asks about. Positive goals must use predicates that appear in the schema, with matching arity. Comparisons =, !=, <, >, <=, >= are allowed. Closed-world negation is written \\+ pred(...); every variable it uses must be bound by an earlier positive goal. A negated predicate may be absent from the schema because absence is the fact being tested, but use it only when the question explicitly names that missing relation, e.g. ?- employee(X), \\+ suspended(X).
+Use scalar aggregation only when explicitly requested: count(*) for "how many" or "number of", sum(Value) for a total, min(Value) for the least/earliest value, and max(Value) for the greatest/latest value. Aggregate queries return only the named output variable, allow exactly one operator, and must bind every sum/min/max input variable in a positive where goal.
 If the question cannot be expressed with these predicates, output exactly: ?- ${UNANSWERABLE}.${grounding}
 
 Schema:
