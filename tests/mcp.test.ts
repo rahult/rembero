@@ -42,7 +42,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.9.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.10.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -206,6 +206,58 @@ describe('MCP explanation surfaces', () => {
           }),
         ],
       });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('returns proof-bearing write rejection and preserves memory over the real protocol', async () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-enforce-')));
+    store.assert(
+      'default',
+      'active(mira). :- active(Person), suspended(Person).'
+    );
+    const before = store.load('default');
+    const server = createServer({
+      store,
+      llm: new ScriptedLlm([]),
+      integrityEnforcement: { mode: 'strict' },
+    });
+    const client = new Client({ name: 'rembero-enforcement-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const rejected = await client.callTool({
+        name: 'assert_facts',
+        arguments: { clauses: 'suspended(mira).' },
+      });
+      expect(rejected.isError).toBe(true);
+      const text = rejected.content.find((item) => item.type === 'text');
+      const payload = JSON.parse(text?.type === 'text' ? text.text : '');
+      expect(payload).toMatchObject({
+        error: 'integrity_violation',
+        mode: 'strict',
+        introducedViolationCount: 1,
+        candidate: {
+          checks: [{ rows: [{ bindings: { Person: 'mira' } }] }],
+        },
+      });
+      expect(store.load('default')).toEqual(before);
+
+      const weakened = await client.callTool({
+        name: 'assert_facts',
+        arguments: {
+          clauses: 'suspended(mira).',
+          integrityMode: 'no_new_violations',
+        },
+      });
+      expect(weakened.isError).toBe(true);
+      const weakenedText = weakened.content.find((item) => item.type === 'text');
+      expect(weakenedText?.type === 'text' ? weakenedText.text : '').toMatch(
+        /cannot weaken strict server integrity enforcement/i
+      );
     } finally {
       await client.close();
       await server.close();

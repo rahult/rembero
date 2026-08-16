@@ -31,12 +31,17 @@ import {
   serializeClause,
   serializeGoal,
 } from '../engine/index.js';
+import {
+  enforceIntegrityCandidate,
+  type IntegrityEnforcementOptions,
+} from '../knowledge/enforcement.js';
 
 const NAMESPACE_RE = /^[a-z0-9_-]+$/;
 const HEADER = '% rembero memory — one Datalog clause per line; edit by hand if you like.\n';
 const MAX_JOURNAL_BYTES = 16 * 1024 * 1024;
 const MAX_CAPTURE_ERROR_BYTES = 1024 * 1024;
 const MAX_JOURNAL_ENTRIES = 100_000;
+const MAX_PENDING_MUTATION_BYTES = 256 * 1024;
 export const MAX_HISTORY_EVENTS = 1_000;
 const MAX_HISTORY_SOURCE_BYTES = 4_096;
 const LOCK_WAIT_MS = 2_000;
@@ -57,6 +62,8 @@ export interface MutationContext {
   origin?: 'manual' | 'claude-stop';
   captureId?: string;
   at?: Date;
+  /** Optional atomic reject-on-write policy for this mutation. */
+  integrity?: IntegrityEnforcementOptions;
 }
 
 export type ValidTimeMode = 'delete' | 'archive_until';
@@ -168,6 +175,7 @@ export interface AutoCaptureReviewOptions {
 
 export interface PruneAutoCaptureOptions {
   now?: Date;
+  integrity?: IntegrityEnforcementOptions;
 }
 
 interface CachedNamespace {
@@ -182,6 +190,13 @@ interface JournalEntry {
   op: string;
   namespace: string;
   [key: string]: unknown;
+}
+
+interface PendingMutation {
+  version: 1;
+  namespace: string;
+  hadPrevious: boolean;
+  journalEntry: JournalEntry;
 }
 
 function fileStamp(path: string): string {
@@ -311,14 +326,20 @@ export function defaultRoot(): string {
 
 export class MemoryStore {
   private cache = new Map<string, CachedNamespace>();
+  private heldLocks = new Set<string>();
 
-  constructor(private root: string = defaultRoot()) {}
+  constructor(private root: string = defaultRoot()) {
+    this.withMutationLock(() =>
+      this.withLock('journal', () => this.recoverPendingMutationUnlocked())
+    );
+  }
 
   createOperationId(): string {
     return randomUUID();
   }
 
   private withLock<T>(name: string, operation: () => T): T {
+    if (this.heldLocks.has(name)) return operation();
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
     const lockPath = join(this.root, `.${name}.lock`);
     const deadline = Date.now() + LOCK_WAIT_MS;
@@ -384,8 +405,10 @@ export class MemoryStore {
       }
     }
     try {
+      this.heldLocks.add(name);
       return operation();
     } finally {
+      this.heldLocks.delete(name);
       closeSync(descriptor);
       try {
         const current = lstatSync(lockPath);
@@ -401,6 +424,97 @@ export class MemoryStore {
   private withNamespaceLock<T>(namespace: string, operation: () => T): T {
     this.filePath(namespace);
     return this.withLock(`namespace-${namespace}`, operation);
+  }
+
+  /** Every supported .dl writer participates so an enforcing snapshot cannot race. */
+  private withMutationLock<T>(operation: () => T): T {
+    return this.withLock('mutation', operation);
+  }
+
+  private integrityNamespaces(
+    targetNamespace: string,
+    options: IntegrityEnforcementOptions
+  ): string[] {
+    const requested = options.namespaces ?? [targetNamespace];
+    const names = requested === '*'
+      ? [...new Set([...this.listNamespaces(), targetNamespace])].sort()
+      : [...new Set(requested)];
+    if (names.length === 0 || names.length > 32) {
+      throw new Error('integrity enforcement namespace list must contain 1 to 32 entries');
+    }
+    for (const namespace of names) this.filePath(namespace);
+    if (!names.includes(targetNamespace)) {
+      throw new Error(
+        `integrity enforcement namespaces must include target '${targetNamespace}'`
+      );
+    }
+    return names;
+  }
+
+  private enforceMutation(
+    namespace: string,
+    currentClauses: Clause[],
+    candidateClauses: Clause[],
+    addedClauses: Clause[],
+    context: MutationContext,
+    at: Date,
+    temporalByClause: Map<string, TemporalMemorySource> = new Map()
+  ): void {
+    const options = context.integrity;
+    if (options === undefined) return;
+    const names = this.integrityNamespaces(namespace, options);
+    const baselineClauses = names.flatMap((name) =>
+      name === namespace ? currentClauses : this.load(name)
+    );
+    const candidateView = names.flatMap((name) =>
+      name === namespace ? candidateClauses : this.load(name)
+    );
+    const baselineSources = this.sourcesFor(names);
+    const candidateKeys = new Set(candidateClauses.map(canonicalKey));
+    const candidateSources = new Map<string, MemorySource[]>();
+    const namespaceOrder = new Map(names.map((name, index) => [name, index]));
+
+    for (const [key, sources] of baselineSources) {
+      const retained = sources.filter(
+        (source) => source.namespace !== namespace || candidateKeys.has(key)
+      );
+      if (retained.length > 0) candidateSources.set(key, retained);
+    }
+
+    const sanitizedSource = context.sourceText === undefined
+      ? {}
+      : sanitizeJournalDetails({ sourceText: context.sourceText });
+    for (const clause of addedClauses) {
+      const key = canonicalKey(clause);
+      const sources = candidateSources.get(key) ?? [];
+      sources.push({
+        namespace,
+        opId: context.opId ?? '',
+        ts: at.toISOString(),
+        ...(typeof sanitizedSource.sourceText !== 'string'
+          ? {}
+          : { text: sanitizedSource.sourceText }),
+        ...(sanitizedSource.sourceRedacted === true ? { redacted: true } : {}),
+        ...(temporalByClause.get(key) === undefined
+          ? {}
+          : { temporal: temporalByClause.get(key) }),
+      });
+      sources.sort(
+        (left, right) =>
+          (namespaceOrder.get(left.namespace) ?? Number.MAX_SAFE_INTEGER) -
+            (namespaceOrder.get(right.namespace) ?? Number.MAX_SAFE_INTEGER) ||
+          left.opId.localeCompare(right.opId)
+      );
+      candidateSources.set(key, sources);
+    }
+
+    enforceIntegrityCandidate(
+      baselineClauses,
+      candidateView,
+      baselineSources,
+      candidateSources,
+      options
+    );
   }
 
   private journalPath(): string {
@@ -429,12 +543,28 @@ export class MemoryStore {
   private appendJournalUnlocked(entry: JournalEntry): void {
     const line = `${JSON.stringify(entry)}\n`;
     const path = this.journalPath();
-    const currentBytes = existsSync(path) ? statSync(path).size : 0;
+    let current = '';
+    if (existsSync(path)) {
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) throw new Error(`refusing symbolic-link journal ${path}`);
+      if (stat.size > MAX_JOURNAL_BYTES) {
+        throw new Error(`journal.log exceeds ${MAX_JOURNAL_BYTES} bytes`);
+      }
+      current = readFileSync(path, 'utf8');
+    }
+    const currentBytes = Buffer.byteLength(current, 'utf8');
     const nextBytes = currentBytes + Buffer.byteLength(line, 'utf8');
     if (nextBytes > MAX_JOURNAL_BYTES) {
       throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
     }
-    appendFileSync(path, line, { encoding: 'utf8', mode: 0o600 });
+    const tmp = `${path}.tmp-${process.pid}-${randomUUID()}`;
+    try {
+      writeFileSync(tmp, `${current}${line}`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      renameSync(tmp, path);
+    } catch (error) {
+      this.unlinkIfPresent(tmp);
+      throw error;
+    }
   }
 
   private readJournalUnlocked(): JournalEntry[] {
@@ -549,16 +679,200 @@ export class MemoryStore {
     return entry;
   }
 
-  private save(namespace: string, entry: CachedNamespace): void {
-    mkdirSync(this.root, { recursive: true });
+  private namespaceBody(entry: CachedNamespace): string {
     const facts = entry.clauses.filter((c) => c.body.length === 0);
     const rules = entry.clauses.filter((c) => c.body.length > 0);
     const body = [...facts, ...rules].map(serializeClause).join('\n');
-    const path = this.filePath(namespace);
-    const tmp = `${path}.tmp-${process.pid}`;
-    writeFileSync(tmp, `${HEADER}${body}\n`, 'utf8');
-    renameSync(tmp, path);
-    entry.fileStamp = fileStamp(path);
+    return `${HEADER}${body}\n`;
+  }
+
+  private pendingMutationPath(): string {
+    return join(this.root, '.pending-mutation.json');
+  }
+
+  private pendingNextPath(): string {
+    return join(this.root, '.pending-mutation.next');
+  }
+
+  private pendingBackupPath(): string {
+    return join(this.root, '.pending-mutation.before');
+  }
+
+  private unlinkIfPresent(path: string): void {
+    try {
+      unlinkSync(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+
+  private readPendingMutationUnlocked(): PendingMutation | undefined {
+    const path = this.pendingMutationPath();
+    let text: string;
+    try {
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`refusing symbolic-link pending mutation ${path}`);
+      }
+      if (stat.size > MAX_PENDING_MUTATION_BYTES) {
+        throw new Error(`pending mutation exceeds ${MAX_PENDING_MUTATION_BYTES} bytes`);
+      }
+      text = readFileSync(path, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw error;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error('failed to read pending mutation');
+    }
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed) ||
+      (parsed as Record<string, unknown>).version !== 1 ||
+      typeof (parsed as Record<string, unknown>).namespace !== 'string' ||
+      typeof (parsed as Record<string, unknown>).hadPrevious !== 'boolean' ||
+      typeof (parsed as Record<string, unknown>).journalEntry !== 'object' ||
+      (parsed as Record<string, unknown>).journalEntry === null ||
+      Array.isArray((parsed as Record<string, unknown>).journalEntry)
+    ) {
+      throw new Error('pending mutation has an invalid shape');
+    }
+    const pending = parsed as PendingMutation;
+    this.filePath(pending.namespace);
+    if (
+      pending.journalEntry.namespace !== pending.namespace ||
+      typeof pending.journalEntry.ts !== 'string' ||
+      typeof pending.journalEntry.op !== 'string' ||
+      typeof pending.journalEntry.opId !== 'string'
+    ) {
+      throw new Error('pending mutation has an invalid journal entry');
+    }
+    return pending;
+  }
+
+  private recoverPendingMutationUnlocked(): void {
+    const pending = this.readPendingMutationUnlocked();
+    if (pending === undefined) {
+      if (existsSync(this.pendingBackupPath())) {
+        throw new Error('orphaned pending mutation backup requires manual recovery');
+      }
+      // The marker is published before the namespace changes. Without it, an
+      // interrupted preparation is safe to discard and must not block writers.
+      this.unlinkIfPresent(this.pendingNextPath());
+      const markerPrefix = '.pending-mutation.json.tmp-';
+      for (const name of readdirSync(this.root)) {
+        if (name.startsWith(markerPrefix)) this.unlinkIfPresent(join(this.root, name));
+      }
+      return;
+    }
+    const committed = this.readJournalUnlocked().some(
+      (entry) => JSON.stringify(entry) === JSON.stringify(pending.journalEntry)
+    );
+
+    if (committed) {
+      this.completePendingMutationUnlocked(pending);
+    } else {
+      this.rollbackPendingMutationUnlocked(pending);
+    }
+  }
+
+  private completePendingMutationUnlocked(pending: PendingMutation): void {
+    const target = this.filePath(pending.namespace);
+    if (!existsSync(target)) {
+      throw new Error('committed pending mutation has no namespace file');
+    }
+    this.unlinkIfPresent(this.pendingBackupPath());
+    this.unlinkIfPresent(this.pendingNextPath());
+    this.unlinkIfPresent(this.pendingMutationPath());
+    this.cache.delete(pending.namespace);
+  }
+
+  private rollbackPendingMutationUnlocked(pending: PendingMutation): void {
+    const target = this.filePath(pending.namespace);
+    const backup = this.pendingBackupPath();
+    if (existsSync(backup)) {
+      this.unlinkIfPresent(target);
+      renameSync(backup, target);
+    } else if (pending.hadPrevious) {
+      if (!existsSync(target)) {
+        throw new Error('pending mutation lost its previous namespace file');
+      }
+    } else {
+      this.unlinkIfPresent(target);
+    }
+    this.unlinkIfPresent(this.pendingNextPath());
+    this.unlinkIfPresent(this.pendingMutationPath());
+    this.cache.delete(pending.namespace);
+  }
+
+  private commitMutation(
+    namespace: string,
+    entry: CachedNamespace,
+    journalEntry: JournalEntry
+  ): void {
+    this.recoverPendingMutationUnlocked();
+    const target = this.filePath(namespace);
+    const next = this.pendingNextPath();
+    const backup = this.pendingBackupPath();
+    const pendingPath = this.pendingMutationPath();
+    if (existsSync(next) || existsSync(backup) || existsSync(pendingPath)) {
+      throw new Error('refusing to overwrite unresolved pending mutation files');
+    }
+    if (existsSync(target) && lstatSync(target).isSymbolicLink()) {
+      throw new Error(`refusing symbolic-link namespace file ${target}`);
+    }
+    const hadPrevious = existsSync(target);
+    writeFileSync(next, this.namespaceBody(entry), {
+      encoding: 'utf8',
+      mode: 0o600,
+      flag: 'wx',
+    });
+    const pending: PendingMutation = {
+      version: 1,
+      namespace,
+      hadPrevious,
+      journalEntry,
+    };
+    const markerTmp = `${pendingPath}.tmp-${process.pid}-${randomUUID()}`;
+    try {
+      writeFileSync(markerTmp, `${JSON.stringify(pending)}\n`, {
+        encoding: 'utf8',
+        mode: 0o600,
+        flag: 'wx',
+      });
+      renameSync(markerTmp, pendingPath);
+    } catch (error) {
+      this.unlinkIfPresent(markerTmp);
+      this.unlinkIfPresent(next);
+      throw error;
+    }
+
+    let journalCommitted = false;
+    try {
+      if (hadPrevious) renameSync(target, backup);
+      renameSync(next, target);
+      this.appendJournalUnlocked(journalEntry);
+      journalCommitted = true;
+      this.completePendingMutationUnlocked(pending);
+    } catch (error) {
+      try {
+        if (journalCommitted) this.recoverPendingMutationUnlocked();
+        else this.rollbackPendingMutationUnlocked(pending);
+      } catch (recoveryError) {
+        const primary = error instanceof Error ? error.message : String(error);
+        const recovery = recoveryError instanceof Error
+          ? recoveryError.message
+          : String(recoveryError);
+        throw new Error(`${primary}; pending mutation recovery failed: ${recovery}`);
+      }
+      throw error;
+    }
+    entry.fileStamp = fileStamp(target);
+    this.cache.set(namespace, entry);
   }
 
   load(namespace: string): Clause[] {
@@ -582,54 +896,64 @@ export class MemoryStore {
     context: MutationContext = {}
   ): AssertResult {
     const opId = context.opId ?? this.createOperationId();
+    const at = validDate(context.at ?? new Date(), 'assert timestamp');
+    const effectiveContext = { ...context, opId };
     const parsed = typeof clauses === 'string' ? parseProgram(clauses) : clauses;
-    return this.withNamespaceLock(namespace, () => {
-      const loaded = this.loadCached(namespace);
-      const entry: CachedNamespace = {
-        clauses: [...loaded.clauses],
-        keys: new Set(loaded.keys),
-        fileStamp: loaded.fileStamp,
-      };
-      const added: Clause[] = [];
-      let duplicates = 0;
-      for (const clause of parsed) {
-        const key = canonicalKey(clause);
-        if (entry.keys.has(key)) {
-          duplicates++;
-        } else {
-          entry.keys.add(key);
-          entry.clauses.push(clause);
-          added.push(clause);
-        }
-      }
-      if (added.length > 0) {
-        const journalEntry = this.createJournalEntry(
-          namespace,
-          'assert',
-          {
-            opId,
-            added: added.map(serializeClause),
-            duplicates,
-            ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
-            ...(context.origin === undefined ? {} : { origin: context.origin }),
-            ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
-          },
-          context.at ?? new Date()
-        );
-        this.withLock('journal', () => {
-          const lineBytes = Buffer.byteLength(`${JSON.stringify(journalEntry)}\n`, 'utf8');
-          const path = this.journalPath();
-          const currentBytes = existsSync(path) ? statSync(path).size : 0;
-          if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
-            throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+    return this.withMutationLock(() =>
+      this.withNamespaceLock(namespace, () => {
+        const loaded = this.loadCached(namespace);
+        const entry: CachedNamespace = {
+          clauses: [...loaded.clauses],
+          keys: new Set(loaded.keys),
+          fileStamp: loaded.fileStamp,
+        };
+        const added: Clause[] = [];
+        let duplicates = 0;
+        for (const clause of parsed) {
+          const key = canonicalKey(clause);
+          if (entry.keys.has(key)) {
+            duplicates++;
+          } else {
+            entry.keys.add(key);
+            entry.clauses.push(clause);
+            added.push(clause);
           }
-          this.save(namespace, entry);
-          this.appendJournalUnlocked(journalEntry);
-          this.cache.set(namespace, entry);
-        });
-      }
-      return { added, duplicates, opId };
-    });
+        }
+        if (added.length > 0) {
+          this.enforceMutation(
+            namespace,
+            loaded.clauses,
+            entry.clauses,
+            added,
+            effectiveContext,
+            at
+          );
+          const journalEntry = this.createJournalEntry(
+            namespace,
+            'assert',
+            {
+              opId,
+              added: added.map(serializeClause),
+              duplicates,
+              ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
+              ...(context.origin === undefined ? {} : { origin: context.origin }),
+              ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
+            },
+            at
+          );
+          this.withLock('journal', () => {
+            const lineBytes = Buffer.byteLength(`${JSON.stringify(journalEntry)}\n`, 'utf8');
+            const path = this.journalPath();
+            const currentBytes = existsSync(path) ? statSync(path).size : 0;
+            if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
+              throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+            }
+            this.commitMutation(namespace, entry, journalEntry);
+          });
+        }
+        return { added, duplicates, opId };
+      })
+    );
   }
 
   retract(
@@ -638,63 +962,75 @@ export class MemoryStore {
     context: MutationContext = {}
   ): { removed: number; opId: string } {
     const opId = context.opId ?? this.createOperationId();
-    return this.withNamespaceLock(namespace, () => {
-      const loaded = this.loadCached(namespace);
-      const entry: CachedNamespace = {
-        clauses: [...loaded.clauses],
-        keys: new Set(loaded.keys),
-        fileStamp: loaded.fileStamp,
-      };
-      let keep: Clause[];
-      if (pattern.includes(':-')) {
-        // exact rule removal by alpha-equivalence
-        const [rule] = parseProgram(pattern);
-        const key = canonicalKey(rule);
-        keep = entry.clauses.filter((c) => canonicalKey(c) !== key);
-      } else {
-        const goals = parseQuery(pattern);
-        if (goals.length !== 1 || isComparison(goals[0]) || isNegation(goals[0])) {
-          throw new ParseError('forget pattern must be a single literal, e.g. works_at(rahul, _)');
-        }
-        const literal = goals[0] as Literal;
-        keep = entry.clauses.filter(
-          (c) => c.body.length > 0 || !literalMatches(literal, c.head)
-        );
-      }
-      const keptKeys = new Set(keep.map(canonicalKey));
-      const removedClauses = entry.clauses.filter((clause) => !keptKeys.has(canonicalKey(clause)));
-      const removed = removedClauses.length;
-      if (removed > 0) {
-        const journalEntry = this.createJournalEntry(
-          namespace,
-          'retract',
-          {
-            opId,
-            pattern,
-            removed,
-            removedClauses: removedClauses.map(serializeClause),
-            ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
-            ...(context.origin === undefined ? {} : { origin: context.origin }),
-            ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
-          },
-          context.at ?? new Date()
-        );
-        this.withLock('journal', () => {
-          const lineBytes = Buffer.byteLength(`${JSON.stringify(journalEntry)}\n`, 'utf8');
-          const path = this.journalPath();
-          const currentBytes = existsSync(path) ? statSync(path).size : 0;
-          if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
-            throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+    const at = validDate(context.at ?? new Date(), 'retract timestamp');
+    const effectiveContext = { ...context, opId };
+    return this.withMutationLock(() =>
+      this.withNamespaceLock(namespace, () => {
+        const loaded = this.loadCached(namespace);
+        const entry: CachedNamespace = {
+          clauses: [...loaded.clauses],
+          keys: new Set(loaded.keys),
+          fileStamp: loaded.fileStamp,
+        };
+        let keep: Clause[];
+        if (pattern.includes(':-')) {
+          // exact rule or integrity-constraint removal by alpha-equivalence
+          const [rule] = parseProgram(pattern);
+          const key = canonicalKey(rule);
+          keep = entry.clauses.filter((c) => canonicalKey(c) !== key);
+        } else {
+          const goals = parseQuery(pattern);
+          if (goals.length !== 1 || isComparison(goals[0]) || isNegation(goals[0])) {
+            throw new ParseError('forget pattern must be a single literal, e.g. works_at(rahul, _)');
           }
-          entry.clauses = keep;
-          entry.keys = new Set(keep.map(canonicalKey));
-          this.save(namespace, entry);
-          this.appendJournalUnlocked(journalEntry);
-          this.cache.set(namespace, entry);
-        });
-      }
-      return { removed, opId };
-    });
+          const literal = goals[0] as Literal;
+          keep = entry.clauses.filter(
+            (c) => c.body.length > 0 || !literalMatches(literal, c.head)
+          );
+        }
+        const keptKeys = new Set(keep.map(canonicalKey));
+        const removedClauses = entry.clauses.filter(
+          (clause) => !keptKeys.has(canonicalKey(clause))
+        );
+        const removed = removedClauses.length;
+        if (removed > 0) {
+          this.enforceMutation(
+            namespace,
+            loaded.clauses,
+            keep,
+            [],
+            effectiveContext,
+            at
+          );
+          const journalEntry = this.createJournalEntry(
+            namespace,
+            'retract',
+            {
+              opId,
+              pattern,
+              removed,
+              removedClauses: removedClauses.map(serializeClause),
+              ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
+              ...(context.origin === undefined ? {} : { origin: context.origin }),
+              ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
+            },
+            at
+          );
+          this.withLock('journal', () => {
+            const lineBytes = Buffer.byteLength(`${JSON.stringify(journalEntry)}\n`, 'utf8');
+            const path = this.journalPath();
+            const currentBytes = existsSync(path) ? statSync(path).size : 0;
+            if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
+              throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+            }
+            entry.clauses = keep;
+            entry.keys = new Set(keep.map(canonicalKey));
+            this.commitMutation(namespace, entry, journalEntry);
+          });
+        }
+        return { removed, opId };
+      })
+    );
   }
 
   private latestJournalSourcesUnlocked(namespace: string): Map<string, string> {
@@ -775,6 +1111,26 @@ export class MemoryStore {
     replacements: string | Clause[],
     context: MutationContext = {}
   ): SupersedeResult {
+    return this.replaceFacts(namespace, patterns, replacements, true, context);
+  }
+
+  /** Atomically retract matching ground facts and add their replacements. */
+  replace(
+    namespace: string,
+    patterns: string[],
+    replacements: string | Clause[],
+    context: MutationContext = {}
+  ): SupersedeResult {
+    return this.replaceFacts(namespace, patterns, replacements, false, context);
+  }
+
+  private replaceFacts(
+    namespace: string,
+    patterns: string[],
+    replacements: string | Clause[],
+    archive: boolean,
+    context: MutationContext
+  ): SupersedeResult {
     if (patterns.length === 0) throw new Error('supersede requires at least one fact pattern');
     if (patterns.length > 64) throw new Error('supersede accepts at most 64 fact patterns');
     const parsedPatterns = patterns.map((pattern) => ({
@@ -784,11 +1140,15 @@ export class MemoryStore {
     const parsedReplacements =
       typeof replacements === 'string' ? parseProgram(replacements) : replacements;
     const opId = context.opId ?? this.createOperationId();
-    const at = validDate(context.at ?? new Date(), 'supersession timestamp');
+    const at = validDate(
+      context.at ?? new Date(),
+      archive ? 'supersession timestamp' : 'replacement timestamp'
+    );
     const validUntil = at.toISOString();
     const requestedReplacementClauses = parsedReplacements.map(serializeClause);
+    const effectiveContext = { ...context, opId };
 
-    return this.withNamespaceLock(namespace, () => {
+    return this.withMutationLock(() => this.withNamespaceLock(namespace, () => {
       const loaded = this.loadCached(namespace);
       const entry: CachedNamespace = {
         clauses: [...loaded.clauses],
@@ -816,7 +1176,9 @@ export class MemoryStore {
             JSON.stringify(priorOperation.patterns) !==
               JSON.stringify(requestedPatterns) ||
             JSON.stringify(priorOperation.replacementRequested) !==
-              JSON.stringify(requestedReplacementClauses)
+              JSON.stringify(requestedReplacementClauses) ||
+            (priorOperation.validTimeMode ?? 'archive_until') !==
+              (archive ? 'archive_until' : 'delete')
           ) {
             throw new Error(`supersede operation '${opId}' was already used for another mutation`);
           }
@@ -865,14 +1227,16 @@ export class MemoryStore {
               !endedKeys.has(key) &&
               literalMatches(literal, clause.head)
             ) {
-              archiveUntilClause(clause, validUntil); // validate before changing state
+              if (archive) archiveUntilClause(clause, validUntil); // validate before changing state
               endedKeys.add(key);
               ended.push(clause);
             }
           }
         }
 
-        const archives = ended.map((clause) => archiveUntilClause(clause, validUntil));
+        const archives = archive
+          ? ended.map((clause) => archiveUntilClause(clause, validUntil))
+          : [];
         entry.clauses = entry.clauses.filter((clause) => !endedKeys.has(canonicalKey(clause)));
         entry.keys = new Set(entry.clauses.map(canonicalKey));
 
@@ -901,11 +1265,32 @@ export class MemoryStore {
 
         const allAdded = [...archivedAdded, ...replacementAdded];
         if (ended.length > 0 || allAdded.length > 0) {
+          const archivedAddedKeys = new Set(archivedAdded.map(canonicalKey));
+          const proposedTemporalSources = new Map<string, TemporalMemorySource>();
+          for (const [index, clause] of archives.entries()) {
+            const key = canonicalKey(clause);
+            if (!archivedAddedKeys.has(key)) continue;
+            proposedTemporalSources.set(key, {
+              kind: 'superseded',
+              previousClause: serializeClause(ended[index]),
+              validUntil,
+            });
+          }
+          this.enforceMutation(
+            namespace,
+            loaded.clauses,
+            entry.clauses,
+            allAdded,
+            effectiveContext,
+            at,
+            proposedTemporalSources
+          );
           const journalEntry = this.createJournalEntry(
             namespace,
             'supersede',
             {
               opId,
+              validTimeMode: archive ? 'archive_until' : 'delete',
               patterns: requestedPatterns,
               ended: ended.map((clause) => ({
                 clause: serializeClause(clause),
@@ -913,11 +1298,13 @@ export class MemoryStore {
                   ? {}
                   : { sourceOpId: previousSources.get(canonicalKey(clause)) }),
               })),
-              archived: ended.map((clause, index) => ({
-                from: serializeClause(clause),
-                to: serializeClause(archives[index]),
-                validUntil,
-              })),
+              archived: archive
+                ? ended.map((clause, index) => ({
+                    from: serializeClause(clause),
+                    to: serializeClause(archives[index]),
+                    validUntil,
+                  }))
+                : [],
               added: allAdded.map(serializeClause),
               replacementRequested: requestedReplacementClauses,
               replacementAdded: replacementAdded.map(serializeClause),
@@ -934,9 +1321,7 @@ export class MemoryStore {
           if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
             throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
           }
-          this.save(namespace, entry);
-          this.appendJournalUnlocked(journalEntry);
-          this.cache.set(namespace, entry);
+          this.commitMutation(namespace, entry, journalEntry);
         }
 
         return {
@@ -947,14 +1332,15 @@ export class MemoryStore {
           opId,
         };
       });
-    });
+    }));
   }
 
   private retractFactIfSourcedBy(
     namespace: string,
     serialized: string,
     expectedSourceOpId: string,
-    context: Required<Pick<MutationContext, 'opId' | 'captureId' | 'at'>>
+    context: Required<Pick<MutationContext, 'opId' | 'captureId' | 'at'>> &
+      Pick<MutationContext, 'integrity'>
   ): number {
     const clauses = parseProgram(serialized);
     if (clauses.length !== 1 || clauses[0].body.length !== 0) {
@@ -993,6 +1379,14 @@ export class MemoryStore {
 
         entry.clauses = entry.clauses.filter((clause) => canonicalKey(clause) !== targetKey);
         entry.keys.delete(targetKey);
+        this.enforceMutation(
+          namespace,
+          loaded.clauses,
+          entry.clauses,
+          [],
+          context,
+          context.at
+        );
         const journalEntry = this.createJournalEntry(
           namespace,
           'retract',
@@ -1012,9 +1406,7 @@ export class MemoryStore {
         if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
           throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
         }
-        this.save(namespace, entry);
-        this.appendJournalUnlocked(journalEntry);
-        this.cache.set(namespace, entry);
+        this.commitMutation(namespace, entry, journalEntry);
         return 1;
       });
     });
@@ -1317,6 +1709,7 @@ export class MemoryStore {
     const opId = this.createOperationId();
     if (selections.length === 0) return { removed: 0, opId };
 
+    return this.withMutationLock(() => {
     const entries = this.withLock('journal', () => this.readJournalUnlocked());
     const allowed = new Map<string, AutoCaptureFact>();
     for (const entry of entries) {
@@ -1368,6 +1761,38 @@ export class MemoryStore {
       group.push(selection);
       byNamespace.set(selection.namespace, group);
     }
+    if (options.integrity !== undefined) {
+      if (byNamespace.size > 1) {
+        throw new Error(
+          'integrity-enforced auto-capture pruning accepts one namespace per operation'
+        );
+      }
+      for (const [namespace, selected] of byNamespace) {
+        const loaded = this.loadCached(namespace);
+        const sources = this.sourcesFor([namespace]);
+        const removableKeys = new Set(
+          selected.flatMap((selection) => {
+            const [clause] = parseProgram(selection.clause);
+            const key = canonicalKey(clause);
+            const currentSource = sources
+              .get(key)
+              ?.find((source) => source.namespace === namespace);
+            return currentSource?.opId === selection.opId ? [key] : [];
+          })
+        );
+        const candidate = loaded.clauses.filter(
+          (clause) => !removableKeys.has(canonicalKey(clause))
+        );
+        this.enforceMutation(
+          namespace,
+          loaded.clauses,
+          candidate,
+          [],
+          { opId, integrity: options.integrity },
+          at
+        );
+      }
+    }
     for (const [namespace, selected] of byNamespace) {
       let namespaceRemoved = 0;
       for (const selection of selected) {
@@ -1375,7 +1800,12 @@ export class MemoryStore {
           namespace,
           selection.clause,
           selection.opId,
-          { opId, captureId: selection.captureId, at }
+          {
+            opId,
+            captureId: selection.captureId,
+            at,
+            integrity: undefined,
+          }
         );
       }
       removed += namespaceRemoved;
@@ -1392,6 +1822,7 @@ export class MemoryStore {
       );
     }
     return { removed, opId };
+    });
   }
 
   /** Replay the bounded append-only journal into a deterministic fact life story. */
@@ -1577,6 +2008,13 @@ export class MemoryStore {
         if (!Array.isArray(journalEntry.archived)) {
           throw new Error(`${label} archived must be an array`);
         }
+        const validTimeMode = journalEntry.validTimeMode ?? 'archive_until';
+        if (validTimeMode !== 'delete' && validTimeMode !== 'archive_until') {
+          throw new Error(`${label} has an invalid valid-time mode`);
+        }
+        if (validTimeMode === 'delete' && journalEntry.archived.length !== 0) {
+          throw new Error(`${label} delete replacement cannot contain archives`);
+        }
         const archives = new Map<
           string,
           { to: Clause; validUntil: string }
@@ -1613,7 +2051,10 @@ export class MemoryStore {
           if (record.sourceOpId !== undefined && typeof record.sourceOpId !== 'string') {
             throw new Error(`${label} ended[${endedIndex}].sourceOpId must be a string`);
           }
-          if (!archives.has(canonicalKey(clause))) {
+          if (
+            validTimeMode === 'archive_until' &&
+            !archives.has(canonicalKey(clause))
+          ) {
             throw new Error(`${label} ended fact has no archived counterpart`);
           }
           if (
@@ -1627,13 +2068,18 @@ export class MemoryStore {
             ...(record.sourceOpId === undefined ? {} : { sourceOpId: record.sourceOpId }),
           });
         }
-        if (archives.size !== ended.length) {
+        if (
+          validTimeMode === 'archive_until' &&
+          archives.size !== ended.length
+        ) {
           throw new Error(`${label} archived facts do not match ended facts`);
         }
 
         for (const [position, endedFact] of ended.entries()) {
           const archive = archives.get(canonicalKey(endedFact.clause));
-          if (archive === undefined) throw new Error(`${label} has an incomplete archive mapping`);
+          if (validTimeMode === 'archive_until' && archive === undefined) {
+            throw new Error(`${label} has an incomplete archive mapping`);
+          }
           if (inScope) {
             const key = stateKey(journalEntry.namespace, endedFact.clause);
             const activeSourceOpId = state.get(key)?.opId;
@@ -1658,12 +2104,16 @@ export class MemoryStore {
                 namespace: journalEntry.namespace,
                 ts: journalEntry.ts,
                 opId: journalEntry.opId,
-                action: 'superseded',
+                action: validTimeMode === 'archive_until' ? 'superseded' : 'retracted',
                 clause: serializeClause(endedFact.clause),
                 current: false,
                 ...(previousSourceOpId === undefined ? {} : { previousSourceOpId }),
-                archivedAs: serializeClause(archive.to),
-                validUntil: archive.validUntil,
+                ...(archive === undefined
+                  ? {}
+                  : {
+                      archivedAs: serializeClause(archive.to),
+                      validUntil: archive.validUntil,
+                    }),
                 ...source,
               });
             }

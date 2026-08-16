@@ -89,10 +89,10 @@ inspection fails rather than presenting an incomplete audit as complete.
 - Integrity constraints are portable-engine only in 0.9. The experimental SQLite
   extension rejects headless programs rather than silently ignoring policy.
 
-## v0.9 scope
+## v0.9 audit and v0.10 enforcement
 
-This release is audit-first. It does not reject writes or repair conflicts automatically.
-That preserves existing mutation behavior while making inconsistent states observable
-and explainable. A later enforcement mode can reuse this exact constraint and evidence
-contract, but must prove atomic pre-commit validation across concurrent writers before it
-can become an authority boundary.
+Version 0.9 is audit-first and never rejects writes. Version 0.10 preserves that default
+and adds opt-in atomic enforcement across supported portable-store mutation paths. It
+reuses this exact constraint and evidence contract under a global writer lock; it still
+does not infer or automatically repair conflicts. See
+[INTEGRITY-ENFORCEMENT.md](INTEGRITY-ENFORCEMENT.md).

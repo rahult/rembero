@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  integrityEnforcementFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
 } from '../src/env.js';
@@ -44,5 +45,41 @@ describe('recallSchemaPredicateLimitFromEnv', () => {
         })
       ).toThrow(/REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT/);
     }
+  });
+});
+
+describe('integrityEnforcementFromEnv', () => {
+  it('defaults to audit-only and parses both enforcement modes', () => {
+    expect(integrityEnforcementFromEnv({})).toBeUndefined();
+    expect(
+      integrityEnforcementFromEnv({ REMBERO_INTEGRITY_MODE: 'strict' })
+    ).toEqual({ mode: 'strict' });
+    expect(
+      integrityEnforcementFromEnv({
+        REMBERO_INTEGRITY_MODE: 'no_new_violations',
+        REMBERO_INTEGRITY_NAMESPACES: 'policy,work',
+      })
+    ).toEqual({
+      mode: 'no_new_violations',
+      namespaces: ['policy', 'work'],
+    });
+    expect(
+      integrityEnforcementFromEnv({
+        REMBERO_INTEGRITY_MODE: 'strict',
+        REMBERO_INTEGRITY_NAMESPACES: '*',
+      })
+    ).toEqual({ mode: 'strict', namespaces: '*' });
+  });
+
+  it('rejects invalid modes and namespace lists', () => {
+    expect(() =>
+      integrityEnforcementFromEnv({ REMBERO_INTEGRITY_MODE: 'warn' })
+    ).toThrow(/must be 'off', 'strict', or 'no_new_violations'/i);
+    expect(() =>
+      integrityEnforcementFromEnv({
+        REMBERO_INTEGRITY_MODE: 'strict',
+        REMBERO_INTEGRITY_NAMESPACES: 'policy,,work',
+      })
+    ).toThrow(/comma-separated namespace list/i);
   });
 });

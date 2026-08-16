@@ -1,11 +1,17 @@
 import { createHash } from 'node:crypto';
 import {
   type Clause,
+  type Goal,
+  type ScalarExpression,
+  type Term,
   type EvaluateOptions,
   EngineLimitError,
   EngineSafetyError,
   canonicalKey,
+  isArithmeticExpression,
+  isComparison,
   isIntegrityConstraint,
+  isNegation,
   serializeClause,
   serializeGoal,
 } from '../engine/index.js';
@@ -34,11 +40,44 @@ export interface IntegrityConstraintCheck {
   id: string;
   clause: string;
   query: string;
+  /** Variables in alpha-stable first-appearance order for violation identity. */
+  bindingOrder: string[];
   /** Every active declaration source, in requested namespace order. */
   sources?: MemorySource[];
   rows: ExplainedKnowledgeRow[];
   rules: ExplanationRule[];
   graph: ExplanationGraph;
+}
+
+function constraintBindingOrder(goals: Goal[]): string[] {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const visitTerm = (term: Term): void => {
+    if (term.type === 'var' && !seen.has(term.name)) {
+      seen.add(term.name);
+      ordered.push(term.name);
+    }
+  };
+  const visitExpression = (expression: ScalarExpression): void => {
+    if (!isArithmeticExpression(expression)) {
+      visitTerm(expression);
+    } else if (expression.kind === 'unary') {
+      visitExpression(expression.operand);
+    } else {
+      visitExpression(expression.left);
+      visitExpression(expression.right);
+    }
+  };
+  for (const goal of goals) {
+    if (isComparison(goal)) {
+      visitExpression(goal.left);
+      visitExpression(goal.right);
+    } else {
+      const literal = isNegation(goal) ? goal.not : goal;
+      for (const term of literal.args) visitTerm(term);
+    }
+  }
+  return ordered;
 }
 
 export interface IntegrityCheckResult {
@@ -123,6 +162,7 @@ export function checkIntegrity(
       id: constraintId(key),
       clause: serializeClause(clause),
       query,
+      bindingOrder: constraintBindingOrder(clause.body),
       ...(sources === undefined || sources.length === 0 ? {} : { sources }),
       rows: explanation.rows,
       rules: explanation.rules,

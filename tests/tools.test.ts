@@ -3,8 +3,10 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
+import { IntegrityViolationError } from '../src/knowledge/enforcement.js';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT } from '../src/safety.js';
+import { serializeClause } from '../src/engine/index.js';
 import {
   assertFactsTool,
   checkIntegrityTool,
@@ -53,6 +55,35 @@ describe('MCP tool handlers', () => {
     expect(result.added).toEqual(['f(a).', 'g(X) :- f(X).']);
     expect(result.duplicates).toBe(0);
     expect(result.opId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('write tools share atomic integrity enforcement and structured rejection', () => {
+    store.assert(
+      'default',
+      'active(mira). :- active(X), suspended(X).'
+    );
+    expect(() =>
+      assertFactsTool(
+        { store, integrityEnforcement: { mode: 'strict' } },
+        { clauses: 'suspended(mira).' }
+      )
+    ).toThrow(IntegrityViolationError);
+    expect(store.load('default').map(serializeClause)).toEqual([
+      'active(mira).',
+      ':- active(X), suspended(X).',
+    ]);
+
+    store.assert('default', 'manager(mira, rahul).');
+    store.assert(
+      'default',
+      ':- active(Person), \\+ manager(Person, _).'
+    );
+    expect(() =>
+      forgetTool(
+        { store, integrityEnforcement: { mode: 'strict' } },
+        { pattern: 'manager(mira, _)' }
+      )
+    ).toThrow(IntegrityViolationError);
   });
 
   it('query evaluates raw Datalog and returns bindings', () => {

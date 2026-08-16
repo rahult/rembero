@@ -238,6 +238,34 @@ describe('auto-capture pipeline', () => {
     expect(llm.calls).toHaveLength(1);
   });
 
+  it('applies the same atomic integrity guard and journals a safe failure reason', async () => {
+    store.assert(
+      'default',
+      'active(mira). :- active(Person), suspended(Person).'
+    );
+    writeTranscript([transcriptLine('user', 'Mira is suspended.')]);
+    const llm = new ScriptedLlm(['suspended(mira).']);
+
+    await expect(
+      autoCaptureClaudeStop(
+        { store, llm, integrityEnforcement: { mode: 'strict' } },
+        stopInput(),
+        captureOptions()
+      )
+    ).rejects.toMatchObject({ code: 'integrity_violation' });
+    expect(store.load('default').map((clause) => clause.head.predicate)).not.toContain(
+      'suspended'
+    );
+    expect(
+      store.reviewAutoCaptures({
+        days: 7,
+        now: new Date('2026-08-18T02:00:00.000Z'),
+      }).captures
+    ).toEqual([
+      expect.objectContaining({ status: 'failed', reason: 'integrity_violation' }),
+    ]);
+  });
+
   it('enforces the per-namespace UTC-day cap before the LLM call', async () => {
     writeTranscript([transcriptLine('user', 'I prefer dark mode.')]);
     const llm = new ScriptedLlm(['prefers_theme(user, dark).']);
@@ -346,6 +374,32 @@ describe('auto-capture pipeline', () => {
         expect.objectContaining({ clause: 'prefers_drink(user, tea).', current: false }),
         expect.objectContaining({ clause: 'prefers_theme(user, dark).', current: true }),
       ])
+    );
+  });
+
+  it('preflights integrity-enforced pruning before removing any reviewed fact', async () => {
+    writeTranscript([transcriptLine('user', 'Alice is managed by Mira.')]);
+    await autoCaptureClaudeStop(
+      { store, llm: new ScriptedLlm(['manager(alice, mira).']) },
+      stopInput(),
+      captureOptions()
+    );
+    store.assert(
+      'default',
+      'employee(alice). :- employee(Person), \\+ manager(Person, _).'
+    );
+    const review = store.reviewAutoCaptures({
+      days: 7,
+      now: new Date('2026-08-18T02:00:00.000Z'),
+    });
+
+    expect(() =>
+      store.pruneAutoCaptureFacts(review.facts, {
+        integrity: { mode: 'strict' },
+      })
+    ).toThrowError(expect.objectContaining({ code: 'integrity_violation' }));
+    expect(store.load('default').map((clause) => clause.head.predicate)).toContain(
+      'manager'
     );
   });
 

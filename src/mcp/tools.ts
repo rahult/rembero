@@ -21,12 +21,14 @@ import {
   checkIntegrity,
   type IntegrityCheckResult,
 } from '../knowledge/integrity.js';
+import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 
 export type LlmToolDeps = PipelineDeps;
 
 export interface StoreToolDeps {
   store: MemoryStore;
+  integrityEnforcement?: IntegrityEnforcementOptions | false;
 }
 
 type NamespacesArg = string[] | '*' | undefined;
@@ -39,10 +41,18 @@ const namespacesOrDefault = (namespaces: NamespacesArg): string[] | '*' => {
 
 export function rememberTool(
   deps: LlmToolDeps,
-  args: { text: string; namespace?: string }
+  args: {
+    text: string;
+    namespace?: string;
+    integrityEnforcement?: IntegrityEnforcementOptions;
+  }
 ): Promise<RememberResult> {
   assertBoundedInput(args.text, 'memory text');
-  return rememberText(deps, args.text, args.namespace ?? 'default');
+  return rememberText(deps, args.text, args.namespace ?? 'default', {
+    ...(args.integrityEnforcement === undefined
+      ? {}
+      : { integrityEnforcement: args.integrityEnforcement }),
+  });
 }
 
 export function recallTool(
@@ -82,12 +92,19 @@ export function recallExplainTool(
 
 export function assertFactsTool(
   deps: StoreToolDeps,
-  args: { clauses: string; namespace?: string }
+  args: {
+    clauses: string;
+    namespace?: string;
+    integrityEnforcement?: IntegrityEnforcementOptions;
+  }
 ): { added: string[]; duplicates: number; opId: string } {
   assertBoundedInput(args.clauses, 'clauses');
+  const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
+  const integrity = configured === false ? undefined : configured;
   const { added, duplicates, opId } = deps.store.assert(
     args.namespace ?? 'default',
-    args.clauses
+    args.clauses,
+    integrity === undefined ? {} : { integrity }
   );
   return { added: added.map(serializeClause), duplicates, opId };
 }
@@ -143,10 +160,20 @@ export function checkIntegrityTool(
 
 export function forgetTool(
   deps: StoreToolDeps,
-  args: { pattern: string; namespace?: string }
+  args: {
+    pattern: string;
+    namespace?: string;
+    integrityEnforcement?: IntegrityEnforcementOptions;
+  }
 ): { removed: number; opId: string } {
   assertBoundedInput(args.pattern, 'forget pattern');
-  return deps.store.retract(args.namespace ?? 'default', args.pattern);
+  const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
+  const integrity = configured === false ? undefined : configured;
+  return deps.store.retract(
+    args.namespace ?? 'default',
+    args.pattern,
+    integrity === undefined ? {} : { integrity }
+  );
 }
 
 export function historyTool(

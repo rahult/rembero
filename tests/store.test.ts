@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+  mkdirSync,
+  unlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
@@ -255,6 +264,89 @@ describe('journal', () => {
     expect(() => store.assert('default', 'f(a).')).toThrow(/journal\.log would exceed/i);
     expect(store.load('default')).toEqual([]);
     expect(() => readFileSync(join(root, 'default.dl'), 'utf8')).toThrow();
+  });
+
+  it('rolls the namespace file back when the journal commit fails after replacement', () => {
+    store.assert('default', 'f(a).');
+    const namespacePath = join(root, 'default.dl');
+    const journalPath = join(root, 'journal.log');
+    const before = readFileSync(namespacePath, 'utf8');
+    unlinkSync(journalPath);
+    mkdirSync(journalPath);
+
+    expect(() => store.assert('default', 'g(b).')).toThrow();
+    expect(readFileSync(namespacePath, 'utf8')).toBe(before);
+    expect(store.load('default').map(serializeClause)).toEqual(['f(a).']);
+    expect(existsSync(join(root, '.pending-mutation.json'))).toBe(false);
+    expect(existsSync(join(root, '.pending-mutation.before'))).toBe(false);
+    expect(existsSync(join(root, '.pending-mutation.next'))).toBe(false);
+  });
+
+  it('recovers an interrupted uncommitted namespace replacement on startup', () => {
+    store.assert('default', 'f(a).', { opId: 'baseline' });
+    const namespacePath = join(root, 'default.dl');
+    const backupPath = join(root, '.pending-mutation.before');
+    const before = readFileSync(namespacePath, 'utf8');
+    const journalEntry = {
+      ts: '2026-08-17T00:00:00.000Z',
+      op: 'assert',
+      namespace: 'default',
+      opId: 'interrupted',
+      added: ['g(b).'],
+      duplicates: 0,
+    };
+    renameSync(namespacePath, backupPath);
+    writeFileSync(namespacePath, '% rembero memory — one Datalog clause per line; edit by hand if you like.\nf(a).\ng(b).\n');
+    writeFileSync(
+      join(root, '.pending-mutation.json'),
+      `${JSON.stringify({
+        version: 1,
+        namespace: 'default',
+        hadPrevious: true,
+        journalEntry,
+      })}\n`
+    );
+
+    const recovered = new MemoryStore(root);
+    expect(readFileSync(namespacePath, 'utf8')).toBe(before);
+    expect(recovered.load('default').map(serializeClause)).toEqual(['f(a).']);
+    expect(existsSync(join(root, '.pending-mutation.json'))).toBe(false);
+    expect(existsSync(backupPath)).toBe(false);
+  });
+
+  it('completes cleanup for an interrupted mutation already committed to the journal', () => {
+    store.assert('default', 'f(a).', { opId: 'baseline' });
+    const namespacePath = join(root, 'default.dl');
+    const backupPath = join(root, '.pending-mutation.before');
+    const journalPath = join(root, 'journal.log');
+    const journalEntry = {
+      ts: '2026-08-17T00:00:00.000Z',
+      op: 'assert',
+      namespace: 'default',
+      opId: 'committed',
+      added: ['g(b).'],
+      duplicates: 0,
+    };
+    renameSync(namespacePath, backupPath);
+    writeFileSync(namespacePath, '% rembero memory — one Datalog clause per line; edit by hand if you like.\nf(a).\ng(b).\n');
+    writeFileSync(
+      journalPath,
+      `${readFileSync(journalPath, 'utf8')}${JSON.stringify(journalEntry)}\n`
+    );
+    writeFileSync(
+      join(root, '.pending-mutation.json'),
+      `${JSON.stringify({
+        version: 1,
+        namespace: 'default',
+        hadPrevious: true,
+        journalEntry,
+      })}\n`
+    );
+
+    const recovered = new MemoryStore(root);
+    expect(recovered.load('default').map(serializeClause)).toEqual(['f(a).', 'g(b).']);
+    expect(existsSync(join(root, '.pending-mutation.json'))).toBe(false);
+    expect(existsSync(backupPath)).toBe(false);
   });
 });
 

@@ -138,3 +138,10 @@ export {
   type IntegrityConstraintCheck,
   type IntegrityStatus,
 } from './knowledge/integrity.js';
+export {
+  enforceIntegrityCandidate,
+  IntegrityViolationError,
+  type IntegrityEnforcementMode,
+  type IntegrityEnforcementOptions,
+  type IntegrityViolationRef,
+} from './knowledge/enforcement.js';

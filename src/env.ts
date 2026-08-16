@@ -7,6 +7,7 @@ import {
   MAX_RECALL_SCHEMA_PREDICATES,
 } from './llm/schema.js';
 import type { ValidTimeMode } from './store/store.js';
+import type { IntegrityEnforcementOptions } from './knowledge/enforcement.js';
 
 /**
  * Load .env from the current directory and from the package root (so the CLI
@@ -47,4 +48,26 @@ export function recallSchemaPredicateLimitFromEnv(
     );
   }
   return parsed;
+}
+
+export function integrityEnforcementFromEnv(
+  env: NodeJS.ProcessEnv = process.env
+): IntegrityEnforcementOptions | undefined {
+  const mode = env.REMBERO_INTEGRITY_MODE ?? 'off';
+  if (mode === 'off') return undefined;
+  if (mode !== 'strict' && mode !== 'no_new_violations') {
+    throw new Error(
+      "REMBERO_INTEGRITY_MODE must be 'off', 'strict', or 'no_new_violations'"
+    );
+  }
+  const configuredNamespaces = env.REMBERO_INTEGRITY_NAMESPACES;
+  if (configuredNamespaces === undefined) return { mode };
+  if (configuredNamespaces === '*') return { mode, namespaces: '*' };
+  const namespaces = configuredNamespaces.split(',').map((value) => value.trim());
+  if (namespaces.some((value) => value.length === 0)) {
+    throw new Error(
+      "REMBERO_INTEGRITY_NAMESPACES must be '*' or a comma-separated namespace list"
+    );
+  }
+  return { mode, namespaces };
 }

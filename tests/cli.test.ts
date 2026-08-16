@@ -187,6 +187,76 @@ describe('CLI ingress limits', () => {
       violationCount: 0,
     });
   });
+
+  it('rejects a violating write atomically with structured evidence and exit 3', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-enforcement-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'active(mira). :- active(Person), suspended(Person).'
+    );
+    const before = readFileSync(join(home, 'memory', 'default.dl'), 'utf8');
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'assert',
+        'suspended(mira).',
+        '--integrity-mode',
+        'strict',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+
+    expect(result.status).toBe(3);
+    expect(result.stdout).toBe('');
+    expect(JSON.parse(result.stderr)).toMatchObject({
+      error: 'integrity_violation',
+      mode: 'strict',
+      introducedViolationCount: 1,
+      candidate: {
+        checks: [{ rows: [{ bindings: { Person: 'mira' } }] }],
+      },
+    });
+    expect(readFileSync(join(home, 'memory', 'default.dl'), 'utf8')).toBe(before);
+  });
+
+  it('supports migration-friendly no-new-violations enforcement from the environment', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-enforcement-migrate-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      `active(mira). suspended(mira).
+       :- active(Person), suspended(Person).`
+    );
+    const env = {
+      ...process.env,
+      REMBERO_HOME: home,
+      REMBERO_INTEGRITY_MODE: 'no_new_violations',
+    };
+
+    const unrelated = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'assert', 'project(atlas).'],
+      { encoding: 'utf8', env }
+    );
+    expect(unrelated.status).toBe(0);
+
+    const newViolation = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'assert', 'active(alex). suspended(alex).'],
+      { encoding: 'utf8', env }
+    );
+    expect(newViolation.status).toBe(3);
+    expect(JSON.parse(newViolation.stderr)).toMatchObject({
+      mode: 'no_new_violations',
+      baselineViolationCount: 1,
+      introducedViolationCount: 1,
+    });
+  });
 });
 
 describe('auto-capture CLI', () => {

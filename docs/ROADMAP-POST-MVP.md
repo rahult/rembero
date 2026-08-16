@@ -1,4 +1,4 @@
-# Rembero post-MVP roadmap (v0.9 →)
+# Rembero post-MVP roadmap (v0.10 →)
 
 MVP shipped: public repo, CI, GitHub release v0.1.0, npm package ready (publish pending
 auth). What follows is ordered by user value per unit of effort — each phase is
@@ -103,6 +103,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    natural-language remember and ambient capture are forbidden from creating policy.
    v0.9 is read-only audit; atomic reject-on-write enforcement remains a later milestone.
 
+## Phase 13 — Integrity authority  *(v0.10)*
+
+1. **Complete — atomic candidate enforcement**: opt-in `strict` and
+   `no_new_violations` modes validate the entire post-mutation knowledge view before any
+   `.dl`, mutation-journal, or cache commit. Rejections reuse the bounded deterministic
+   proof, source, and query-scoped graph evidence from the 0.9 audit.
+2. **Complete — concurrent and cross-namespace safety**: every supported portable-store
+   writer participates in one cross-process mutation lock, so constraints joining an
+   explicit namespace union cannot race another 0.10 writer. The target namespace must
+   be inside the governed view.
+3. **Complete — complete write-path coverage**: raw assert/import, forget, archive
+   supersession, atomic delete-and-replace remember, ambient capture, MCP writes, and
+   single-namespace reviewed-fact pruning share the same enforcement boundary. LLM paths
+   still cannot author policy, and audit remains the backward-compatible default.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
@@ -129,8 +144,8 @@ is the foundation for conflict views, temporal history, and alternative proof in
 without replacing the readable personal knowledge base with a second graph store.
 
 The next reasoning milestone remains an evidence-driven index pass once benchmarks show
-relation scans becoming material. Retrieval context, alternative evidence, and explicit
-integrity audits are bounded independently of knowledge-base growth while the finite,
-proof-carrying rule language remains the deterministic authority. Reject-on-write
-enforcement must prove atomic pre-commit validation across concurrent writers before it
-can become an authority boundary.
+relation scans becoming material. Retrieval context, alternative evidence, explicit
+integrity audits, and enforced candidate writes are bounded independently of
+knowledge-base growth while the finite, proof-carrying rule language remains the
+deterministic authority. Direct hand edits and older writers remain outside the lock and
+must be followed by an explicit audit.

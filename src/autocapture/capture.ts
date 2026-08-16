@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { LlmClient } from '../llm/client.js';
 import { rememberTranscriptText } from '../llm/pipeline.js';
 import type { MemoryStore } from '../store/store.js';
+import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   DEFAULT_AUTO_CAPTURE_DAILY_CAP,
   validateAutoCaptureDailyCap,
@@ -17,6 +18,7 @@ export interface AutoCaptureDeps {
   store: MemoryStore;
   llm: LlmClient;
   llmAllowedNamespaces?: ReadonlySet<string>;
+  integrityEnforcement?: IntegrityEnforcementOptions | false;
 }
 
 export interface AutoCaptureOptions {
@@ -37,6 +39,13 @@ export interface AutoCaptureResult {
 
 function safeFailureReason(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === 'integrity_violation'
+  ) {
+    return 'integrity_violation';
+  }
   if (/sensitive/i.test(message)) return 'sensitive_text';
   if (/namespace.+local-only/i.test(message)) return 'namespace_denied';
   if (/transcript|Stop hook/i.test(message)) return 'invalid_transcript';
@@ -141,6 +150,7 @@ export async function autoCaptureClaudeStop(
         store: deps.store,
         llm: deps.llm,
         llmAllowedNamespaces: deps.llmAllowedNamespaces,
+        integrityEnforcement: deps.integrityEnforcement,
       },
       tail.text,
       namespace,

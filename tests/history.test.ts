@@ -47,6 +47,59 @@ function journalLines(root: string): Record<string, unknown>[] {
 }
 
 describe('MemoryStore.supersede', () => {
+  it('atomically replaces without an archive and replays the delete transition', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-replace-'));
+    const store = new MemoryStore(root);
+    store.assert('default', 'works_at(mira, acme).', { opId: 'before' });
+
+    const result = store.replace(
+      'default',
+      ['works_at(mira, _)'],
+      'works_at(mira, initech).',
+      {
+        opId: 'replace',
+        sourceText: 'Mira now works at Initech.',
+        at: new Date('2026-08-16T16:59:00.000Z'),
+      }
+    );
+
+    expect(result).toMatchObject({ retracted: 1, archived: [], opId: 'replace' });
+    expect(store.load('default').map(serializeClause)).toEqual([
+      'works_at(mira, initech).',
+    ]);
+    expect(journalLines(root)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: 'supersede',
+          validTimeMode: 'delete',
+          ended: [{ clause: 'works_at(mira, acme).', sourceOpId: 'before' }],
+          archived: [],
+          replacementAdded: ['works_at(mira, initech).'],
+        }),
+      ])
+    );
+    expect(store.history('works_at(mira, _)').events).toEqual([
+      expect.objectContaining({ action: 'asserted', clause: 'works_at(mira, acme).' }),
+      expect.objectContaining({ action: 'retracted', clause: 'works_at(mira, acme).' }),
+      expect.objectContaining({
+        action: 'asserted',
+        clause: 'works_at(mira, initech).',
+        current: true,
+      }),
+    ]);
+    expect(
+      new MemoryStore(root).replace(
+        'default',
+        ['works_at(mira, _)'],
+        'works_at(mira, initech).',
+        {
+          opId: 'replace',
+          at: new Date('2026-08-16T16:59:00.000Z'),
+        }
+      )
+    ).toMatchObject({ retracted: 1, archived: [], opId: 'replace' });
+  });
+
   it('atomically archives matched ground facts as <predicate>_until with a full ISO timestamp and journals exact ended/archive/add detail', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-supersede-'));
     const store = new MemoryStore(root);

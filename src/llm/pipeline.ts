@@ -18,6 +18,7 @@ import {
 import type { MemoryStore, ValidTimeMode } from '../store/store.js';
 import type { ChatMessage, LlmClient } from './client.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
+import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import { assertSafeForExternalLlm } from '../safety.js';
 import {
   NOTHING_SENTINEL,
@@ -52,6 +53,9 @@ export interface PipelineDeps {
   recallSchemaPredicateLimit?: number;
   /** Internal/library override for the hard recall schema byte budget. */
   recallSchemaByteLimit?: number;
+  /** Optional default atomic reject-on-write policy for memory mutations. */
+  /** `false` explicitly disables an environment-derived server default. */
+  integrityEnforcement?: IntegrityEnforcementOptions | false;
 }
 
 export interface RememberResult {
@@ -64,6 +68,8 @@ export interface RememberResult {
 
 export interface RememberOptions {
   validTimeMode?: ValidTimeMode;
+  /** Per-call enforcement override; omission uses the dependency default. */
+  integrityEnforcement?: IntegrityEnforcementOptions | false;
   /** Controlled clock injection for library tests and deterministic integrations. */
   at?: Date;
 }
@@ -219,38 +225,41 @@ export async function rememberText(
   if (extraction === null) return { added: [], duplicates: 0, retracted: 0 };
 
   const opId = deps.store.createOperationId();
-  const context = { opId, sourceText: text, origin: 'manual' as const, at: options.at };
-  if (validTimeMode === 'archive_until' && extraction.retractions.length > 0) {
-    const result = deps.store.supersede(
-      namespace,
-      extraction.retractions.map((goals) => goals.map(serializeGoal).join(', ')),
-      extraction.clauses,
-      context
+  const configuredIntegrity =
+    options.integrityEnforcement ?? deps.integrityEnforcement;
+  const integrity = configuredIntegrity === false ? undefined : configuredIntegrity;
+  const context = {
+    opId,
+    sourceText: text,
+    origin: 'manual' as const,
+    at: options.at,
+    ...(integrity === undefined ? {} : { integrity }),
+  };
+  if (extraction.retractions.length > 0) {
+    const patterns = extraction.retractions.map((goals) =>
+      goals.map(serializeGoal).join(', ')
     );
+    const result = validTimeMode === 'archive_until'
+      ? deps.store.supersede(namespace, patterns, extraction.clauses, context)
+      : deps.store.replace(namespace, patterns, extraction.clauses, context);
     return {
       added: result.added.map(serializeClause),
       duplicates: result.duplicates,
       retracted: result.retracted,
-      archived: result.archived.map(serializeClause),
+      ...(result.archived.length === 0
+        ? {}
+        : { archived: result.archived.map(serializeClause) }),
       opId,
     };
   }
-  let retracted = 0;
-  for (const pattern of extraction.retractions) {
-    retracted += deps.store.retract(
-      namespace,
-      pattern.map(serializeGoal).join(', '),
-      context
-    ).removed;
+  if (extraction.clauses.length === 0) {
+    return { added: [], duplicates: 0, retracted: 0 };
   }
-  if (extraction.clauses.length > 0 || retracted > 0) {
+  if (integrity === undefined) {
     deps.store.note(namespace, 'remember', { opId, text }, options.at);
   }
-  if (extraction.clauses.length === 0) {
-    return { added: [], duplicates: 0, retracted, ...(retracted > 0 ? { opId } : {}) };
-  }
   const { added, duplicates } = deps.store.assert(namespace, extraction.clauses, context);
-  return { added: added.map(serializeClause), duplicates, retracted, opId };
+  return { added: added.map(serializeClause), duplicates, retracted: 0, opId };
 }
 
 /**
@@ -300,6 +309,9 @@ export async function rememberTranscriptText(
     origin: 'claude-stop',
     sourceText: 'Auto-captured from a Claude Code Stop hook',
     at: options.at,
+    ...(deps.integrityEnforcement === undefined || deps.integrityEnforcement === false
+      ? {}
+      : { integrity: deps.integrityEnforcement }),
   });
   return {
     added: added.map(serializeClause),

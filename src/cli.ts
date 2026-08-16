@@ -12,6 +12,7 @@ import {
 import { DEFAULT_TRANSCRIPT_TAIL_BYTES } from './autocapture/transcript.js';
 import { MAX_PROOFS_PER_ROW, serializeClause } from './engine/index.js';
 import {
+  integrityEnforcementFromEnv,
   loadEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
@@ -20,6 +21,10 @@ import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
 import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { MAX_RECALL_SCHEMA_PREDICATES } from './llm/schema.js';
 import { MAX_INTEGRITY_VIOLATIONS } from './knowledge/integrity.js';
+import {
+  IntegrityViolationError,
+  type IntegrityEnforcementOptions,
+} from './knowledge/enforcement.js';
 import { serveStdio } from './mcp/server.js';
 import {
   checkIntegrityTool,
@@ -71,6 +76,8 @@ Options:
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
       --max-violations <n> Maximum integrity violations (default: 1000; max: ${MAX_INTEGRITY_VIOLATIONS})
+      --integrity-mode <mode>  Write guard: off, strict, or no_new_violations
+      --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
       --limit <n>          History event limit (maximum: 1000)
       --extension <path>   Path to the compiled Rembero SQLite extension
       --daily-cap <n>      Max auto-capture attempts per namespace/UTC day (default: 10)
@@ -99,6 +106,8 @@ interface ParsedArgs {
   schemaPredicateLimit?: string;
   proofLimit?: string;
   maxViolations?: string;
+  integrityMode?: string;
+  integrityNamespaces?: string[] | '*';
   limit?: string;
 }
 
@@ -145,6 +154,13 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--max-violations') {
       parsed.maxViolations = valueAfter(i, arg);
       i += 1;
+    } else if (arg === '--integrity-mode') {
+      parsed.integrityMode = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--integrity-namespaces') {
+      const value = valueAfter(i, arg);
+      i += 1;
+      parsed.integrityNamespaces = value === '*' ? '*' : value.split(',');
     } else if (arg === '--limit') {
       parsed.limit = valueAfter(i, arg);
       i += 1;
@@ -212,6 +228,56 @@ function maxViolationsOption(value: string | undefined): number | undefined {
   return parsed;
 }
 
+function integrityEnforcementOption(
+  mode: string | undefined,
+  namespaces: string[] | '*' | undefined,
+  fallback: IntegrityEnforcementOptions | undefined,
+  proofLimit: string | undefined,
+  maxViolations: string | undefined
+): IntegrityEnforcementOptions | false | undefined {
+  const proofLimitValue = proofLimitOption(proofLimit);
+  const maxViolationsValue = maxViolationsOption(maxViolations);
+  if (mode === undefined) {
+    if (
+      (namespaces !== undefined || proofLimitValue !== undefined || maxViolationsValue !== undefined) &&
+      fallback === undefined
+    ) {
+      throw new Error(
+        'integrity write options require --integrity-mode or REMBERO_INTEGRITY_MODE'
+      );
+    }
+    return fallback === undefined
+      ? undefined
+      : {
+          ...fallback,
+          ...(namespaces === undefined ? {} : { namespaces }),
+          ...(proofLimitValue === undefined
+            ? {}
+            : { maxProofsPerRow: proofLimitValue }),
+          ...(maxViolationsValue === undefined ? {} : { maxViolations: maxViolationsValue }),
+        };
+  }
+  if (mode === 'off') {
+    if (
+      namespaces !== undefined ||
+      proofLimitValue !== undefined ||
+      maxViolationsValue !== undefined
+    ) {
+      throw new Error("--integrity-mode 'off' cannot use integrity write options");
+    }
+    return false;
+  }
+  if (mode !== 'strict' && mode !== 'no_new_violations') {
+    throw new Error("--integrity-mode must be 'off', 'strict', or 'no_new_violations'");
+  }
+  return {
+    mode,
+    ...(namespaces === undefined ? {} : { namespaces }),
+    ...(proofLimitValue === undefined ? {} : { maxProofsPerRow: proofLimitValue }),
+    ...(maxViolationsValue === undefined ? {} : { maxViolations: maxViolationsValue }),
+  };
+}
+
 async function readStdinBounded(maxBytes = MAX_INPUT_BYTES): Promise<string> {
   const chunks: Buffer[] = [];
   let bytes = 0;
@@ -243,6 +309,18 @@ async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const args = parseArgs(rest);
   const store = new MemoryStore();
+  const writeCommand = ['serve', 'remember', 'assert', 'forget', 'import', 'review'].includes(
+    command ?? ''
+  );
+  const integritySetting = integrityEnforcementOption(
+    args.integrityMode,
+    args.integrityNamespaces,
+    integrityEnforcementFromEnv(),
+    writeCommand ? args.proofLimit : undefined,
+    writeCommand ? args.maxViolations : undefined
+  );
+  const integrityEnforcement =
+    integritySetting === false ? undefined : integritySetting;
   const llmAllowedNamespaces = llmNamespaceAllowlistFromEnv();
   const text = args.positional.join(' ');
   const namespaces = args.namespaces ?? (args.namespace ? [args.namespace] : undefined);
@@ -257,6 +335,7 @@ async function main(): Promise<void> {
         recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
           args.schemaPredicateLimit
         ),
+        integrityEnforcement: integritySetting,
       });
       return; // keep process alive; transport owns stdio
     case 'remember': {
@@ -266,7 +345,12 @@ async function main(): Promise<void> {
         }
         const rawHookInput = await readStdinBounded();
         const result = await autoCaptureClaudeStop(
-          { store, llm: lazyClientFromEnv(), llmAllowedNamespaces },
+          {
+            store,
+            llm: lazyClientFromEnv(),
+            llmAllowedNamespaces,
+            integrityEnforcement: integritySetting,
+          },
           rawHookInput,
           {
             namespace: args.namespace,
@@ -294,7 +378,7 @@ async function main(): Promise<void> {
         },
         text,
         args.namespace,
-        { validTimeMode }
+        { validTimeMode, integrityEnforcement: integritySetting }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
@@ -347,7 +431,7 @@ async function main(): Promise<void> {
     }
     case 'assert': {
       const result = assertFactsTool(
-        { store },
+        { store, integrityEnforcement },
         { clauses: text, namespace: args.namespace }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -382,7 +466,10 @@ async function main(): Promise<void> {
       return;
     }
     case 'forget': {
-      const result = forgetTool({ store }, { pattern: text, namespace: args.namespace });
+      const result = forgetTool(
+        { store, integrityEnforcement },
+        { pattern: text, namespace: args.namespace }
+      );
       console.log(`removed ${result.removed} clause(s)`);
       return;
     }
@@ -432,7 +519,11 @@ async function main(): Promise<void> {
       if (size > MAX_INPUT_BYTES) {
         throw new Error(`import file exceeds ${MAX_INPUT_BYTES} bytes`);
       }
-      const result = store.assert(ns, readFileSync(file, 'utf8'));
+      const result = store.assert(
+        ns,
+        readFileSync(file, 'utf8'),
+        integrityEnforcement === undefined ? {} : { integrity: integrityEnforcement }
+      );
       console.log(`imported ${result.added.length} clause(s), ${result.duplicates} duplicate(s) skipped`);
       return;
     }
@@ -478,7 +569,11 @@ async function main(): Promise<void> {
       const selectedNumbers = reviewSelections(args.forget, review.facts.length);
       if (selectedNumbers.length > 0) {
         const selectedFacts = selectedNumbers.map((number) => review.facts[number - 1]);
-        const result = store.pruneAutoCaptureFacts(selectedFacts);
+        const result = store.pruneAutoCaptureFacts(selectedFacts, {
+          ...(integrityEnforcement === undefined
+            ? {}
+            : { integrity: integrityEnforcement }),
+        });
         if (args.json) {
           console.log(
             stringifyBoundedResult(
@@ -548,6 +643,24 @@ async function main(): Promise<void> {
 }
 
 main().catch((e: unknown) => {
+  if (e instanceof IntegrityViolationError) {
+    try {
+      console.error(stringifyBoundedResult(e.toJSON(), 'CLI integrity rejection'));
+    } catch {
+      console.error(
+        JSON.stringify({
+          error: 'integrity_rejection_output_exceeded',
+          message: 'write was rejected, but complete evidence exceeds the CLI output bound',
+          mode: e.mode,
+          baselineViolationCount: e.baselineViolationCount,
+          blockingViolationCount: e.blockingViolations.length,
+          introducedViolationCount: e.introducedViolations.length,
+        })
+      );
+    }
+    process.exitCode = 3;
+    return;
+  }
   console.error(e instanceof Error ? e.message : String(e));
   process.exitCode = 1;
 });

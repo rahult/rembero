@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import {
+  integrityEnforcementFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
 } from '../env.js';
@@ -23,6 +24,11 @@ import {
 } from './tools.js';
 import { MAX_HISTORY_EVENTS } from '../store/store.js';
 import { MAX_INTEGRITY_VIOLATIONS } from '../knowledge/integrity.js';
+import {
+  IntegrityViolationError,
+  type IntegrityEnforcementMode,
+  type IntegrityEnforcementOptions,
+} from '../knowledge/enforcement.js';
 
 const namespaceField = z
   .string()
@@ -53,6 +59,14 @@ const maxViolationsField = z
   .max(MAX_INTEGRITY_VIOLATIONS)
   .optional()
   .describe('Maximum complete integrity-violation rows returned across all constraints');
+const integrityModeField = z
+  .enum(['strict', 'no_new_violations'])
+  .optional()
+  .describe('Atomically reject writes that violate policy; cannot weaken a server default');
+const integrityNamespacesField = z
+  .union([z.array(z.string()).max(MAX_NAMESPACE_COUNT), z.literal('*')])
+  .optional()
+  .describe('Knowledge view governed by write enforcement; must include the target namespace');
 const boundedText = (description?: string) => {
   const field = z.string().max(MAX_INPUT_BYTES);
   return description ? field.describe(description) : field;
@@ -63,8 +77,60 @@ function asContent(result: unknown) {
 }
 
 function asError(e: unknown) {
-  const message = e instanceof Error ? e.message : String(e);
-  return { content: [{ type: 'text' as const, text: message }], isError: true };
+  let text: string;
+  if (e instanceof IntegrityViolationError) {
+    try {
+      text = stringifyBoundedResult(e.toJSON(), 'MCP integrity rejection');
+    } catch {
+      text = JSON.stringify({
+        error: 'integrity_rejection_output_exceeded',
+        message: 'write was rejected, but complete evidence exceeds the MCP output bound',
+        mode: e.mode,
+        baselineViolationCount: e.baselineViolationCount,
+        blockingViolationCount: e.blockingViolations.length,
+        introducedViolationCount: e.introducedViolations.length,
+      });
+    }
+  } else {
+    text = e instanceof Error ? e.message : String(e);
+  }
+  return { content: [{ type: 'text' as const, text }], isError: true };
+}
+
+function requestedIntegrity(
+  fallback: IntegrityEnforcementOptions | false | undefined,
+  mode: IntegrityEnforcementMode | undefined,
+  namespaces: string[] | '*' | undefined,
+  proofLimit: number | undefined,
+  maxViolations: number | undefined
+): IntegrityEnforcementOptions | undefined {
+  const activeFallback = fallback === false ? undefined : fallback;
+  if (mode === undefined) {
+    if (
+      activeFallback === undefined &&
+      (namespaces !== undefined || proofLimit !== undefined || maxViolations !== undefined)
+    ) {
+      throw new Error('integrity write options require integrityMode or a server default');
+    }
+    return activeFallback === undefined
+      ? undefined
+      : {
+          ...activeFallback,
+          ...(namespaces === undefined ? {} : { namespaces }),
+          ...(proofLimit === undefined ? {} : { maxProofsPerRow: proofLimit }),
+          ...(maxViolations === undefined ? {} : { maxViolations }),
+        };
+  }
+  if (activeFallback?.mode === 'strict' && mode !== 'strict') {
+    throw new Error('tool call cannot weaken strict server integrity enforcement');
+  }
+  return {
+    ...(activeFallback ?? {}),
+    mode,
+    ...(namespaces === undefined ? {} : { namespaces }),
+    ...(proofLimit === undefined ? {} : { maxProofsPerRow: proofLimit }),
+    ...(maxViolations === undefined ? {} : { maxViolations }),
+  };
 }
 
 export function createServer(deps: PipelineDeps): McpServer {
@@ -73,8 +139,10 @@ export function createServer(deps: PipelineDeps): McpServer {
     validTimeMode: deps.validTimeMode ?? validTimeModeFromEnv(),
     recallSchemaPredicateLimit:
       deps.recallSchemaPredicateLimit ?? recallSchemaPredicateLimitFromEnv(),
+    integrityEnforcement:
+      deps.integrityEnforcement ?? integrityEnforcementFromEnv(),
   };
-  const server = new McpServer({ name: 'rembero', version: '0.9.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.10.0' });
 
   server.registerTool(
     'remember',
@@ -82,11 +150,37 @@ export function createServer(deps: PipelineDeps): McpServer {
       title: 'Remember',
       description:
         "Store a natural-language statement in long-term memory as logical facts/rules. Use proactively when the user states something durable: preferences, relationships, decisions, project facts, biography ('my dentist is Dr Chen', 'we picked Postgres', 'Mira now works at Initech' — updates supersede old facts). Do NOT store secrets (passwords, keys) or transient context (today's error message).",
-      inputSchema: { text: boundedText('What to remember, in plain language'), namespace: namespaceField },
+      inputSchema: {
+        text: boundedText('What to remember, in plain language'),
+        namespace: namespaceField,
+        integrityMode: integrityModeField,
+        integrityNamespaces: integrityNamespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+      },
     },
-    async ({ text, namespace }) => {
+    async ({
+      text,
+      namespace,
+      integrityMode,
+      integrityNamespaces,
+      proofLimit,
+      maxViolations,
+    }) => {
       try {
-        return asContent(await rememberTool(resolvedDeps, { text, namespace }));
+        return asContent(
+          await rememberTool(resolvedDeps, {
+            text,
+            namespace,
+            integrityEnforcement: requestedIntegrity(
+              resolvedDeps.integrityEnforcement,
+              integrityMode,
+              integrityNamespaces,
+              proofLimit,
+              maxViolations
+            ),
+          })
+        );
       } catch (e) {
         return asError(e);
       }
@@ -151,11 +245,37 @@ export function createServer(deps: PipelineDeps): McpServer {
       title: 'Assert facts',
       description:
         "Store raw Datalog clauses directly, no LLM translation. Accepts facts like 'works_at(rahul, acme).', rules like 'senior(X) :- years(X, Y), Y >= 10 + 5.', and explicit integrity constraints like ':- active(X), suspended(X).'. Arithmetic is allowed only in comparison filters.",
-      inputSchema: { clauses: boundedText(), namespace: namespaceField },
+      inputSchema: {
+        clauses: boundedText(),
+        namespace: namespaceField,
+        integrityMode: integrityModeField,
+        integrityNamespaces: integrityNamespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+      },
     },
-    async ({ clauses, namespace }) => {
+    async ({
+      clauses,
+      namespace,
+      integrityMode,
+      integrityNamespaces,
+      proofLimit,
+      maxViolations,
+    }) => {
       try {
-        return asContent(assertFactsTool(deps, { clauses, namespace }));
+        return asContent(
+          assertFactsTool({ store: resolvedDeps.store }, {
+            clauses,
+            namespace,
+            integrityEnforcement: requestedIntegrity(
+              resolvedDeps.integrityEnforcement,
+              integrityMode,
+              integrityNamespaces,
+              proofLimit,
+              maxViolations
+            ),
+          })
+        );
       } catch (e) {
         return asError(e);
       }
@@ -229,11 +349,37 @@ export function createServer(deps: PipelineDeps): McpServer {
       title: 'Forget',
       description:
         "Retract facts matching a pattern, e.g. 'works_at(rahul, _)', or remove an exact rule by giving it in full.",
-      inputSchema: { pattern: boundedText(), namespace: namespaceField },
+      inputSchema: {
+        pattern: boundedText(),
+        namespace: namespaceField,
+        integrityMode: integrityModeField,
+        integrityNamespaces: integrityNamespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+      },
     },
-    async ({ pattern, namespace }) => {
+    async ({
+      pattern,
+      namespace,
+      integrityMode,
+      integrityNamespaces,
+      proofLimit,
+      maxViolations,
+    }) => {
       try {
-        return asContent(forgetTool(deps, { pattern, namespace }));
+        return asContent(
+          forgetTool({ store: resolvedDeps.store }, {
+            pattern,
+            namespace,
+            integrityEnforcement: requestedIntegrity(
+              resolvedDeps.integrityEnforcement,
+              integrityMode,
+              integrityNamespaces,
+              proofLimit,
+              maxViolations
+            ),
+          })
+        );
       } catch (e) {
         return asError(e);
       }

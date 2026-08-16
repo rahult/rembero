@@ -95,4 +95,5 @@ their existing source objects. Alternative-proof enumeration does so ephemerally
 v0.8. Explicit headless integrity constraints reuse the same projection in v0.9: every
 violating row carries its ordinary proof/source graph, grouped beneath the exact policy
 that rejected that state. No conflict graph is persisted globally and ordinary query
-graphs remain unchanged.
+graphs remain unchanged. Version 0.10 returns that same ephemeral graph in atomic
+write-rejection evidence; it does not materialize enforcement state as another graph.
