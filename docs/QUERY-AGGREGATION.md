@@ -84,7 +84,7 @@ to the contributor claims, never fabricated on the aggregate itself.
 
 ## SQLite boundary
 
-Scalar aggregate query syntax is currently portable-engine only. SQLite adapter entry
-points reject it explicitly, just as they reject portable-only stratified negation and
-arithmetic comparison expressions, until the native extension gains a first-class
-query-plan boundary with proof parity.
+The Node `DatalogDatabase` adapter and the `sqlite-query`/`sqlite-explain` commands evaluate
+scalar aggregates over a deterministic snapshot of referenced SQLite tables. The stock
+loadable extension scalar functions and `datalog_sql` do not accept aggregate query syntax.
+See [SQLite determinism and parity](SQLITE-DETERMINISM.md).

@@ -247,9 +247,11 @@ lineage without changing explicit `forget`. See
 
 Rembero also ships the source for a real loadable SQLite extension. It treats ordinary
 SQLite tables (and views) as Datalog predicates: arguments map to columns by position,
-rules compile to read-only SQL, and SQLite remains the storage, transaction, and query
-engine. This is a separate application-facing primitive; the existing MCP memory store
-continues to use portable `.dl` files.
+and SQLite remains the storage and transaction authority. Ordinary positive rules use
+the native extension; the Node adapter deterministically bridges advanced rules to the
+same bounded evaluator used by portable `.dl` knowledge. This is a separate
+application-facing primitive; the existing MCP memory store continues to use portable
+`.dl` files.
 
 V0 supports macOS and Linux. Build the extension with a C compiler and the SQLite
 development headers. From a source checkout use:
@@ -289,12 +291,13 @@ The result is deterministic JSON:
 The public library adapter exposes the same path:
 
 ```ts
-import { openDatalogDatabase } from 'rembero';
+import { openDatalogDatabase, sqliteDatalogExecutionMode } from 'rembero';
 
 const db = await openDatalogDatabase('world.db');
 const rule = 'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.';
 console.log(db.datalogSql(rule));   // inspect the generated SELECT
 console.log(db.datalogQuery(rule)); // execute it and parse the JSON rows
+console.log(sqliteDatalogExecutionMode(rule)); // "native"
 db.close();
 ```
 
@@ -318,17 +321,29 @@ remains a single non-recursive rule compiler; recursive programs execute through
 fixpoint evaluator. Rules support joins through repeated variables, text/number constants,
 and `=`, `!=`, `<`, `>`, `<=`, and `>=`.
 
-The current recursive boundary is intentionally narrow: all rules in a program derive the
-same predicate and provenance retains the first derivation encountered, rather than all
-possible proofs. Programs are limited to 64 KiB and 16 rules; evaluation is capped at
-100,000 loaded base rows, 10,000 derived rows, 1,000 fixpoint rounds, proof depth 128, and
-10 million tuple checks, and 16 MiB of output. Unsafe, malformed, mixed-head,
-arity-inconsistent, or cap-exceeding programs fail closed. Extension loading is disabled
-again immediately after the library is loaded. Stratified negation, arithmetic comparison
-expressions, scalar aggregate queries, and headless integrity constraints currently
-belong to the portable `.dl` engine. Entity identity declarations also remain portable
-only. SQLite entry points reject all of them explicitly until
-native parity is implemented.
+`DatalogDatabase.datalogQuery`, `DatalogDatabase.datalogExplain`, `sqlite-query`, and
+`sqlite-explain` also support raw conjunctions, stratified negation, arithmetic comparison
+expressions, scalar aggregates, and programs with multiple derived predicates. The adapter
+loads only referenced tables inside a read savepoint, canonicalizes their rows, and runs
+the portable evaluator. For a rule program, the first rule head is the result relation and
+must contain distinct named variables; later rules may define that relation or its
+dependencies. `sqliteDatalogExecutionMode(input)` reports which path will run.
+This bridge deliberately uses Datalog value equality rather than SQLite affinity and
+accepts only text plus finite safe-range integer/real values; `NULL`, BLOB, non-finite,
+and unsafe integer values fail closed.
+
+The stock SQLite scalar functions remain the smaller native surface, so applications that
+load only the `.dylib`/`.so` do not receive those adapter capabilities. `datalog_sql` also
+rejects advanced syntax because it promises one inspectable SQLite `SELECT`. Integrity
+constraints and entity identity declarations remain personal knowledge-store policies,
+not database query syntax.
+
+Both paths are bounded. Adapter inputs are limited to 64 KiB, 100,000 referenced base
+rows, 10,000 additional facts, 1,000 rounds, 10,000 output rows, proof depth 128, and
+16 MiB of input/output. Native programs retain their 16-rule, tuple-check, and proof caps.
+Unsafe, malformed, arity-inconsistent, unsupported-value, or cap-exceeding queries fail
+closed. Extension loading is disabled again immediately after the library is loaded. See
+[SQLite determinism and parity](docs/SQLITE-DETERMINISM.md) for the exact matrix.
 
 ## The Datalog dialect
 

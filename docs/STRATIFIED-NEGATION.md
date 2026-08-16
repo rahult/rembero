@@ -60,8 +60,9 @@ budgets. In the personal knowledge graph they become `absence` nodes connected i
 same ordered proof sequence as positive support, but they have no source metadata because
 absence is a database-state check rather than an asserted fact.
 
-## Current SQLite boundary
+## SQLite boundary
 
-The loadable SQLite extension does not yet implement stratified negation. Its SQL,
-query, and explanation entry points reject `\+` explicitly instead of silently applying
-different semantics. Positive recursive proof parity remains unchanged.
+The Node `DatalogDatabase` adapter and the `sqlite-query`/`sqlite-explain` commands evaluate
+stratified negation over a deterministic snapshot of referenced SQLite tables. The stock
+loadable extension scalar functions and `datalog_sql` remain positive-only and reject
+`\+` explicitly. See [SQLite determinism and parity](SQLITE-DETERMINISM.md).

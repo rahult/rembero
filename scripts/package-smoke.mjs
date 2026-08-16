@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuerySpec, selectExplanationGraph, selectRecallSchema } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuerySpec, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -52,7 +52,8 @@ try {
         "const fullGraph = explainKnowledge(parseProgram('edge(a, b). edge(b, c).'), 'edge(X, Y)'); " +
         "const selectedGraph = selectExplanationGraph(fullGraph, { kind: 'result', row: 1 }); " +
         "if (selectedGraph.rows.length !== 2 || selectedGraph.graphSelection?.selector?.row !== 1 || selectedGraph.graph.nodes.length >= fullGraph.graph.nodes.length) throw new Error('public graph navigation API failed'); " +
-        "if (typeof OperationConflictError !== 'function' || typeof IncompleteHistoryError !== 'function') throw new Error('public history or operation error API failed');",
+        "if (typeof OperationConflictError !== 'function' || typeof IncompleteHistoryError !== 'function') throw new Error('public history or operation error API failed'); " +
+        "if (sqliteDatalogExecutionMode('item(X), X = X') !== 'portable' || sqliteDatalogExecutionMode('copy(X) :- item(X).') !== 'native') throw new Error('public SQLite execution mode API failed');",
     ],
     { cwd: directory }
   );
@@ -108,7 +109,15 @@ try {
         "CREATE TABLE works_at(person TEXT, company TEXT);" +
         "INSERT INTO works_at VALUES ('alice','acme'),('bob','acme');" +
         "CREATE TABLE edge(source TEXT, target TEXT);" +
-        "INSERT INTO edge VALUES ('a','b'),('b','c');",
+        "INSERT INTO edge VALUES ('a','b'),('b','c');" +
+        "CREATE TABLE employee(person TEXT);" +
+        "INSERT INTO employee VALUES ('bob'),('alice');" +
+        "CREATE TABLE suspended(person TEXT);" +
+        "INSERT INTO suspended VALUES ('bob');" +
+        "CREATE TABLE score(person TEXT, points INTEGER);" +
+        "INSERT INTO score VALUES ('bob',14),('alice',20);" +
+        "CREATE TABLE baseline(team TEXT, points INTEGER);" +
+        "INSERT INTO baseline VALUES ('team',10);",
     }
   );
   const output = run(
@@ -152,6 +161,28 @@ try {
   )?.proof;
   if (recursiveProof?.rule !== 2 || recursiveProof.because?.length !== 2) {
     throw new Error(`unexpected packaged explanation: ${explainOutput}`);
+  }
+
+  const advancedProgram =
+    'answer(X) :- available(X), score(X, S), baseline(team, B), S > B + 5.\n' +
+    'available(X) :- employee(X), \\+ suspended(X).';
+  const advancedOutput = run(
+    process.execPath,
+    [installedCli, 'sqlite-query', databasePath, advancedProgram],
+    { cwd: directory }
+  );
+  const advancedRows = JSON.parse(advancedOutput);
+  if (advancedRows.length !== 1 || advancedRows[0].X !== 'alice') {
+    throw new Error(`unexpected packaged advanced query result: ${advancedOutput}`);
+  }
+  const sqliteAggregateOutput = run(
+    process.execPath,
+    [installedCli, 'sqlite-explain', databasePath, 'count(*) as Count where employee(Person)'],
+    { cwd: directory }
+  );
+  const sqliteAggregate = JSON.parse(sqliteAggregateOutput);
+  if (sqliteAggregate[0]?.row?.Count !== 2 || sqliteAggregate[0]?.proof?.aggregated !== true) {
+    throw new Error(`unexpected packaged aggregate explanation: ${sqliteAggregateOutput}`);
   }
 
   const memoryFile = join(directory, 'personal.dl');

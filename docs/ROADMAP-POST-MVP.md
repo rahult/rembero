@@ -183,6 +183,12 @@ V0 established a loadable C extension with `datalog_sql(rule)` and
 complete: multi-rule programs over ordinary SQLite tables use bounded semi-naive fixpoint
 evaluation, and `datalog_explain(program)` returns one nested derivation proof per result.
 
+Version 0.15 closes the material adapter parity gap: raw conjunctions, stratified
+negation, arithmetic comparisons, scalar aggregates, and programs with multiple derived
+predicates now run through a bounded deterministic bridge over a read snapshot of only
+the referenced SQLite tables. The C scalar functions remain a smaller native surface;
+constraints and identity remain knowledge-store policies.
+
 The portable store now supplies source-aware valid-time history plus exact recorded-time
 journal snapshots. Full interval algebra remains a later, evidence-driven expansion.
 Vector composition should reuse existing

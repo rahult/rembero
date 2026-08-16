@@ -65,7 +65,8 @@ thresholds. The parser still validates all generated queries before evaluation.
 
 ## SQLite boundary
 
-Arithmetic expressions are currently portable-engine only. The SQLite adapter detects
-them outside quoted atoms and comments and rejects them explicitly. Existing native
-SQLite comparisons between single terms remain supported; native arithmetic will require
-parser, evaluator, and proof-parity work before this boundary is removed.
+The Node `DatalogDatabase` adapter and the `sqlite-query`/`sqlite-explain` commands evaluate
+arithmetic comparisons over a deterministic snapshot of referenced SQLite tables. The
+stock loadable extension scalar functions and `datalog_sql` retain single-term comparisons
+only and reject arithmetic expressions. See
+[SQLite determinism and parity](SQLITE-DETERMINISM.md).

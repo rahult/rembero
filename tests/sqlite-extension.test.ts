@@ -3,8 +3,18 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { evaluateWithProof, parseProgram, parseQuery, serializeTerm } from '../src/engine/index.js';
-import { openDatalogDatabase } from '../src/sqlite/extension.js';
+import {
+  evaluateQuerySpec,
+  evaluateWithProof,
+  parseProgram,
+  parseQuery,
+  parseQuerySpec,
+  serializeTerm,
+} from '../src/engine/index.js';
+import {
+  openDatalogDatabase,
+  sqliteDatalogExecutionMode,
+} from '../src/sqlite/extension.js';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const nodeMajor = Number(process.versions.node.split('.')[0]);
@@ -15,6 +25,17 @@ const sqliteLoadProbe = spawnSync('sqlite3', [':memory:'], {
 const hasSqliteCli =
   sqliteLoadProbe.status !== null && !sqliteLoadProbe.stderr.includes('unknown command');
 let extensionPath: string;
+
+function portableRows(program: string, query: string): Record<string, unknown>[] {
+  return evaluateQuerySpec(parseProgram(program), parseQuerySpec(query)).map((bindings) =>
+    Object.fromEntries(
+      Object.entries(bindings).map(([name, term]) => [
+        name,
+        term.type === 'atom' || term.type === 'num' ? term.value : undefined,
+      ])
+    )
+  );
+}
 
 beforeAll(() => {
   const output = execFileSync('sh', ['native/build.sh'], {
@@ -348,35 +369,194 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
     }
   });
 
-  it('fails closed for recursive, unsafe, malformed, or schema-incompatible rules', async () => {
+  it('bridges advanced portable query semantics over referenced SQLite tables', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    try {
+      database.exec(`
+        CREATE TABLE employee(person TEXT);
+        CREATE TABLE suspended(person TEXT);
+        CREATE TABLE score(person TEXT, points INTEGER);
+        CREATE TABLE baseline(team TEXT, points INTEGER);
+        INSERT INTO employee VALUES ('bob'), ('alice');
+        INSERT INTO suspended VALUES ('bob');
+        INSERT INTO score VALUES ('alice', 20), ('bob', 14);
+        INSERT INTO baseline VALUES ('team', 10);
+      `);
+
+      expect(sqliteDatalogExecutionMode('available(X) :- employee(X), \\+ suspended(X).'))
+        .toBe('portable');
+      expect(sqliteDatalogExecutionMode('employee(X)')).toBe('portable');
+      expect(sqliteDatalogExecutionMode('copy(X) :- employee(X).')).toBe('native');
+
+      expect(
+        database.datalogQuery('available(X) :- employee(X), \\+ suspended(X).')
+      ).toEqual([{ X: 'alice' }]);
+      expect(
+        database.datalogQuery(
+          'ahead(X) :- score(X, S), baseline(team, B), S > B + 5.'
+        )
+      ).toEqual([{ X: 'alice' }]);
+      expect(database.datalogQuery('employee(X), \\+ suspended(X)')).toEqual([
+        { X: 'alice' },
+      ]);
+      expect(
+        database.datalogQuery('count(*) as Count where employee(Person)')
+      ).toEqual([{ Count: 2 }]);
+
+      const explained = database.datalogExplain(
+        'available(X) :- employee(X), \\+ suspended(X).'
+      );
+      expect(explained[0]).toMatchObject({
+        row: { X: 'alice' },
+        proof: {
+          predicate: 'available',
+          because: [
+            { predicate: 'employee', values: ['alice'] },
+            { negated: true, predicate: 'suspended', pattern: ['alice'] },
+          ],
+        },
+      });
+      expect(
+        database.datalogExplain('count(*) as Count where employee(Person)')[0]
+      ).toMatchObject({
+        row: { Count: 2 },
+        proof: { aggregated: true, op: 'count', value: 2 },
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('matches the portable engine for negation, arithmetic, and aggregate queries', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    const facts = `
+      employee(alice). employee(bob). suspended(bob).
+      score(alice, 20). score(bob, 14). baseline(team, 10).
+    `;
+    try {
+      database.exec(`
+        CREATE TABLE employee(person TEXT);
+        CREATE TABLE suspended(person TEXT);
+        CREATE TABLE score(person TEXT, points INTEGER);
+        CREATE TABLE baseline(team TEXT, points INTEGER);
+        INSERT INTO employee VALUES ('bob'), ('alice');
+        INSERT INTO suspended VALUES ('bob');
+        INSERT INTO score VALUES ('bob', 14), ('alice', 20);
+        INSERT INTO baseline VALUES ('team', 10);
+      `);
+      for (const query of [
+        'employee(X), \\+ suspended(X)',
+        'score(X, S), baseline(team, B), S > B + 5',
+        'count(*) as Count where employee(Person)',
+      ]) {
+        expect(database.datalogQuery(query)).toEqual(portableRows(facts, query));
+      }
+    } finally {
+      database.close();
+    }
+  });
+
+  it('uses the first rule head as the result relation for multi-predicate fixpoints', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    try {
+      database.exec(`
+        CREATE TABLE seed(node TEXT);
+        CREATE TABLE edge(source TEXT, target TEXT);
+        INSERT INTO seed VALUES ('a');
+        INSERT INTO edge VALUES ('a', 'b'), ('b', 'c');
+      `);
+      const program = `
+        answer(X) :- reachable(X), X != a.
+        reachable(X) :- seed(X).
+        reachable(Y) :- reachable(X), edge(X, Y).
+      `;
+      expect(sqliteDatalogExecutionMode(program)).toBe('portable');
+      expect(database.datalogQuery(program)).toEqual([
+        { X: 'b' },
+        { X: 'c' },
+      ]);
+      expect(database.datalogExplain(program)[1]).toMatchObject({
+        row: { X: 'c' },
+        proof: {
+          predicate: 'answer',
+          because: [{ predicate: 'reachable', values: ['c'] }],
+        },
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('orders portable-bridge facts deterministically rather than trusting table scan order', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    try {
+      database.exec(`
+        CREATE TABLE employee(person TEXT);
+        CREATE TABLE suspended(person TEXT);
+        INSERT INTO employee VALUES ('zoe'), ('alice'), ('mira');
+      `);
+      const query = 'employee(X), \\+ suspended(X)';
+      const first = database.datalogQuery(query);
+      database.exec(`
+        DELETE FROM employee;
+        INSERT INTO employee VALUES ('mira'), ('zoe'), ('alice');
+      `);
+      expect(database.datalogQuery(query)).toEqual(first);
+      expect(first).toEqual([{ X: 'alice' }, { X: 'mira' }, { X: 'zoe' }]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('fails closed when advanced evaluation encounters values outside portable Datalog', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    try {
+      database.exec(`
+        CREATE TABLE nullable(value INTEGER);
+        CREATE TABLE binary_value(value BLOB);
+        INSERT INTO nullable VALUES (NULL);
+        INSERT INTO binary_value VALUES (x'00ff');
+      `);
+      expect(() => database.datalogQuery('nullable(X), X = X + 0')).toThrow(
+        /NULL.*portable SQLite bridge/i
+      );
+      expect(() => database.datalogQuery('binary_value(X), X = X')).toThrow(
+        /BLOB.*portable SQLite bridge/i
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  it('fails closed for unsafe, malformed, or schema-incompatible rules', async () => {
     const database = await openDatalogDatabase(':memory:', { extensionPath });
     try {
       database.exec('CREATE TABLE edge(source TEXT, target TEXT);');
-      expect(() =>
-        database.datalogQuery(`
-          path(X, Y) :- edge(X, Y).
-          reachable(X, Y) :- edge(X, Z), path(Z, Y).
-        `)
-      ).toThrow(/same predicate/i);
       expect(() => database.datalogQuery('unsafe(X) :- edge(Y, Z).')).toThrow(/unbound/i);
       expect(() => database.datalogQuery('bad(X) :- edge(X).')).toThrow(/expects 2 columns/i);
       expect(() => database.datalogQuery('bad(X) :- missing(X).')).toThrow(/missing/i);
       expect(() => database.datalogQuery('not datalog')).toThrow(/expected/i);
       expect(() =>
-        database.datalogQuery('allowed(X) :- edge(X, Y), \\+ blocked(Y).')
-      ).toThrow(/portable Datalog engine, not the SQLite extension/i);
+        database.datalogSql('allowed(X) :- edge(X, Y), \\+ blocked(Y).')
+      ).toThrow(/negation.*cannot be compiled to one SQLite SELECT/i);
       expect(() =>
-        database.datalogQuery('count(*) as Count where edge(X, Y)')
-      ).toThrow(/aggregation.*portable Datalog engine, not the SQLite extension/i);
+        database.datalogSql('count(*) as Count where edge(X, Y)')
+      ).toThrow(/aggregation.*cannot be compiled to one SQLite SELECT/i);
       expect(() =>
-        database.datalogQuery('ahead(X) :- edge(X, Y), Y > X + 5.')
-      ).toThrow(/arithmetic.*portable Datalog engine, not the SQLite extension/i);
+        database.datalogSql('ahead(X) :- edge(X, Y), Y > X + 5.')
+      ).toThrow(/arithmetic.*cannot be compiled to one SQLite SELECT/i);
       expect(() =>
         database.datalogQuery('rembero_alias(mira_patel, mira).')
       ).toThrow(/entity identity.*portable Datalog engine, not the SQLite extension/i);
       expect(() =>
         database.datalogQuery('rembero_entity_position(edge, 2, 0).')
       ).toThrow(/entity identity.*portable Datalog engine, not the SQLite extension/i);
+      expect(() => database.datalogQuery(':- edge(X, Y), X = Y.')).toThrow(
+        /integrity constraints.*personal knowledge store/i
+      );
+      expect(() => database.datalogQuery('missing(X), \\+ edge(X, X)')).toThrow(
+        /predicate 'missing' is unavailable/i
+      );
       expect(database.datalogQuery('safe(X) :- edge(X, Y), -1 < 0.')).toEqual([]);
       expect(
         database.datalogQuery("safe(X) :- edge(X, Y), X = 'count(*) as Count where'.")

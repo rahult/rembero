@@ -33,10 +33,12 @@ export {
   buildSqliteExtension,
   openDatalogDatabase,
   resolveSqliteExtensionPath,
+  sqliteDatalogExecutionMode,
   type DatalogRow,
   type DatalogExplanation,
   type DatalogProof,
   type OpenDatalogDatabaseOptions,
+  type SqliteDatalogExecutionMode,
 } from './sqlite/extension.js';
 export {
   type ChatMessage,
