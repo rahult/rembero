@@ -36,11 +36,14 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { evaluateQuerySpec, parseProgram, parseQuerySpec } from 'rembero'; " +
+      "import { evaluateQuerySpec, parseProgram, parseQuerySpec, selectRecallSchema } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
-        "if (arithmetic.length !== 1 || arithmetic[0]?.X?.value !== 'a') throw new Error('public arithmetic API failed');",
+        "if (arithmetic.length !== 1 || arithmetic[0]?.X?.value !== 'a') throw new Error('public arithmetic API failed'); " +
+        "const noise = Array.from({ length: 100 }, (_, i) => `noise_${i}(value_${i}).`).join('\\n'); " +
+        "const schema = selectRecallSchema(parseProgram(`${noise}\\nworks_at(mira, acme).`), 'Who employs Mira?', { predicateLimit: 4 }); " +
+        "if (!schema.pruned || !schema.selectedPredicates.includes('works_at/2') || schema.summaryBytes > 24576) throw new Error('public recall schema API failed');",
     ],
     { cwd: directory }
   );
@@ -250,7 +253,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

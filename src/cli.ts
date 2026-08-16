@@ -11,9 +11,14 @@ import {
 } from './autocapture/hooks.js';
 import { DEFAULT_TRANSCRIPT_TAIL_BYTES } from './autocapture/transcript.js';
 import { serializeClause } from './engine/index.js';
-import { loadEnv, validTimeModeFromEnv } from './env.js';
+import {
+  loadEnv,
+  recallSchemaPredicateLimitFromEnv,
+  validTimeModeFromEnv,
+} from './env.js';
 import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
 import { rememberText, recallQuestion } from './llm/pipeline.js';
+import { MAX_RECALL_SCHEMA_PREDICATES } from './llm/schema.js';
 import { serveStdio } from './mcp/server.js';
 import { explainQueryTool, forgetTool, historyTool, listMemoriesTool, queryTool } from './mcp/tools.js';
 import { MAX_HISTORY_EVENTS, MemoryStore, type ValidTimeMode } from './store/store.js';
@@ -52,6 +57,7 @@ Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
       --namespaces <a,b|*> Namespaces to search for recall/query/list/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
+      --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --limit <n>          History event limit (maximum: 1000)
       --extension <path>   Path to the compiled Rembero SQLite extension
       --daily-cap <n>      Max auto-capture attempts per namespace/UTC day (default: 10)
@@ -77,6 +83,7 @@ interface ParsedArgs {
   settingsPath?: string;
   managedBy?: string;
   validTimeMode?: string;
+  schemaPredicateLimit?: string;
   limit?: string;
 }
 
@@ -114,6 +121,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--valid-time-mode') {
       parsed.validTimeMode = valueAfter(i, arg);
       i += 1;
+    } else if (arg === '--schema-predicate-limit') {
+      parsed.schemaPredicateLimit = valueAfter(i, arg);
+      i += 1;
     } else if (arg === '--limit') {
       parsed.limit = valueAfter(i, arg);
       i += 1;
@@ -148,6 +158,17 @@ function validTimeModeOption(value: string | undefined): ValidTimeMode {
   if (value === undefined) return validTimeModeFromEnv();
   if (value === 'delete' || value === 'archive_until') return value;
   throw new Error("--valid-time-mode must be 'delete' or 'archive_until'");
+}
+
+function recallSchemaPredicateLimitOption(value: string | undefined): number {
+  if (value === undefined) return recallSchemaPredicateLimitFromEnv();
+  const parsed = integerOption(value, 0, 'recall schema predicate limit');
+  if (parsed < 1 || parsed > MAX_RECALL_SCHEMA_PREDICATES) {
+    throw new Error(
+      `recall schema predicate limit must be from 1 to ${MAX_RECALL_SCHEMA_PREDICATES}`
+    );
+  }
+  return parsed;
 }
 
 async function readStdinBounded(maxBytes = MAX_INPUT_BYTES): Promise<string> {
@@ -192,6 +213,9 @@ async function main(): Promise<void> {
         llm: lazyClientFromEnv(),
         llmAllowedNamespaces,
         validTimeMode: validTimeModeOption(args.validTimeMode),
+        recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
+          args.schemaPredicateLimit
+        ),
       });
       return; // keep process alive; transport owns stdio
     case 'remember': {
@@ -222,7 +246,11 @@ async function main(): Promise<void> {
       }
       const validTimeMode = validTimeModeOption(args.validTimeMode);
       const result = await rememberText(
-        { store, llm: clientFromEnv(), llmAllowedNamespaces },
+        {
+          store,
+          llm: clientFromEnv(),
+          llmAllowedNamespaces,
+        },
         text,
         args.namespace,
         { validTimeMode }
@@ -232,18 +260,34 @@ async function main(): Promise<void> {
     }
     case 'recall': {
       const result = await recallQuestion(
-        { store, llm: clientFromEnv(), llmAllowedNamespaces },
+        {
+          store,
+          llm: clientFromEnv(),
+          llmAllowedNamespaces,
+          recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
+            args.schemaPredicateLimit
+          ),
+        },
         text,
         namespaces
       );
       assertBoundedOutput(result.answer, 'CLI recall answer');
       console.log(result.answer);
-      console.log(`  (query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length})`);
+      console.log(
+        `  (status: ${result.status}, query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length})`
+      );
       return;
     }
     case 'recall-explain': {
       const result = await recallQuestion(
-        { store, llm: clientFromEnv(), llmAllowedNamespaces },
+        {
+          store,
+          llm: clientFromEnv(),
+          llmAllowedNamespaces,
+          recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
+            args.schemaPredicateLimit
+          ),
+        },
         text,
         namespaces,
         { explain: true }

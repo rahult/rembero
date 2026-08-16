@@ -29,6 +29,16 @@ import {
   transcriptExtractionSystemPrompt,
   type QueryPromptVariant,
 } from './prompts.js';
+import {
+  type RecallSchemaDiagnostics,
+  type RecallSchemaSelection,
+  MAX_RECALL_SCHEMA_PREDICATES,
+  RecallSchemaBudgetError,
+  recallEditDistance,
+  recallSchemaDiagnostics,
+  recallWords,
+  selectRecallSchema,
+} from './schema.js';
 
 export interface PipelineDeps {
   store: MemoryStore;
@@ -37,6 +47,10 @@ export interface PipelineDeps {
   llmAllowedNamespaces?: ReadonlySet<string>;
   /** Default supersession policy for manual natural-language remember operations. */
   validTimeMode?: ValidTimeMode;
+  /** Maximum predicate groups receiving detailed recall schema context. */
+  recallSchemaPredicateLimit?: number;
+  /** Internal/library override for the hard recall schema byte budget. */
+  recallSchemaByteLimit?: number;
 }
 
 export interface RememberResult {
@@ -59,21 +73,49 @@ export interface RememberTranscriptOptions {
 }
 
 export interface RecallResult {
+  status: RecallStatus;
   answer: string;
   query: string | null;
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
+  pruning?: RecallPruningReport;
 }
 
 export interface RetrievalResult {
+  status: RecallStatus;
   query: string | null;
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
+  pruning?: RecallPruningReport;
 }
+
+export type RecallSchemaAttemptOutcome = 'answered' | 'empty' | 'unanswerable';
+
+export interface RecallSchemaAttempt {
+  detailedPredicates: number;
+  advertisedPredicates: number;
+  catalogComplete: boolean;
+  schemaComplete: boolean;
+  summaryBytes: number;
+  outcome: RecallSchemaAttemptOutcome;
+}
+
+export interface RecallPruningReport extends RecallSchemaDiagnostics {
+  initialSelectedPredicates: string[];
+  attempts: RecallSchemaAttempt[];
+}
+
+export type RecallStatus =
+  | 'answered'
+  | 'no_match'
+  | 'unanswerable'
+  | 'schema_budget_exhausted';
 
 export interface RecallOptions {
   queryPromptVariant?: QueryPromptVariant;
   explain?: boolean;
+  schemaPredicateLimit?: number;
+  schemaByteLimit?: number;
 }
 
 function stripFences(text: string): string {
@@ -258,72 +300,42 @@ export async function rememberTranscriptText(
   };
 }
 
-function canonicalWord(word: string): string {
-  const irregular: Record<string, string> = {
-    are: 'be',
-    been: 'be',
-    had: 'have',
-    has: 'have',
-    is: 'be',
-    was: 'be',
-    were: 'be',
-  };
-  if (irregular[word]) return irregular[word];
-  if (word.length > 5 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
-  if (word.length > 5 && word.endsWith('ing')) return word.slice(0, -3);
-  if (word.length > 4 && word.endsWith('ed')) return word.slice(0, -2);
-  if (word.length > 4 && word.endsWith('s')) return word.slice(0, -1);
-  return word;
+function visiblePredicateList(known: ReadonlySet<string>): string {
+  const ordered = [...known].sort();
+  const visible = ordered.slice(0, 64);
+  return `${visible.join(', ') || '(none)'}${
+    ordered.length > visible.length ? `, ... (${ordered.length - visible.length} more shown in schema)` : ''
+  }`;
 }
 
-function words(text: string): string[] {
-  return text
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean)
-    .map(canonicalWord);
-}
-
-function editDistance(left: string, right: string): number {
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
-    const current = [leftIndex];
-    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
-      current[rightIndex] = Math.min(
-        current[rightIndex - 1] + 1,
-        previous[rightIndex] + 1,
-        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1)
-      );
-    }
-    previous = current;
-  }
-  return previous[right.length];
-}
-
-function validateQueryPredicates(goals: Goal[], clauses: Clause[], question: string): void {
-  const known = new Set(clauses.map((c) => `${c.head.predicate}/${c.head.args.length}`));
-  const questionWords = new Set(words(question));
+function validateQueryPredicates(
+  goals: Goal[],
+  known: ReadonlySet<string>,
+  question: string
+): void {
+  const questionWords = new Set(recallWords(question));
   for (const goal of goals) {
     if (isComparison(goal)) continue;
     const literal = isNegation(goal) ? goal.not : goal;
     const key = `${literal.predicate}/${literal.args.length}`;
     if (known.has(key)) continue;
     if (isNegation(goal)) {
-      const sameArity = clauses
-        .map((clause) => clause.head)
-        .filter((head) => head.args.length === literal.args.length)
-        .map((head) => head.predicate);
+      const sameArity = [...known]
+        .map((candidate) => candidate.match(/^(.*)\/(\d+)$/))
+        .filter((match): match is RegExpMatchArray => match !== null)
+        .filter((match) => Number(match[2]) === literal.args.length)
+        .map((match) => match[1]);
       const lookalike = sameArity.find(
         (predicate) =>
-          predicate !== literal.predicate && editDistance(predicate, literal.predicate) <= 1
+          predicate !== literal.predicate &&
+          recallEditDistance(predicate, literal.predicate) <= 1
       );
       if (lookalike !== undefined) {
         throw new Error(
           `unknown negated predicate ${key} resembles ${lookalike}/${literal.args.length}; correct the predicate name`
         );
       }
-      const predicateWords = words(literal.predicate);
+      const predicateWords = recallWords(literal.predicate);
       if (
         predicateWords.length === 0 ||
         !predicateWords.every((word) => questionWords.has(word))
@@ -336,7 +348,7 @@ function validateQueryPredicates(goals: Goal[], clauses: Clause[], question: str
     }
     if (!known.has(key)) {
       throw new Error(
-        `unknown predicate ${key} — available: ${[...known].sort().join(', ') || '(none)'}`
+        `unknown predicate ${key} — available in this schema: ${visiblePredicateList(known)}`
       );
     }
   }
@@ -349,8 +361,12 @@ const AGGREGATE_INTENT: Record<'count' | 'sum' | 'min' | 'max', RegExp> = {
   max: /\b(?:max(?:imum)?|largest|greatest|highest|latest|oldest|most)\b/i,
 };
 
-function validateQuerySpec(query: QuerySpec, clauses: Clause[], question: string): void {
-  validateQueryPredicates(query.goals, clauses, question);
+function validateQuerySpec(
+  query: QuerySpec,
+  known: ReadonlySet<string>,
+  question: string
+): void {
+  validateQueryPredicates(query.goals, known, question);
   const requested = Object.entries(AGGREGATE_INTENT).find(([, pattern]) =>
     pattern.test(question)
   )?.[0];
@@ -378,54 +394,91 @@ export async function retrieveQuestion(
   assertSafeForExternalLlm(question, 'recall question');
   const clauses = deps.store.clausesFor(namespaces);
   if (clauses.length === 0) {
-    return { query: null, bindings: [] };
+    return { status: 'unanswerable', query: null, bindings: [] };
   }
-  const schema = buildSchemaSummary(clauses);
-  assertSafeForExternalLlm(schema, 'memory schema');
-  const messages: ChatMessage[] = [
-    {
-      role: 'system',
-      content: queryGenSystemPrompt(schema, options.queryPromptVariant),
-    },
-    { role: 'user', content: question },
-  ];
-  const validateResponse = (response: string): QuerySpec | null => {
-    if (UNANSWERABLE_RE.test(response)) return null;
-    const parsed = parseQuerySpec(response);
-    validateQuerySpec(parsed, clauses, question);
-    return parsed;
-  };
-  const evaluateQuery = (query: QuerySpec, queryText: string): RetrievalResult => {
-    if (options.explain) {
-      const explanation = explainKnowledge(
-        clauses,
-        queryText,
-        deps.store.sourcesFor(namespaces)
+  const schemaPredicateLimit =
+    options.schemaPredicateLimit ?? deps.recallSchemaPredicateLimit;
+  const schemaByteLimit = options.schemaByteLimit ?? deps.recallSchemaByteLimit;
+  let initialSelection: RecallSchemaSelection;
+  try {
+    initialSelection = selectRecallSchema(clauses, question, {
+      ...(schemaPredicateLimit === undefined
+        ? {}
+        : { predicateLimit: schemaPredicateLimit }),
+      ...(schemaByteLimit === undefined ? {} : { byteLimit: schemaByteLimit }),
+    });
+  } catch (error) {
+    if (!(error instanceof RecallSchemaBudgetError)) throw error;
+    try {
+      initialSelection = selectRecallSchema(clauses, question, {
+        predicateLimit: MAX_RECALL_SCHEMA_PREDICATES,
+        ...(schemaByteLimit === undefined ? {} : { byteLimit: schemaByteLimit }),
+      });
+    } catch (widenError) {
+      if (widenError instanceof RecallSchemaBudgetError) {
+        return { status: 'schema_budget_exhausted', query: null, bindings: [] };
+      }
+      throw widenError;
+    }
+  }
+
+  interface PassResult {
+    outcome: RecallSchemaAttemptOutcome;
+    query: string | null;
+    bindings: Record<string, string>[];
+    explanation?: ExplainKnowledgeResult;
+  }
+
+  const runPass = async (selection: RecallSchemaSelection): Promise<PassResult> => {
+    assertSafeForExternalLlm(selection.summary, 'memory schema');
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content: queryGenSystemPrompt(selection.summary, options.queryPromptVariant),
+      },
+      { role: 'user', content: question },
+    ];
+    const validateResponse = (response: string): QuerySpec | null => {
+      if (UNANSWERABLE_RE.test(response)) return null;
+      const parsed = parseQuerySpec(response);
+      validateQuerySpec(parsed, selection.availablePredicates, question);
+      return parsed;
+    };
+    const evaluate = (query: QuerySpec, queryText: string): PassResult => {
+      if (options.explain) {
+        const explanation = explainKnowledge(
+          clauses,
+          queryText,
+          deps.store.sourcesFor(namespaces)
+        );
+        const bindings = explanation.rows.map((row) => row.bindings);
+        return {
+          outcome: bindings.length > 0 ? 'answered' : 'empty',
+          query: queryText,
+          bindings,
+          explanation,
+        };
+      }
+      const bindings = evaluateQuerySpec(clauses, query).map((binding: Bindings) =>
+        Object.fromEntries(
+          Object.entries(binding).map(([name, term]) => [name, serializeTerm(term)])
+        )
       );
       return {
+        outcome: bindings.length > 0 ? 'answered' : 'empty',
         query: queryText,
-        bindings: explanation.rows.map((row) => row.bindings),
-        explanation,
+        bindings,
       };
-    }
-    return {
-      query: queryText,
-      bindings: evaluateQuerySpec(clauses, query).map((b: Bindings) =>
-        Object.fromEntries(
-          Object.entries(b).map(([name, term]) => [name, serializeTerm(term)])
-        )
-      ),
     };
-  };
 
-  let query = await completeWithRetry(deps.llm, messages, validateResponse);
-  if (query === null) return { query: null, bindings: [] };
+    let query = await completeWithRetry(deps.llm, messages, validateResponse);
+    if (query === null) {
+      return { outcome: 'unanswerable', query: null, bindings: [] };
+    }
+    let queryText = serializeQuerySpec(query);
+    let result = evaluate(query, queryText);
+    if (result.outcome === 'answered') return result;
 
-  let queryText = serializeQuerySpec(query);
-  let retrieval = evaluateQuery(query, queryText);
-
-  // one shot at an alternative query before giving up on an empty result
-  if (retrieval.bindings.length === 0) {
     const fallbackMessages: ChatMessage[] = [
       ...messages,
       { role: 'assistant', content: `?- ${queryText}.` },
@@ -435,12 +488,73 @@ export async function retrieveQuestion(
       },
     ];
     query = await completeWithRetry(deps.llm, fallbackMessages, validateResponse);
-    if (query === null) return { query: null, bindings: [] };
+    if (query === null) {
+      return { outcome: 'unanswerable', query: null, bindings: [] };
+    }
     queryText = serializeQuerySpec(query);
-    retrieval = evaluateQuery(query, queryText);
+    result = evaluate(query, queryText);
+    return result;
+  };
+
+  const attempts: RecallSchemaAttempt[] = [];
+  let finalSelection = initialSelection;
+  let pass = await runPass(finalSelection);
+  const recordAttempt = () => {
+    attempts.push({
+      detailedPredicates: finalSelection.selectedPredicates.length,
+      advertisedPredicates: finalSelection.advertisedPredicates,
+      catalogComplete: finalSelection.catalogComplete,
+      schemaComplete: finalSelection.schemaComplete,
+      summaryBytes: finalSelection.summaryBytes,
+      outcome: pass.outcome,
+    });
+  };
+  recordAttempt();
+
+  if (
+    pass.outcome !== 'answered' &&
+    !finalSelection.schemaComplete &&
+    finalSelection.totalPredicates <= MAX_RECALL_SCHEMA_PREDICATES &&
+    finalSelection.selectedPredicates.length < finalSelection.totalPredicates
+  ) {
+    try {
+      finalSelection = selectRecallSchema(clauses, question, {
+        predicateLimit: finalSelection.totalPredicates,
+        ...(schemaByteLimit === undefined ? {} : { byteLimit: schemaByteLimit }),
+      });
+      pass = await runPass(finalSelection);
+      recordAttempt();
+    } catch (error) {
+      if (!(error instanceof RecallSchemaBudgetError)) {
+        throw error;
+      }
+      finalSelection = initialSelection;
+    }
   }
 
-  return retrieval;
+  const includePruning =
+    initialSelection.pruned || !initialSelection.schemaComplete || attempts.length > 1;
+  const pruning = includePruning
+    ? {
+        pruning: {
+          ...recallSchemaDiagnostics(finalSelection),
+          initialSelectedPredicates: [...initialSelection.selectedPredicates],
+          attempts,
+        },
+      }
+    : {};
+  const { outcome, ...retrieval } = pass;
+  if (pass.outcome === 'answered') {
+    return { status: 'answered', ...retrieval, ...pruning };
+  }
+  if (!finalSelection.schemaComplete) {
+    return { status: 'schema_budget_exhausted', ...retrieval, ...pruning };
+  }
+  return {
+    status: outcome === 'empty' ? 'no_match' : 'unanswerable',
+    ...retrieval,
+    ...pruning,
+  };
 }
 
 export async function recallQuestion(
@@ -452,9 +566,18 @@ export async function recallQuestion(
   const retrieval = await retrieveQuestion(deps, question, namespaces, options);
   if (retrieval.query === null) {
     return {
-      answer: 'I have no relevant memories to answer that.',
-      query: null,
-      bindings: [],
+      answer:
+        retrieval.status === 'schema_budget_exhausted'
+          ? 'Recall reached its schema budget before it could rule out relevant memories.'
+          : 'I have no relevant memories to answer that.',
+      ...retrieval,
+    };
+  }
+
+  if (retrieval.status === 'schema_budget_exhausted') {
+    return {
+      answer: 'Recall reached its schema budget before it could rule out relevant memories.',
+      ...retrieval,
     };
   }
 

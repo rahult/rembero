@@ -2,6 +2,10 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
+import {
+  DEFAULT_RECALL_SCHEMA_PREDICATES,
+  MAX_RECALL_SCHEMA_PREDICATES,
+} from './llm/schema.js';
 import type { ValidTimeMode } from './store/store.js';
 
 /**
@@ -22,4 +26,25 @@ export function validTimeModeFromEnv(env: NodeJS.ProcessEnv = process.env): Vali
   const configured = env.REMBERO_VALID_TIME_MODE ?? 'delete';
   if (configured === 'delete' || configured === 'archive_until') return configured;
   throw new Error("REMBERO_VALID_TIME_MODE must be 'delete' or 'archive_until'");
+}
+
+export function recallSchemaPredicateLimitFromEnv(
+  env: NodeJS.ProcessEnv = process.env
+): number {
+  const configured = env.REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT;
+  if (configured === undefined) return DEFAULT_RECALL_SCHEMA_PREDICATES;
+  if (!/^\d+$/.test(configured)) {
+    throw new Error('REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT must be an integer');
+  }
+  const parsed = Number(configured);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_RECALL_SCHEMA_PREDICATES
+  ) {
+    throw new Error(
+      `REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT must be from 1 to ${MAX_RECALL_SCHEMA_PREDICATES}`
+    );
+  }
+  return parsed;
 }

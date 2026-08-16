@@ -36,6 +36,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_AUTO_CAPTURE_DAILY_CAP` | no | `10` unique attempts per namespace/UTC day |
 | `REMBERO_AUTO_CAPTURE_TAIL_BYTES` | no | `24576` bytes (maximum `49152`) |
 | `REMBERO_VALID_TIME_MODE` | no | `delete`; set `archive_until` to preserve superseded facts |
+| `REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT` | no | `32` detailed predicates on the first recall pass (range: 1–256) |
 
 The raw Datalog tools (`query`, `assert_facts`, `forget`, `list_memories`) work with no
 API key at all — only natural-language `remember`/`recall` call the LLM.
@@ -67,6 +68,10 @@ For inspectable reasoning, `recall_explain` and `explain_query` return the bindi
 deterministic derivation proofs, durable source statements, and a query-scoped personal
 knowledge graph. Facts remain authoritative in the same portable `.dl` files; the graph
 is derived and cannot drift into a second source of truth.
+
+Natural-language recall returns an explicit status: `answered`, `no_match`,
+`unanswerable`, or `schema_budget_exhausted`. The last status is an honest bounded-result
+signal, not a claim that no relevant memory exists.
 
 ### Optional ambient capture
 
@@ -100,6 +105,7 @@ and the async-hook lifecycle boundary.
 ```bash
 node dist/cli.js remember "Rahul's dentist is Dr Chen"
 node dist/cli.js recall   "Who is Rahul's dentist?"
+node dist/cli.js recall   "Who owns Atlas?" --schema-predicate-limit 48
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
 node dist/cli.js query    'employee(X), \+ suspended(X)' # closed-world negation
@@ -121,6 +127,14 @@ An update then keeps the preceding fact as an ordinary
 `<predicate>_until(..., '<ISO instant>').` clause. `history` replays the bounded journal
 in authoritative append order, while past-tense recall can query and explain those
 portable archive facts. See [the temporal history contract](docs/TEMPORAL-HISTORY.md).
+
+At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
+dependencies and temporal companions, and evaluates every accepted query against the
+complete selected namespaces. Empty or unanswerable results from a partial slice trigger
+one bounded widening pass; if completeness still cannot be established, recall reports
+`schema_budget_exhausted` instead of inventing “no memory.” Pruning diagnostics are
+returned by the library and MCP surfaces. See
+[the recall schema-pruning contract](docs/RECALL-SCHEMA-PRUNING.md).
 
 `-n <ns>` / `--namespace <ns>` selects the namespace to write to; `--namespaces a,b` or
 `--namespaces '*'` selects which namespaces recall/query/list read from.

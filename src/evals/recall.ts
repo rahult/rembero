@@ -8,6 +8,13 @@ import {
   type Term,
 } from '../engine/index.js';
 import type { QueryPromptVariant } from '../llm/prompts.js';
+import type { RecallStatus } from '../llm/pipeline.js';
+
+export const RECALL_EVAL_DISTRACTOR_COUNT = 100;
+const RECALL_EVAL_DISTRACTORS = Array.from(
+  { length: RECALL_EVAL_DISTRACTOR_COUNT },
+  (_, index) => `eval_noise_${String(index).padStart(3, '0')}(subject_${index}, value_${index}).`
+).join('\n');
 
 export const RECALL_EVAL_PROGRAM = `
 works_at(ava, northwind).
@@ -56,6 +63,7 @@ colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
 grandparent(X, Y) :- parent(X, Z), parent(Z, Y).
 ancestor(X, Y) :- parent(X, Y).
 ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
+${RECALL_EVAL_DISTRACTORS}
 `;
 
 export type ExpectedQueryDecision = 'required' | 'unanswerable';
@@ -222,6 +230,7 @@ export interface RecallEvalObservation {
   case: RecallEvalCase;
   model: string;
   variant: QueryPromptVariant;
+  status: RecallStatus;
   query: string | null;
   actualRows: string[][];
   durationMs: number;
@@ -239,6 +248,7 @@ export interface RecallEvalScore {
   falsePositives: number;
   falseNegatives: number;
   errors: number;
+  schemaBudgetExhaustions: number;
   durationMs: number;
 }
 
@@ -299,7 +309,7 @@ export function bindingRows(bindings: Record<string, string>[], query: string): 
 }
 
 export function observationIsCorrect(observation: RecallEvalObservation): boolean {
-  if (observation.error) return false;
+  if (observation.error || observation.status === 'schema_budget_exhausted') return false;
   const expectedQuery = observation.case.expectedQuery === 'required';
   if ((observation.query !== null) !== expectedQuery) return false;
   return sameSet(
@@ -327,7 +337,11 @@ export function scoreRecallEval(observations: RecallEvalObservation[]): RecallEv
     }
     if (observationIsCorrect(observation)) exact++;
     const expectedQuery = observation.case.expectedQuery === 'required';
-    if (!observation.error && (observation.query !== null) === expectedQuery) {
+    if (
+      !observation.error &&
+      observation.status !== 'schema_budget_exhausted' &&
+      (observation.query !== null) === expectedQuery
+    ) {
       answerabilityCorrect++;
     }
   }
@@ -353,6 +367,9 @@ export function scoreRecallEval(observations: RecallEvalObservation[]): RecallEv
     falsePositives,
     falseNegatives,
     errors: observations.filter((observation) => observation.error !== undefined).length,
+    schemaBudgetExhaustions: observations.filter(
+      (observation) => observation.status === 'schema_budget_exhausted'
+    ).length,
     durationMs: observations.reduce((total, observation) => total + observation.durationMs, 0),
   };
 }

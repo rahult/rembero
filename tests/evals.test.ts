@@ -3,6 +3,7 @@ import { parseProgram } from '../src/engine/index.js';
 import { buildSchemaSummary } from '../src/llm/prompts.js';
 import {
   RECALL_EVAL_CASES,
+  RECALL_EVAL_DISTRACTOR_COUNT,
   RECALL_EVAL_PROGRAM,
   bindingRows,
   observationIsCorrect,
@@ -10,6 +11,7 @@ import {
   type RecallEvalCase,
   type RecallEvalObservation,
 } from '../src/evals/recall.js';
+import { selectRecallSchema } from '../src/llm/schema.js';
 
 function testCase(
   id: string,
@@ -28,6 +30,8 @@ function observation(
     case: test,
     model: 'test-model',
     variant: 'baseline',
+    status:
+      query === null ? 'unanswerable' : actualRows.length === 0 ? 'no_match' : 'answered',
     query,
     actualRows,
     durationMs: 10,
@@ -46,6 +50,13 @@ describe('recall eval corpus', () => {
       if (test.expectedQuery === 'unanswerable') expect(test.expectedRows).toEqual([]);
     }
     const summary = buildSchemaSummary(parseProgram(RECALL_EVAL_PROGRAM));
+    const selection = selectRecallSchema(
+      parseProgram(RECALL_EVAL_PROGRAM),
+      'Where does Rahul work?'
+    );
+    expect(RECALL_EVAL_DISTRACTOR_COUNT).toBeGreaterThanOrEqual(100);
+    expect(selection.pruned).toBe(true);
+    expect(selection.selectedPredicates).toContain('works_at/2');
     for (const heldOut of [
       'works_at(rahul, acme).',
       'lives_in(dr_chen, \'New York\').',
@@ -126,6 +137,20 @@ describe('recall eval metrics', () => {
       accuracy: 0,
       answerabilityAccuracy: 0,
       errors: 1,
+    });
+  });
+
+  it('counts schema budget exhaustion as an explicit failed outcome', () => {
+    const exhausted = {
+      ...observation(testCase('exhausted', [], 'unanswerable'), null, []),
+      status: 'schema_budget_exhausted' as const,
+    };
+    expect(observationIsCorrect(exhausted)).toBe(false);
+    expect(scoreRecallEval([exhausted])).toMatchObject({
+      accuracy: 0,
+      answerabilityAccuracy: 0,
+      schemaBudgetExhaustions: 1,
+      errors: 0,
     });
   });
 });

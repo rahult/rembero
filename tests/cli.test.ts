@@ -51,6 +51,52 @@ describe('CLI ingress limits', () => {
     expect(result.stderr).toMatch(/import file exceeds 65536 bytes/i);
     expect(existsSync(join(home, 'memory', 'default.dl'))).toBe(false);
   });
+
+  it('validates the recall schema limit before any external request', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-schema-limit-'));
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'recall',
+        'What is remembered?',
+        '--schema-predicate-limit',
+        '0',
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          REMBERO_HOME: join(root, 'home'),
+          LLM_API_KEY: 'test-only-key',
+          REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT: '32',
+        },
+      }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/schema predicate limit must be from 1 to 256/i);
+  });
+
+  it('prints the explicit recall status when memory is empty', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-recall-status-'));
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'recall', 'What is remembered?'],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          REMBERO_HOME: join(root, 'home'),
+          LLM_API_KEY: 'test-only-key',
+          REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT: '32',
+        },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('status: unanswerable');
+  });
 });
 
 describe('auto-capture CLI', () => {

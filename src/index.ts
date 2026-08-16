@@ -44,7 +44,11 @@ export {
 export {
   type PipelineDeps,
   type RecallOptions,
+  type RecallPruningReport,
   type RecallResult,
+  type RecallSchemaAttempt,
+  type RecallSchemaAttemptOutcome,
+  type RecallStatus,
   type RememberResult,
   type RememberOptions,
   type RememberTranscriptOptions,
@@ -58,6 +62,21 @@ export {
   type QueryPromptVariant,
   transcriptExtractionSystemPrompt,
 } from './llm/prompts.js';
+export {
+  DEFAULT_RECALL_SCHEMA_BYTES,
+  DEFAULT_RECALL_SCHEMA_PREDICATES,
+  MAX_RECALL_SCHEMA_BYTES,
+  MAX_RECALL_SCHEMA_CANDIDATES,
+  MAX_RECALL_SCHEMA_CLAUSES,
+  MAX_RECALL_SCHEMA_PREDICATES,
+  MAX_RECALL_QUESTION_WORDS,
+  RecallSchemaBudgetError,
+  type RecallSchemaDiagnostics,
+  type RecallSchemaOptions,
+  type RecallSchemaSelection,
+  recallSchemaDiagnostics,
+  selectRecallSchema,
+} from './llm/schema.js';
 export {
   autoCaptureClaudeStop,
   type AutoCaptureDeps,

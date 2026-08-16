@@ -1,4 +1,4 @@
-# Rembero post-MVP roadmap (v0.6 →)
+# Rembero post-MVP roadmap (v0.7 →)
 
 MVP shipped: public repo, CI, GitHub release v0.1.0, npm package ready (publish pending
 auth). What follows is ordered by user value per unit of effort — each phase is
@@ -51,15 +51,20 @@ old fact. Fix by making time first-class:
 3. **Complete — `rembero history <pattern>`**: a bounded, redacted, fail-closed replay of
    one fact pattern's append-order life story across the CLI, MCP, and library APIs.
 
-## Phase 9 — Retrieval quality at scale  *(v0.7, ~2-3 days)*
+## Phase 9 — Retrieval quality at scale  *(v0.7)*
 
 Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 
-1. **Schema pruning for recall**: rank predicates by lexical/embedding similarity to the
-   question, send only the top slice.
-2. **Eval harness**: recall now has a checked-in labeled corpus, precision/recall/F1 and
-   answerability metrics, prompt/model comparisons, and deterministic metric tests. Add
-   extraction fixtures and a credentialed nightly CI run before v0.5.
+1. **Complete — deterministic schema pruning for recall**: a local lexical ranker sends a
+   bounded detailed slice plus a compact predicate catalog, retains transitive rule
+   dependencies and temporal companions, and chooses question-matching samples. Accepted
+   queries still evaluate over the full allowed clause set. Partial negative results widen
+   once or return `schema_budget_exhausted`; they never become false “no memory” claims.
+2. **Complete — scale-aware eval harness**: the checked-in labeled recall corpus now runs
+   among 100 deterministic distractor predicates, reports precision/recall/F1,
+   answerability, and schema-budget exhaustion, and retains prompt/model comparisons plus
+   deterministic metric tests. A credentialed nightly CI run remains optional ecosystem
+   work.
 3. **Model flexibility**: verify the pipeline against 2-3 other OpenRouter models;
    document which work well as cheaper `LLM_MODEL` choices.
 
@@ -96,5 +101,6 @@ is the foundation for conflict views, temporal history, and alternative proof in
 without replacing the readable personal knowledge base with a second graph store.
 
 The next reasoning milestone is an evidence-driven index pass once benchmarks show
-relation scans becoming material. Product work can now move to opt-in auto-capture while
-the finite, proof-carrying rule language remains the deterministic authority.
+relation scans becoming material. Retrieval context is now bounded independently of
+knowledge-base growth while the finite, proof-carrying rule language remains the
+deterministic authority.

@@ -71,6 +71,9 @@ proof and graph objects.
   fail closed when their configured caps are exceeded.
 - Namespace wildcard reads are sorted before evaluation so filesystem enumeration order
   cannot change the chosen witness.
+- Recall schema pruning changes only the bounded query-generation prompt. The accepted
+  query, proof, sources, and graph are always computed from the full allowed clause set,
+  so ranking cannot change the first deterministic witness.
 - Inputs that resemble credentials or financial identifiers are rejected before any
   external LLM call. Direct-store provenance is still redacted before journaling as a
   defense in depth.

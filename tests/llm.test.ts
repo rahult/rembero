@@ -285,6 +285,7 @@ describe('recallQuestion', () => {
       { queryPromptVariant: 'grounded' }
     );
     expect(result).toEqual({
+      status: 'answered',
       query: 'works_at(rahul, Company)',
       bindings: [{ Company: 'acme' }],
     });
@@ -296,6 +297,272 @@ describe('recallQuestion', () => {
     const llm = new ScriptedLlm(['?- works_at(rahul, Company).']);
     await retrieveQuestion({ store, llm }, 'Where does Rahul work?');
     expect(llm.calls[0][0].content).toContain('Datalog variables represent requested unknown');
+  });
+
+  it('recalls through a deterministic relevant schema slice with 100+ predicates', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-scale-')));
+    const noise = Array.from(
+      { length: 120 },
+      (_, index) => `noise_${String(index).padStart(3, '0')}(subject_${index}, value_${index}).`
+    ).join('\n');
+    scaled.assert(
+      'default',
+      `${noise}\nworks_at(alice, northwind).\nworks_at(mira, acme).`
+    );
+    const llm = new ScriptedLlm(['?- works_at(mira, Company).']);
+
+    const result = await retrieveQuestion(
+      { store: scaled, llm, recallSchemaPredicateLimit: 8 },
+      'Who is Mira employed by?'
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query: 'works_at(mira, Company)',
+      bindings: [{ Company: 'acme' }],
+      pruning: {
+        totalPredicates: 121,
+        selectedPredicates: expect.arrayContaining(['works_at/2']),
+        catalogComplete: true,
+      },
+    });
+    const prompt = llm.calls[0][0].content;
+    expect(prompt).toContain('% selected predicates (8 of 121');
+    expect(prompt).toContain('% e.g. works_at(mira, acme).');
+    expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(64 * 1024);
+  });
+
+  it('keeps derived-rule dependencies in a pruned recall-explain path', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-derived-')));
+    const noise = Array.from(
+      { length: 100 },
+      (_, index) => `noise_${String(index).padStart(3, '0')}(subject_${index}).`
+    ).join('\n');
+    scaled.assert(
+      'default',
+      `${noise}
+       works_at(rahul, acme). works_at(mira, acme).
+       colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.`
+    );
+    const llm = new ScriptedLlm(['?- colleague(rahul, Who).']);
+
+    const result = await retrieveQuestion(
+      { store: scaled, llm, recallSchemaPredicateLimit: 6 },
+      'Who are Rahul’s colleagues?',
+      ['default'],
+      { explain: true }
+    );
+
+    expect(result.status).toBe('answered');
+    expect(result.bindings).toEqual([{ Who: 'mira' }]);
+    expect(result.pruning?.selectedPredicates).toEqual(
+      expect.arrayContaining(['colleague/2', 'works_at/2'])
+    );
+    expect(llm.calls[0][0].content).toContain(
+      'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'
+    );
+    expect(result.explanation?.rows[0].proofs[0]).toMatchObject({
+      predicate: 'colleague',
+      because: [
+        expect.objectContaining({ predicate: 'works_at' }),
+        expect.objectContaining({ predicate: 'works_at' }),
+      ],
+    });
+  });
+
+  it('does not let schema ranking change the requested-namespace proof witness', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-witness-')));
+    scaled.assert('first', 'pet(rahul, luna).', {
+      opId: 'first-source',
+      sourceText: 'First namespace source.',
+    });
+    scaled.assert('second', 'pet(rahul, luna).', {
+      opId: 'second-source',
+      sourceText: 'Second namespace source.',
+    });
+    scaled.assert(
+      'noise',
+      Array.from(
+        { length: 40 },
+        (_, index) => `noise_${String(index).padStart(3, '0')}(value_${index}).`
+      ).join('\n')
+    );
+    const llm = new ScriptedLlm(['?- pet(rahul, Name).']);
+
+    const result = await retrieveQuestion(
+      { store: scaled, llm, recallSchemaPredicateLimit: 2 },
+      'What is Rahul’s pet?',
+      ['second', 'first', 'noise'],
+      { explain: true }
+    );
+
+    expect(result.status).toBe('answered');
+    expect(result.explanation?.rows[0].proofs[0]).toMatchObject({
+      predicate: 'pet',
+      sources: [expect.objectContaining({ namespace: 'second', opId: 'second-source' })],
+    });
+  });
+
+  it('uses a complete name/arity catalog when the relevant predicate is outside details', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-catalog-')));
+    scaled.assert(
+      'default',
+      `${Array.from({ length: 40 }, (_, index) => `alpha_${index}(value_${index}).`).join('\n')}
+       zeta_relation(target, answer).`
+    );
+    const llm = new ScriptedLlm(['?- zeta_relation(target, Value).']);
+
+    const result = await retrieveQuestion(
+      { store: scaled, llm, recallSchemaPredicateLimit: 2 },
+      'Find the requested information'
+    );
+
+    expect(result.status).toBe('answered');
+    expect(result.bindings).toEqual([{ Value: 'answer' }]);
+    expect(result.pruning).toMatchObject({
+      selectedPredicates: expect.not.arrayContaining(['zeta_relation/2']),
+      catalogComplete: true,
+    });
+    expect(llm.calls[0][0].content).toContain('zeta_relation/2');
+  });
+
+  it('widens deterministically before accepting unanswerable from a partial schema', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-widen-')));
+    scaled.assert(
+      'default',
+      `${Array.from({ length: 40 }, (_, index) => `alpha_${index}(value_${index}).`).join('\n')}
+       zeta_relation(target, answer).`
+    );
+    const llm = new ScriptedLlm([
+      '?- unanswerable.',
+      '?- zeta_relation(target, Value).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: scaled, llm, recallSchemaPredicateLimit: 2 },
+      'Find the requested information'
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query: 'zeta_relation(target, Value)',
+      bindings: [{ Value: 'answer' }],
+      pruning: {
+        schemaComplete: true,
+        initialSelectedPredicates: ['alpha_0/1', 'alpha_1/1'],
+        attempts: [
+          expect.objectContaining({ detailedPredicates: 2, outcome: 'unanswerable' }),
+          expect.objectContaining({ detailedPredicates: 41, outcome: 'answered' }),
+        ],
+      },
+    });
+    expect(llm.calls).toHaveLength(2);
+  });
+
+  it('fails closed instead of claiming unanswerable when the predicate catalog is bounded', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-budget-')));
+    scaled.assert(
+      'default',
+      Array.from(
+        { length: 180 },
+        (_, index) =>
+          `very_long_predicate_name_${String(index).padStart(3, '0')}(entity_${index}, value_${index}).`
+      ).join('\n')
+    );
+    const llm = new ScriptedLlm(['?- unanswerable.']);
+
+    const result = await recallQuestion(
+      {
+        store: scaled,
+        llm,
+        recallSchemaPredicateLimit: 2,
+        recallSchemaByteLimit: 512,
+      },
+      'What relationship is stored?'
+    );
+
+    expect(result).toMatchObject({
+      status: 'schema_budget_exhausted',
+      query: null,
+      bindings: [],
+      pruning: { catalogComplete: false },
+    });
+    expect(result.answer).toMatch(/schema budget/i);
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it('reports budget exhaustion when selected rule text cannot fit the byte cap', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-rule-budget-')));
+    const facts = Array.from(
+      { length: 20 },
+      (_, index) => `base_${String(index).padStart(3, '0')}(item).`
+    );
+    const body = Array.from(
+      { length: 20 },
+      (_, index) => `base_${String(index).padStart(3, '0')}(X)`
+    ).join(', ');
+    scaled.assert('default', `${facts.join('\n')}\nimportant(X) :- ${body}.`);
+    const llm = new ScriptedLlm(['?- unanswerable.']);
+
+    const result = await retrieveQuestion(
+      { store: scaled, llm, recallSchemaByteLimit: 512 },
+      'What is important?'
+    );
+
+    expect(result).toMatchObject({
+      status: 'schema_budget_exhausted',
+      query: null,
+      pruning: {
+        schemaComplete: false,
+        omittedRules: 1,
+        attempts: [expect.objectContaining({ outcome: 'unanswerable' })],
+      },
+    });
+  });
+
+  it('widens before recall when the relevant dependency closure exceeds the first-pass cap', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-closure-')));
+    scaled.assert(
+      'default',
+      `base_a(x). base_b(x). base_c(x).
+       important(X) :- base_a(X), base_b(X), base_c(X).`
+    );
+    const llm = new ScriptedLlm(['?- important(Value).']);
+
+    const result = await retrieveQuestion(
+      { store: scaled, llm, recallSchemaPredicateLimit: 2 },
+      'What is important?'
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query: 'important(Value)',
+      bindings: [{ Value: 'x' }],
+    });
+    expect(llm.calls).toHaveLength(1);
+    expect(llm.calls[0][0].content).toContain(
+      'important(X) :- base_a(X), base_b(X), base_c(X).'
+    );
+  });
+
+  it('returns bounded exhaustion instead of throwing on oversized predicate names', async () => {
+    const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-name-budget-')));
+    const clauses = Array.from(
+      { length: 4 },
+      (_, index) => `${'p'.repeat(8_000)}_${index}(value).`
+    ).join('\n');
+    scaled.assert('default', clauses);
+    const llm = new ScriptedLlm([]);
+
+    const result = await recallQuestion({ store: scaled, llm }, 'What is stored?');
+
+    expect(result).toEqual({
+      status: 'schema_budget_exhausted',
+      answer: 'Recall reached its schema budget before it could rule out relevant memories.',
+      query: null,
+      bindings: [],
+    });
+    expect(llm.calls).toHaveLength(0);
   });
 
   it('generates exact count aggregation and treats zero as a real result', async () => {
@@ -343,6 +610,7 @@ describe('recallQuestion', () => {
     );
 
     expect(result).toEqual({
+      status: 'answered',
       query: 'age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5',
       bindings: [{ Person: 'carol', Years: '38', DanaYears: '27' }],
     });

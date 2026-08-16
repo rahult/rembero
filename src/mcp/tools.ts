@@ -40,19 +40,34 @@ export function rememberTool(
 
 export function recallTool(
   deps: LlmToolDeps,
-  args: { question: string; namespaces?: string[] | '*' }
+  args: {
+    question: string;
+    namespaces?: string[] | '*';
+    schemaPredicateLimit?: number;
+  }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
-  return recallQuestion(deps, args.question, namespacesOrDefault(args.namespaces));
+  return recallQuestion(deps, args.question, namespacesOrDefault(args.namespaces), {
+    ...(args.schemaPredicateLimit === undefined
+      ? {}
+      : { schemaPredicateLimit: args.schemaPredicateLimit }),
+  });
 }
 
 export function recallExplainTool(
   deps: LlmToolDeps,
-  args: { question: string; namespaces?: string[] | '*' }
+  args: {
+    question: string;
+    namespaces?: string[] | '*';
+    schemaPredicateLimit?: number;
+  }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
   return recallQuestion(deps, args.question, namespacesOrDefault(args.namespaces), {
     explain: true,
+    ...(args.schemaPredicateLimit === undefined
+      ? {}
+      : { schemaPredicateLimit: args.schemaPredicateLimit }),
   });
 }
 

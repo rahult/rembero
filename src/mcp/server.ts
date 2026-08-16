@@ -1,8 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { validTimeModeFromEnv } from '../env.js';
+import {
+  recallSchemaPredicateLimitFromEnv,
+  validTimeModeFromEnv,
+} from '../env.js';
 import type { PipelineDeps } from '../llm/pipeline.js';
+import { MAX_RECALL_SCHEMA_PREDICATES } from '../llm/schema.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT, stringifyBoundedResult } from '../safety.js';
 import {
   assertFactsTool,
@@ -25,6 +29,13 @@ const namespacesField = z
   .union([z.array(z.string()).max(MAX_NAMESPACE_COUNT), z.literal('*')])
   .optional()
   .describe('Namespaces to search: a list, or "*" for all (default: ["default"])');
+const schemaPredicateLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_RECALL_SCHEMA_PREDICATES)
+  .optional()
+  .describe('Maximum predicates receiving detailed recall context');
 const boundedText = (description?: string) => {
   const field = z.string().max(MAX_INPUT_BYTES);
   return description ? field.describe(description) : field;
@@ -40,11 +51,13 @@ function asError(e: unknown) {
 }
 
 export function createServer(deps: PipelineDeps): McpServer {
-  const resolvedDeps: PipelineDeps =
-    deps.validTimeMode === undefined
-      ? { ...deps, validTimeMode: validTimeModeFromEnv() }
-      : deps;
-  const server = new McpServer({ name: 'rembero', version: '0.6.0' });
+  const resolvedDeps: PipelineDeps = {
+    ...deps,
+    validTimeMode: deps.validTimeMode ?? validTimeModeFromEnv(),
+    recallSchemaPredicateLimit:
+      deps.recallSchemaPredicateLimit ?? recallSchemaPredicateLimitFromEnv(),
+  };
+  const server = new McpServer({ name: 'rembero', version: '0.7.0' });
 
   server.registerTool(
     'remember',
@@ -68,12 +81,18 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Recall',
       description:
-        "Answer a question from long-term memory using logical inference over stored facts and rules. Use when the user asks about anything previously discussed or personal ('who is my dentist?', 'what did we decide about the database?'), and at the start of tasks where remembered context would help. Returns the answer plus the query and bindings used to derive it.",
-      inputSchema: { question: boundedText(), namespaces: namespacesField },
+        "Answer a question from long-term memory using logical inference over stored facts and rules. Use when the user asks about anything previously discussed or personal ('who is my dentist?', 'what did we decide about the database?'), and at the start of tasks where remembered context would help. Returns an explicit recall status plus the query, bindings, and bounded schema diagnostics when pruning activates.",
+      inputSchema: {
+        question: boundedText(),
+        namespaces: namespacesField,
+        schemaPredicateLimit: schemaPredicateLimitField,
+      },
     },
-    async ({ question, namespaces }) => {
+    async ({ question, namespaces, schemaPredicateLimit }) => {
       try {
-        return asContent(await recallTool(deps, { question, namespaces }));
+        return asContent(
+          await recallTool(resolvedDeps, { question, namespaces, schemaPredicateLimit })
+        );
       } catch (e) {
         return asError(e);
       }
@@ -85,12 +104,22 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Recall with explanation',
       description:
-        'Answer from long-term memory and return the generated query, bindings, deterministic derivation proofs, durable source statements, and a query-scoped knowledge graph.',
-      inputSchema: { question: boundedText(), namespaces: namespacesField },
+        'Answer from long-term memory and return the recall status, generated query, bindings, deterministic derivation proofs, durable source statements, query-scoped knowledge graph, and bounded schema diagnostics when pruning activates.',
+      inputSchema: {
+        question: boundedText(),
+        namespaces: namespacesField,
+        schemaPredicateLimit: schemaPredicateLimitField,
+      },
     },
-    async ({ question, namespaces }) => {
+    async ({ question, namespaces, schemaPredicateLimit }) => {
       try {
-        return asContent(await recallExplainTool(deps, { question, namespaces }));
+        return asContent(
+          await recallExplainTool(resolvedDeps, {
+            question,
+            namespaces,
+            schemaPredicateLimit,
+          })
+        );
       } catch (e) {
         return asError(e);
       }

@@ -107,6 +107,7 @@ async function runConfiguration(
           case: testCase,
           model,
           variant,
+          status: result.status,
           query: result.query,
           actualRows:
             result.query === null ? [] : bindingRows(result.bindings, result.query),
@@ -117,6 +118,7 @@ async function runConfiguration(
           case: testCase,
           model,
           variant,
+          status: 'unanswerable',
           query: null,
           actualRows: [],
           durationMs: performance.now() - started,
@@ -163,11 +165,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log('\nmodel | variant | cases | accuracy | precision | recall | F1 | answerability | errors | seconds');
-  console.log('--- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:');
+  console.log('\nmodel | variant | cases | accuracy | precision | recall | F1 | answerability | budget exhausted | errors | seconds');
+  console.log('--- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:');
   for (const run of runs) {
     console.log(
-      `${run.model} | ${run.variant} | ${run.score.cases} | ${percent(run.score.accuracy)} | ${percent(run.score.precision)} | ${percent(run.score.recall)} | ${percent(run.score.f1)} | ${percent(run.score.answerabilityAccuracy)} | ${run.score.errors} | ${(run.score.durationMs / 1000).toFixed(1)}`
+      `${run.model} | ${run.variant} | ${run.score.cases} | ${percent(run.score.accuracy)} | ${percent(run.score.precision)} | ${percent(run.score.recall)} | ${percent(run.score.f1)} | ${percent(run.score.answerabilityAccuracy)} | ${run.score.schemaBudgetExhaustions} | ${run.score.errors} | ${(run.score.durationMs / 1000).toFixed(1)}`
     );
   }
 

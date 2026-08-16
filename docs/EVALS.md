@@ -24,6 +24,10 @@ CLI. Runs are sequential and use temperature zero, but they are still live-model
 measurements: provider or model changes can move the result. The checked-in corpus,
 labels, normalizer, and metric tests remain deterministic.
 
+The v0.7 corpus adds 100 unrelated predicate families to the real memory program, so
+every labeled case exercises the same bounded schema-selection path used by a scaled
+personal knowledge base.
+
 ## Metrics
 
 - **Accuracy**: percentage of cases with the correct query/unanswerable decision and an
@@ -34,6 +38,9 @@ labels, normalizer, and metric tests remain deterministic.
 - **Answerability**: whether the model correctly distinguishes a query the schema can
   express from a structurally unanswerable question. A valid query with no matching fact
   remains answerable and is distinct from `unanswerable`.
+- **Schema budget exhaustion**: count of cases where bounded schema context could not
+  establish a complete negative result. Exhaustion is always scored as incorrect rather
+  than being confused with an accurate `unanswerable` decision.
 
 Variable names and row order do not affect scoring. Multi-variable values retain the
 variables' first-appearance order in the generated query, so swapping semantic roles does
@@ -43,8 +50,15 @@ facts are held out from the sample facts included in the model-visible schema su
 
 ## Last live comparison
 
-Measured on 2026-08-17 AEST (2026-08-16 UTC) with `openai/gpt-5.6-luna` against the
-19-case pre-0.4 corpus:
+Measured on 2026-08-17 AEST (2026-08-16 UTC) with `openai/gpt-5.6-luna`. The current
+v0.7 grounded prompt passed all 20 labeled cases among 100 distractor predicates without
+schema-budget exhaustion:
+
+| Corpus | Prompt | Accuracy | Precision | Recall | F1 | Answerability | Budget exhausted |
+|---|---|---:|---:|---:|---:|---:|---:|
+| v0.7 scaled, 20 cases | grounded | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
+
+The earlier pre-0.4, pre-scale baseline comparison was:
 
 | Prompt | Accuracy | Precision | Recall | F1 | Answerability |
 |---|---:|---:|---:|---:|---:|
@@ -57,9 +71,9 @@ distinguishes yes/no questions from requested unknowns, and requires a causal pr
 for causal questions. The shared fallback prompt separately distinguishes valid empty
 retrievals from structurally unanswerable questions.
 
-The checked-in v0.4 corpus now has 20 cases and adds an arithmetic-offset join. Its
-deterministic label and engine path are tested locally; the next credentialed comparison
-should refresh the table before attributing a live-model score to that added case.
+The scaled run is a current-tree checkpoint, not a statistical guarantee. Provider or
+model changes can move it, which is why the deterministic corpus and scorer remain the
+release gate.
 
 This corpus is deliberately small and diagnostic rather than statistically representative.
 Add a labeled case whenever a real recall failure is found, and compare against the

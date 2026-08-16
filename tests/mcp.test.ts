@@ -35,7 +35,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.6.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.7.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining(['explain_query', 'recall_explain', 'history'])
@@ -190,6 +190,51 @@ describe('MCP explanation surfaces', () => {
       expect(store.load('default').map((clause) => clause.head.predicate)).toEqual(
         expect.arrayContaining(['works_at', 'works_at_until'])
       );
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('applies a bounded schema slice through the real recall tool', async () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-schema-')));
+    store.assert(
+      'default',
+      `${Array.from({ length: 40 }, (_, index) => `alpha_${index}(value_${index}).`).join('\n')}
+       zeta_relation(target, answer).`
+    );
+    const server = createServer({
+      store,
+      llm: new ScriptedLlm([
+        '?- zeta_relation(target, Value).',
+        'The stored answer is answer.',
+      ]),
+    });
+    const client = new Client({ name: 'rembero-schema-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const recalled = await client.callTool({
+        name: 'recall',
+        arguments: {
+          question: 'Find the requested information',
+          schemaPredicateLimit: 2,
+        },
+      });
+      const text = recalled.content.find((item) => item.type === 'text');
+      const payload = JSON.parse(text?.type === 'text' ? text.text : '');
+      expect(payload).toMatchObject({
+        status: 'answered',
+        answer: 'The stored answer is answer.',
+        query: 'zeta_relation(target, Value)',
+        bindings: [{ Value: 'answer' }],
+        pruning: {
+          totalPredicates: 41,
+          selectedPredicates: expect.not.arrayContaining(['zeta_relation/2']),
+          catalogComplete: true,
+        },
+      });
     } finally {
       await client.close();
       await server.close();
