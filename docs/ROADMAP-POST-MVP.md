@@ -71,8 +71,11 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 
 ## SQLite deductive extension
 
-V0 is now implemented as a loadable C extension with `datalog_sql(rule)` and
-`datalog_query(rule)`, plus a Node adapter and CLI integration. It deliberately stops at
-non-recursive rules over ordinary SQLite tables. The next technical milestone is
-semi-naive recursive evaluation with derivation provenance; temporal and vector features
-remain later, evidence-driven additions.
+V0 established a loadable C extension with `datalog_sql(rule)` and
+`datalog_query(rule)`, plus a Node adapter and CLI integration. The next milestone is now
+complete: multi-rule programs over ordinary SQLite tables use bounded semi-naive fixpoint
+evaluation, and `datalog_explain(program)` returns one nested derivation proof per result.
+
+The next evidence-driven step is source-aware, durable provenance and bi-temporal facts.
+Vector composition remains later; it should reuse existing SQLite vector infrastructure
+rather than consume originality budget in this project.

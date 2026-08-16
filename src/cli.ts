@@ -22,7 +22,8 @@ Usage:
   rembero import <ns> <file>             Load clauses from a .dl file into a namespace
   rembero sqlite-build                   Compile the loadable SQLite extension
   rembero sqlite-sql <db> <rule>         Compile a Datalog rule against a SQLite database
-  rembero sqlite-query <db> <rule>       Execute a Datalog rule against a SQLite database
+  rembero sqlite-query <db> <program>    Execute a Datalog program against a SQLite database
+  rembero sqlite-explain <db> <program>  Execute with one derivation proof per result
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
@@ -111,11 +112,12 @@ async function main(): Promise<void> {
       console.log(buildSqliteExtension());
       return;
     case 'sqlite-sql':
-    case 'sqlite-query': {
+    case 'sqlite-query':
+    case 'sqlite-explain': {
       const [databasePath, ...ruleParts] = args.positional;
       const rule = ruleParts.join(' ');
       if (!databasePath || !rule) {
-        console.error(`usage: rembero ${command} <database> <datalog-rule>`);
+        console.error(`usage: rembero ${command} <database> <datalog-program>`);
         process.exitCode = 1;
         return;
       }
@@ -123,10 +125,15 @@ async function main(): Promise<void> {
         extensionPath: args.extensionPath,
       });
       try {
-        const result =
-          command === 'sqlite-sql'
-            ? database.datalogSql(rule)
-            : JSON.stringify(database.datalogQuery(rule), null, 2);
+        const result = command === 'sqlite-sql'
+          ? database.datalogSql(rule)
+          : JSON.stringify(
+              command === 'sqlite-explain'
+                ? database.datalogExplain(rule)
+                : database.datalogQuery(rule),
+              null,
+              2
+            );
         console.log(result);
       } finally {
         database.close();

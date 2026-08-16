@@ -6,6 +6,8 @@ export {
   openDatalogDatabase,
   resolveSqliteExtensionPath,
   type DatalogRow,
+  type DatalogExplanation,
+  type DatalogProof,
   type OpenDatalogDatabaseOptions,
 } from './sqlite/extension.js';
 export {

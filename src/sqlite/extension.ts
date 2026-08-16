@@ -10,6 +10,18 @@ export interface OpenDatalogDatabaseOptions {
 
 export type DatalogRow = Record<string, unknown>;
 
+export interface DatalogProof {
+  predicate: string;
+  values: unknown[];
+  rule?: number;
+  because?: DatalogProof[];
+}
+
+export interface DatalogExplanation {
+  row: DatalogRow;
+  proof: DatalogProof;
+}
+
 function platformLibraryName(): string {
   switch (process.platform) {
     case 'darwin':
@@ -83,6 +95,20 @@ export class DatalogDatabase {
       throw new Error('SQLite datalog_query returned invalid JSON');
     }
     return result as DatalogRow[];
+  }
+
+  datalogExplain(program: string): DatalogExplanation[] {
+    const row = this.database.prepare('SELECT datalog_explain(?) AS result').get(program) as
+      | { result: unknown }
+      | undefined;
+    if (typeof row?.result !== 'string') {
+      throw new Error('SQLite datalog_explain returned an invalid result');
+    }
+    const result: unknown = JSON.parse(row.result);
+    if (!Array.isArray(result)) {
+      throw new Error('SQLite datalog_explain returned invalid JSON');
+    }
+    return result as DatalogExplanation[];
   }
 
   close(): void {

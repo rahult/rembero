@@ -43,7 +43,9 @@ try {
     {
       input:
         "CREATE TABLE works_at(person TEXT, company TEXT);" +
-        "INSERT INTO works_at VALUES ('alice','acme'),('bob','acme');",
+        "INSERT INTO works_at VALUES ('alice','acme'),('bob','acme');" +
+        "CREATE TABLE edge(source TEXT, target TEXT);" +
+        "INSERT INTO edge VALUES ('a','b'),('b','c');",
     }
   );
   const output = run(
@@ -60,7 +62,35 @@ try {
   if (rows.length !== 2 || rows[0].X !== 'alice' || rows[1].X !== 'bob') {
     throw new Error(`unexpected packaged query result: ${output}`);
   }
-  console.log('packed install, native build, and sqlite-query passed');
+
+  const recursiveProgram =
+    'path(X, Y) :- edge(X, Y).\n' +
+    'path(X, Y) :- edge(X, Z), path(Z, Y).';
+  const recursiveOutput = run(
+    process.execPath,
+    [installedCli, 'sqlite-query', databasePath, recursiveProgram],
+    { cwd: directory }
+  );
+  const recursiveRows = JSON.parse(recursiveOutput);
+  if (
+    recursiveRows.length !== 3 ||
+    !recursiveRows.some((row) => row.X === 'a' && row.Y === 'c')
+  ) {
+    throw new Error(`unexpected packaged recursive result: ${recursiveOutput}`);
+  }
+  const explainOutput = run(
+    process.execPath,
+    [installedCli, 'sqlite-explain', databasePath, recursiveProgram],
+    { cwd: directory }
+  );
+  const explanations = JSON.parse(explainOutput);
+  const recursiveProof = explanations.find(
+    ({ row }) => row.X === 'a' && row.Y === 'c'
+  )?.proof;
+  if (recursiveProof?.rule !== 2 || recursiveProof.because?.length !== 2) {
+    throw new Error(`unexpected packaged explanation: ${explainOutput}`);
+  }
+  console.log('packed install, native build, recursive query, and explanation passed');
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }

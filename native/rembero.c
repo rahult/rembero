@@ -1,4 +1,6 @@
 #include <ctype.h>
+#include <errno.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -102,6 +104,10 @@ static char *parse_quoted_text(Parser *parser) {
   if (*parser->cursor != '\'') return NULL;
   parser->cursor++;
   output = sqlite3_str_new(NULL);
+  if (output == NULL) {
+    set_error(parser, "out of memory");
+    return NULL;
+  }
   while (*parser->cursor != '\0') {
     if (*parser->cursor == '\'') {
       if (parser->cursor[1] == '\'') {
@@ -135,13 +141,19 @@ static int parse_term(Parser *parser, Term *term) {
   }
 
   if (*parser->cursor == '-' || isdigit((unsigned char)*parser->cursor)) {
+    double parsed_number;
     start = parser->cursor;
-    (void)strtod(start, &end);
+    errno = 0;
+    parsed_number = strtod(start, &end);
     if (end == start) {
       set_error(parser, "expected a number");
       return 0;
     }
-    if (is_name_char(*end) || *end == '.') {
+    if (errno == ERANGE || !isfinite(parsed_number)) {
+      set_error(parser, "numeric literal is out of range");
+      return 0;
+    }
+    if (is_name_char(*end)) {
       set_error(parser, "invalid number");
       return 0;
     }
@@ -484,6 +496,10 @@ static int compile_rule(sqlite3 *database, const Rule *rule, char **compiled_sql
   }
 
   sql = sqlite3_str_new(database);
+  if (sql == NULL) {
+    result = SQLITE_NOMEM;
+    goto cleanup;
+  }
   sqlite3_str_appendall(sql, "SELECT DISTINCT ");
   for (term_index = 0; term_index < rule->head.term_count; term_index++) {
     const Term *term = &rule->head.terms[term_index];
@@ -658,6 +674,8 @@ static int append_json_value(sqlite3_str *json, sqlite3_stmt *statement, int col
   return 1;
 }
 
+#include "recursive.c"
+
 static void datalog_query_function(sqlite3_context *context, int argument_count,
                                    sqlite3_value **arguments) {
   sqlite3 *database = sqlite3_context_db_handle(context);
@@ -670,6 +688,11 @@ static void datalog_query_function(sqlite3_context *context, int argument_count,
   int column_count;
   int column;
   (void)argument_count;
+
+  if (recursive_input_requires_fixpoint(arguments[0])) {
+    recursive_result_function(context, arguments[0], 0);
+    return;
+  }
 
   if (parse_and_compile(context, arguments[0], &sql) != SQLITE_OK) return;
   result = sqlite3_prepare_v2(database, sql, -1, &statement, NULL);
@@ -686,6 +709,11 @@ static void datalog_query_function(sqlite3_context *context, int argument_count,
 
   column_count = sqlite3_column_count(statement);
   json = sqlite3_str_new(database);
+  if (json == NULL) {
+    sqlite3_finalize(statement);
+    sqlite3_result_error_nomem(context);
+    return;
+  }
   sqlite3_str_appendchar(json, 1, '[');
   while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
     if (rows >= MAX_QUERY_ROWS) {
@@ -760,6 +788,12 @@ static void datalog_query_function(sqlite3_context *context, int argument_count,
   sqlite3_result_text(context, result_text, -1, sqlite3_free);
 }
 
+static void datalog_explain_function(sqlite3_context *context, int argument_count,
+                                     sqlite3_value **arguments) {
+  (void)argument_count;
+  recursive_result_function(context, arguments[0], 1);
+}
+
 #if defined(_WIN32)
 __declspec(dllexport)
 #endif
@@ -774,6 +808,11 @@ int sqlite3_rembero_init(sqlite3 *database, char **error,
     result = sqlite3_create_function_v2(database, "datalog_query", 1,
                                         SQLITE_UTF8 | SQLITE_DIRECTONLY, NULL,
                                         datalog_query_function, NULL, NULL, NULL);
+  }
+  if (result == SQLITE_OK) {
+    result = sqlite3_create_function_v2(database, "datalog_explain", 1,
+                                        SQLITE_UTF8 | SQLITE_DIRECTONLY, NULL,
+                                        datalog_explain_function, NULL, NULL, NULL);
   }
   if (result != SQLITE_OK && error != NULL) {
     *error = sqlite3_mprintf("failed to register rembero SQLite functions: %s",

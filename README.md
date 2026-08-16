@@ -133,11 +133,33 @@ console.log(db.datalogQuery(rule)); // execute it and parse the JSON rows
 db.close();
 ```
 
-Inside SQLite, the registered scalar functions are `datalog_sql(rule)` and
-`datalog_query(rule)`. V0 supports non-recursive rules, joins through repeated variables,
-text/number constants, and `=`, `!=`, `<`, `>`, `<=`, and `>=`. It rejects recursive,
-unsafe, malformed, or schema-incompatible rules. Results are capped at 10,000 rows and
-16 MiB. Extension loading is disabled again immediately after the library is loaded.
+Recursive programs use multiple rules for one derived predicate. Evaluation is bounded,
+semi-naive, and set-based: each round joins at least one recursive body literal against
+only the previous round's delta.
+
+```ts
+const program = `
+  path(X, Y) :- edge(X, Y).
+  path(X, Y) :- edge(X, Z), path(Z, Y).
+`;
+
+console.log(db.datalogQuery(program));
+console.log(db.datalogExplain(program)); // one nested derivation proof per result
+```
+
+Inside SQLite, the registered scalar functions are `datalog_sql(rule)`,
+`datalog_query(program)`, and `datalog_explain(program)`. `datalog_sql` deliberately
+remains a single non-recursive rule compiler; recursive programs execute through the
+fixpoint evaluator. Rules support joins through repeated variables, text/number constants,
+and `=`, `!=`, `<`, `>`, `<=`, and `>=`.
+
+The current recursive boundary is intentionally narrow: all rules in a program derive the
+same predicate and provenance retains the first derivation encountered, rather than all
+possible proofs. Programs are limited to 64 KiB and 16 rules; evaluation is capped at
+100,000 loaded base rows, 10,000 derived rows, 1,000 fixpoint rounds, proof depth 128, and
+10 million tuple checks, and 16 MiB of output. Unsafe, malformed, mixed-head,
+arity-inconsistent, or cap-exceeding programs fail closed. Extension loading is disabled
+again immediately after the library is loaded.
 
 ## The Datalog dialect
 
