@@ -68,3 +68,11 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 - Full Prolog (function symbols, cut, arbitrary recursion) — the termination guarantee
   is a feature, not a limitation
 - Vector similarity as the *primary* retrieval path — logic stays the source of truth
+
+## SQLite deductive extension
+
+V0 is now implemented as a loadable C extension with `datalog_sql(rule)` and
+`datalog_query(rule)`, plus a Node adapter and CLI integration. It deliberately stops at
+non-recursive rules over ordinary SQLite tables. The next technical milestone is
+semi-naive recursive evaluation with derivation provenance; temporal and vector features
+remain later, evidence-driven additions.

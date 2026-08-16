@@ -13,12 +13,18 @@
   },
   "files": [
     "dist",
+    "native",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:sqlite": "sh native/build.sh",
+    "pretest": "npm run build",
+    "pretest:sqlite": "npm run build",
     "test": "vitest run",
+    "test:sqlite": "vitest run tests/sqlite-extension.test.ts",
+    "test:package": "npm run build && node scripts/package-smoke.mjs",
     "test:watch": "vitest",
     "dev": "tsx src/cli.ts",
     "prepublishOnly": "npm test && npm run build"

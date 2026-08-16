@@ -1,6 +1,14 @@
 export * from './engine/index.js';
 export { MemoryStore, defaultRoot, type AssertResult } from './store/store.js';
 export {
+  DatalogDatabase,
+  buildSqliteExtension,
+  openDatalogDatabase,
+  resolveSqliteExtensionPath,
+  type DatalogRow,
+  type OpenDatalogDatabaseOptions,
+} from './sqlite/extension.js';
+export {
   type ChatMessage,
   type LlmClient,
   type LlmConfig,

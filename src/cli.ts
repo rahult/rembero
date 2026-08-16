@@ -7,6 +7,7 @@ import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { serveStdio } from './mcp/server.js';
 import { forgetTool, listMemoriesTool, queryTool } from './mcp/tools.js';
 import { MemoryStore } from './store/store.js';
+import { buildSqliteExtension, openDatalogDatabase } from './sqlite/extension.js';
 
 const USAGE = `rembero — logic-based memory for chats and agents
 
@@ -19,16 +20,21 @@ Usage:
   rembero list                           List stored memories
   rembero export                         Print all memories as portable Datalog
   rembero import <ns> <file>             Load clauses from a .dl file into a namespace
+  rembero sqlite-build                   Compile the loadable SQLite extension
+  rembero sqlite-sql <db> <rule>         Compile a Datalog rule against a SQLite database
+  rembero sqlite-query <db> <rule>       Execute a Datalog rule against a SQLite database
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
       --namespaces <a,b|*> Namespaces to search for recall/query/list
+      --extension <path>   Path to the compiled Rembero SQLite extension
 `;
 
 interface ParsedArgs {
   positional: string[];
   namespace?: string;
   namespaces?: string[] | '*';
+  extensionPath?: string;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -40,6 +46,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--namespaces') {
       const value = argv[++i];
       parsed.namespaces = value === '*' ? '*' : value.split(',');
+    } else if (arg === '--extension') {
+      parsed.extensionPath = argv[++i];
     } else {
       parsed.positional.push(arg);
     }
@@ -97,6 +105,32 @@ async function main(): Promise<void> {
       }
       const result = store.assert(ns, readFileSync(file, 'utf8'));
       console.log(`imported ${result.added.length} clause(s), ${result.duplicates} duplicate(s) skipped`);
+      return;
+    }
+    case 'sqlite-build':
+      console.log(buildSqliteExtension());
+      return;
+    case 'sqlite-sql':
+    case 'sqlite-query': {
+      const [databasePath, ...ruleParts] = args.positional;
+      const rule = ruleParts.join(' ');
+      if (!databasePath || !rule) {
+        console.error(`usage: rembero ${command} <database> <datalog-rule>`);
+        process.exitCode = 1;
+        return;
+      }
+      const database = await openDatalogDatabase(databasePath, {
+        extensionPath: args.extensionPath,
+      });
+      try {
+        const result =
+          command === 'sqlite-sql'
+            ? database.datalogSql(rule)
+            : JSON.stringify(database.datalogQuery(rule), null, 2);
+        console.log(result);
+      } finally {
+        database.close();
+      }
       return;
     }
     case 'list': {

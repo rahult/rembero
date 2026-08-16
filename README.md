@@ -78,6 +78,67 @@ Memories live in plain text at `~/.rembero/memory/<namespace>.dl`, one canonical
 line — readable, hand-editable, diffable. Duplicate facts (and alpha-equivalent rules) are
 deduplicated on write. Files are written atomically.
 
+## SQLite extension (experimental)
+
+Rembero also ships the source for a real loadable SQLite extension. It treats ordinary
+SQLite tables (and views) as Datalog predicates: arguments map to columns by position,
+rules compile to read-only SQL, and SQLite remains the storage, transaction, and query
+engine. This is a separate application-facing primitive; the existing MCP memory store
+continues to use portable `.dl` files.
+
+V0 supports macOS and Linux. Build the extension with a C compiler and the SQLite
+development headers. From a source checkout use:
+
+```bash
+npm run build:sqlite
+```
+
+From an installed npm package use `rembero sqlite-build`. The command compiles the native
+library inside the installed package; it does not run automatically during installation,
+so Rembero's existing non-SQLite memory features do not acquire a native toolchain
+requirement.
+
+Then create a normal database and query it through the CLI (the adapter requires Node.js
+22.13 or newer):
+
+```bash
+sqlite3 world.db <<'SQL'
+CREATE TABLE works_at(person TEXT, company TEXT);
+INSERT INTO works_at VALUES ('alice', 'acme'), ('bob', 'acme'), ('carol', 'other');
+SQL
+
+npm run build
+node dist/cli.js sqlite-query world.db \
+  'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'
+```
+
+The result is deterministic JSON:
+
+```json
+[
+  { "X": "alice", "Y": "bob" },
+  { "X": "bob", "Y": "alice" }
+]
+```
+
+The public library adapter exposes the same path:
+
+```ts
+import { openDatalogDatabase } from 'rembero';
+
+const db = await openDatalogDatabase('world.db');
+const rule = 'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.';
+console.log(db.datalogSql(rule));   // inspect the generated SELECT
+console.log(db.datalogQuery(rule)); // execute it and parse the JSON rows
+db.close();
+```
+
+Inside SQLite, the registered scalar functions are `datalog_sql(rule)` and
+`datalog_query(rule)`. V0 supports non-recursive rules, joins through repeated variables,
+text/number constants, and `=`, `!=`, `<`, `>`, `<=`, and `>=`. It rejects recursive,
+unsafe, malformed, or schema-incompatible rules. Results are capped at 10,000 rows and
+16 MiB. Extension loading is disabled again immediately after the library is loaded.
+
 ## The Datalog dialect
 
 - Facts must be ground: `works_at(rahul, acme).` `birth_year(rahul, 1985).`
@@ -109,5 +170,7 @@ deduplicated on write. Files are written atomically.
 ```bash
 npm test          # vitest suite (engine, store, pipeline, tools)
 npm run build     # tsc
+npm run build:sqlite # compile the native SQLite extension
+npm run test:sqlite  # native + Node adapter + CLI end-to-end checks
 npm run dev -- …  # run the CLI from source (tsx)
 ```
