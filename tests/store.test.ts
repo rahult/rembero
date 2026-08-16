@@ -36,6 +36,17 @@ describe('MemoryStore.assert', () => {
     );
     expect(renamed.added).toHaveLength(0);
     expect(renamed.duplicates).toBe(1);
+
+    store.assert(
+      'default',
+      'ahead(X) :- score(X, S), baseline(B), S > B + 5.'
+    );
+    const arithmeticRenamed = store.assert(
+      'default',
+      'ahead(Person) :- score(Person, Value), baseline(Base), Value > Base + 5.'
+    );
+    expect(arithmeticRenamed.added).toHaveLength(0);
+    expect(arithmeticRenamed.duplicates).toBe(1);
   });
 
   it('rejects invalid namespace names', () => {

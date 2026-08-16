@@ -368,8 +368,15 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
       expect(() =>
         database.datalogQuery('count(*) as Count where edge(X, Y)')
       ).toThrow(/aggregation.*portable Datalog engine, not the SQLite extension/i);
+      expect(() =>
+        database.datalogQuery('ahead(X) :- edge(X, Y), Y > X + 5.')
+      ).toThrow(/arithmetic.*portable Datalog engine, not the SQLite extension/i);
+      expect(database.datalogQuery('safe(X) :- edge(X, Y), -1 < 0.')).toEqual([]);
       expect(
         database.datalogQuery("safe(X) :- edge(X, Y), X = 'count(*) as Count where'.")
+      ).toEqual([]);
+      expect(
+        database.datalogQuery("safe(X) :- edge(X, Y), X = 'Y + 5'.")
       ).toEqual([]);
       expect(() => database.datalogQuery('bad(X) :- edge(X, Y), X > 1e999.')).toThrow(
         /out of range/i

@@ -73,6 +73,7 @@ node dist/cli.js recall   "Who is Rahul's dentist?"
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
 node dist/cli.js query    'employee(X), \+ suspended(X)' # closed-world negation
+node dist/cli.js query    'age(X, A), age(dana, D), A > D + 5' # numeric arithmetic filter
 node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
 node dist/cli.js forget   'dentist(rahul, _)'
@@ -180,9 +181,9 @@ possible proofs. Programs are limited to 64 KiB and 16 rules; evaluation is capp
 100,000 loaded base rows, 10,000 derived rows, 1,000 fixpoint rounds, proof depth 128, and
 10 million tuple checks, and 16 MiB of output. Unsafe, malformed, mixed-head,
 arity-inconsistent, or cap-exceeding programs fail closed. Extension loading is disabled
-again immediately after the library is loaded. Stratified negation and scalar aggregate
-queries currently belong to the portable `.dl` engine; SQLite entry points reject them
-explicitly until native parity is implemented.
+again immediately after the library is loaded. Stratified negation, arithmetic comparison
+expressions, and scalar aggregate queries currently belong to the portable `.dl` engine;
+SQLite entry points reject them explicitly until native parity is implemented.
 
 ## The Datalog dialect
 
@@ -193,13 +194,19 @@ explicitly until native parity is implemented.
 - Stratified closed-world negation: `available(X) :- employee(X), \+ suspended(X).`
   Variables in comparisons and negated literals must be bound by an earlier positive
   goal. Recursive dependency cycles containing negation are rejected.
-- Comparisons in rule bodies and queries: `=`, `!=`, `<`, `>`, `<=`, `>=`.
+- Comparisons in rule bodies and queries: `=`, `!=`, `<`, `>`, `<=`, `>=`. Numeric
+  operands support deterministic `+`, `-`, `*`, `/`, unary signs, and parentheses with
+  standard precedence: `older(X, Y) :- age(X, A), age(Y, B), A > B + 5.` Arithmetic is
+  filter-only and cannot create values in facts, rule heads, relation arguments, or
+  aggregate inputs. Non-numeric operands, division by zero, and non-finite results fail
+  closed.
 - Query-level scalar aggregation (never in rules):
   `count(*) as Count where works_at(Person, acme)`, plus `sum(Value)`, `min(Value)`,
   and `max(Value)`. Aggregation consumes the complete logical solution set and fails
   closed at its dedicated input cap rather than silently reusing the normal row limit.
-- No arithmetic expressions yet. Every query terminates: evaluation is stratified,
-  semi-naive bottom-up over a finite fact universe, with belt-and-braces derivation caps.
+- Every query terminates: arithmetic only filters a finite relation; evaluation remains
+  stratified, semi-naive bottom-up over a finite fact universe, with belt-and-braces
+  derivation and expression-complexity caps.
 - Safety: facts must be ground; every head variable must appear in a positive body literal
   (range restriction). LLM output that violates this is rejected, retried once with the
   error message, then surfaced as an error — nothing unparsed ever reaches the store.
@@ -234,6 +241,8 @@ answerability accuracy. It can also compare OpenRouter models or emit JSON; see
 
 See [the stratified-negation contract](docs/STRATIFIED-NEGATION.md) for safety,
 closed-world, proof, and SQLite-boundary details, and [the scalar aggregation
-contract](docs/QUERY-AGGREGATION.md) for exact reduction and explanation semantics.
-TypeScript consumers should read the [0.2](docs/MIGRATING-0.2.md) and
-[0.3](docs/MIGRATING-0.3.md) migration notes as applicable.
+contract](docs/QUERY-AGGREGATION.md) for exact reduction and explanation semantics, and
+[the arithmetic comparison contract](docs/ARITHMETIC-COMPARISONS.md) for numeric,
+precedence, safety, and portability details. TypeScript consumers should read the
+[0.2](docs/MIGRATING-0.2.md), [0.3](docs/MIGRATING-0.3.md), and
+[0.4](docs/MIGRATING-0.4.md) migration notes as applicable.

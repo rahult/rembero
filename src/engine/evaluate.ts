@@ -7,7 +7,11 @@ import {
   type AggregateOperator,
   type AggregateQuerySpec,
   type QuerySpec,
+  type ScalarExpression,
   type Term,
+  MAX_ARITHMETIC_EXPRESSION_DEPTH,
+  MAX_ARITHMETIC_EXPRESSION_NODES,
+  isArithmeticExpression,
   isComparison,
   isNegation,
 } from './ast.js';
@@ -136,7 +140,68 @@ function tupleKey(args: Term[]): string {
   return JSON.stringify(args.map(keyPart));
 }
 
+function assertFiniteNumericTerm(term: Term): void {
+  if (term.type === 'num' && !Number.isFinite(term.value)) {
+    throw new EngineSafetyError('numeric terms must be finite');
+  }
+}
+
+function assertExpressionSafety(
+  expression: ScalarExpression,
+  budget: { nodes: number } = { nodes: 0 }
+): void {
+  const pending: Array<{ expression: ScalarExpression; depth: number }> = [
+    { expression, depth: 1 },
+  ];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    if (current.depth > MAX_ARITHMETIC_EXPRESSION_DEPTH) {
+      throw new EngineLimitError(
+        `arithmetic expression exceeded depth ${MAX_ARITHMETIC_EXPRESSION_DEPTH}`
+      );
+    }
+    if (++budget.nodes > MAX_ARITHMETIC_EXPRESSION_NODES) {
+      throw new EngineLimitError(
+        `arithmetic expression exceeded ${MAX_ARITHMETIC_EXPRESSION_NODES} nodes`
+      );
+    }
+    if (!isArithmeticExpression(current.expression)) {
+      assertFiniteNumericTerm(current.expression);
+      continue;
+    }
+    if (current.expression.kind === 'unary') {
+      pending.push({
+        expression: current.expression.operand,
+        depth: current.depth + 1,
+      });
+    } else {
+      pending.push(
+        { expression: current.expression.right, depth: current.depth + 1 },
+        { expression: current.expression.left, depth: current.depth + 1 }
+      );
+    }
+  }
+}
+
+function assertGoalNumericSafety(goal: Goal): void {
+  if (isComparison(goal)) {
+    const budget = { nodes: 0 };
+    assertExpressionSafety(goal.left, budget);
+    assertExpressionSafety(goal.right, budget);
+    return;
+  }
+  for (const term of (isNegation(goal) ? goal.not.args : goal.args)) {
+    assertFiniteNumericTerm(term);
+  }
+}
+
+function assertGoalsNumericSafety(goals: Goal[]): void {
+  for (const goal of goals) assertGoalNumericSafety(goal);
+}
+
 function termEq(a: Term, b: Term): boolean {
+  assertFiniteNumericTerm(a);
+  assertFiniteNumericTerm(b);
   if (a.type === 'num' && b.type === 'num') return a.value === b.value;
   if (a.type === 'atom' && b.type === 'atom') return a.value === b.value;
   return false;
@@ -158,6 +223,8 @@ function ordered(op: CmpOp, cmp: number): boolean {
 }
 
 function comparisonHolds(op: CmpOp, left: Term, right: Term): boolean {
+  assertFiniteNumericTerm(left);
+  assertFiniteNumericTerm(right);
   if (op === '=') return termEq(left, right);
   if (op === '!=') {
     // != only meaningfully compares two ground terms of the same type
@@ -176,6 +243,92 @@ function comparisonHolds(op: CmpOp, left: Term, right: Term): boolean {
 
 function resolve(term: Term, env: Bindings): Term {
   return term.type === 'var' ? (env[term.name] ?? term) : term;
+}
+
+interface ExpressionEvaluationBudget {
+  nodes: number;
+}
+
+interface EvaluatedExpression {
+  term: Term;
+  arithmetic: boolean;
+}
+
+function numericArithmeticOperand(term: Term): number {
+  if (term.type === 'var') {
+    throw new EngineSafetyError(`arithmetic variable ${term.name} is not grounded`);
+  }
+  if (term.type === 'wildcard') {
+    throw new EngineSafetyError('arithmetic expressions may not contain wildcards');
+  }
+  if (term.type !== 'num') {
+    throw new EngineSafetyError('arithmetic expressions require numeric operands');
+  }
+  assertFiniteNumericTerm(term);
+  return term.value;
+}
+
+function evaluateScalarExpression(
+  expression: ScalarExpression,
+  env: Bindings,
+  budget: ExpressionEvaluationBudget,
+  depth = 1
+): EvaluatedExpression {
+  if (depth > MAX_ARITHMETIC_EXPRESSION_DEPTH) {
+    throw new EngineLimitError(
+      `arithmetic expression exceeded depth ${MAX_ARITHMETIC_EXPRESSION_DEPTH}`
+    );
+  }
+  if (++budget.nodes > MAX_ARITHMETIC_EXPRESSION_NODES) {
+    throw new EngineLimitError(
+      `arithmetic expression exceeded ${MAX_ARITHMETIC_EXPRESSION_NODES} nodes`
+    );
+  }
+  if (!isArithmeticExpression(expression)) {
+    return { term: resolve(expression, env), arithmetic: false };
+  }
+  if (expression.kind === 'unary') {
+    const operand = evaluateScalarExpression(expression.operand, env, budget, depth + 1);
+    const numeric = numericArithmeticOperand(operand.term);
+    const result = expression.op === '-' ? -numeric : numeric;
+    if (!Number.isFinite(result)) {
+      throw new EngineSafetyError('arithmetic expression produced a non-finite result');
+    }
+    return {
+      term: { type: 'num', value: result === 0 ? 0 : result },
+      arithmetic: true,
+    };
+  }
+
+  const left = evaluateScalarExpression(expression.left, env, budget, depth + 1);
+  const right = evaluateScalarExpression(expression.right, env, budget, depth + 1);
+  const leftValue = numericArithmeticOperand(left.term);
+  const rightValue = numericArithmeticOperand(right.term);
+  if (expression.op === '/' && rightValue === 0) {
+    throw new EngineSafetyError('arithmetic division by zero');
+  }
+  let result: number;
+  switch (expression.op) {
+    case '+':
+      result = leftValue + rightValue;
+      break;
+    case '-':
+      result = leftValue - rightValue;
+      break;
+    case '*':
+      result = leftValue * rightValue;
+      break;
+    case '/':
+      result = leftValue / rightValue;
+      break;
+  }
+  if (!Number.isFinite(result)) {
+    throw new EngineSafetyError('arithmetic expression produced a non-finite result');
+  }
+  return {
+    term: { type: 'num', value: result === 0 ? 0 : result },
+    arithmetic: true,
+  };
 }
 
 function matchArgs(args: Term[], tuple: Term[], env: Bindings): Bindings | null {
@@ -199,10 +352,21 @@ function matchArgs(args: Term[], tuple: Term[], env: Bindings): Bindings | null 
 }
 
 function checkComparison(goal: Comparison, env: Bindings): boolean {
-  const left = resolve(goal.left, env);
-  const right = resolve(goal.right, env);
+  const budget: ExpressionEvaluationBudget = { nodes: 0 };
+  const leftExpression = evaluateScalarExpression(goal.left, env, budget);
+  const rightExpression = evaluateScalarExpression(goal.right, env, budget);
+  const left = leftExpression.term;
+  const right = rightExpression.term;
   if (left.type === 'var' || left.type === 'wildcard') return false;
   if (right.type === 'var' || right.type === 'wildcard') return false;
+  if (
+    (leftExpression.arithmetic || rightExpression.arithmetic) &&
+    (left.type !== 'num' || right.type !== 'num')
+  ) {
+    throw new EngineSafetyError(
+      'arithmetic comparisons require numeric values on both sides'
+    );
+  }
   return comparisonHolds(goal.op, left, right);
 }
 
@@ -275,6 +439,8 @@ function* solveGoals(
 export function literalMatches(pattern: Literal, fact: Literal): boolean {
   if (pattern.predicate !== fact.predicate) return false;
   if (pattern.args.length !== fact.args.length) return false;
+  for (const term of pattern.args) assertFiniteNumericTerm(term);
+  for (const term of fact.args) assertFiniteNumericTerm(term);
   return matchArgs(pattern.args, fact.args, {}) !== null;
 }
 
@@ -296,7 +462,10 @@ function addTuple(db: Database, key: string, entry: FactEntry): boolean {
 
 function groundValue(term: Term): string | number {
   if (term.type === 'atom') return term.value;
-  if (term.type === 'num') return term.value;
+  if (term.type === 'num') {
+    assertFiniteNumericTerm(term);
+    return term.value;
+  }
   throw new Error('proof serialization requires grounded facts');
 }
 
@@ -368,6 +537,10 @@ interface DerivedDatabase {
 
 function deriveDatabase(clauses: Clause[], options: EvaluateOptions): DerivedDatabase {
   const { maxFacts = 100_000, maxIterations = 10_000 } = options;
+  for (const clause of clauses) {
+    for (const term of clause.head.args) assertFiniteNumericTerm(term);
+    assertGoalsNumericSafety(clause.body);
+  }
   const facts = clauses.filter((c) => c.body.length === 0);
   const stratified = stratifyProgram(clauses);
 
@@ -592,6 +765,7 @@ export function evaluate(
   options: EvaluateOptions = {}
 ): Bindings[] {
   const { maxRows = 1000 } = options;
+  assertGoalsNumericSafety(query);
   const { db, predicateStrata } = deriveDatabase(clauses, options);
   return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata).map(
     ({ bindings }) => bindings
@@ -604,6 +778,7 @@ export function evaluateWithProof(
   options: EvaluateOptions = {}
 ): ExplainedBindings[] {
   const { maxRows = 1000, maxProofDepth = 128, maxProofNodes = 100_000 } = options;
+  assertGoalsNumericSafety(query);
   const { db, predicateStrata } = deriveDatabase(clauses, options);
   const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
   return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata).map(
@@ -623,6 +798,7 @@ export function evaluateQuerySpec(
   if (query.kind === 'relational') return evaluate(clauses, query.goals, options);
   const { maxRows = 1000, maxAggregateRows = 100_000 } = options;
   if (maxRows < 1) return [];
+  assertGoalsNumericSafety(query.goals);
   const { db, predicateStrata } = deriveDatabase(clauses, options);
   const rows = aggregateInputRows(db, query.goals, maxAggregateRows, predicateStrata);
   const result = aggregateValue(query, rows);
@@ -644,6 +820,7 @@ export function evaluateQuerySpecWithProof(
     maxProofNodes = 100_000,
   } = options;
   if (maxRows < 1) return [];
+  assertGoalsNumericSafety(query.goals);
   const { db, predicateStrata } = deriveDatabase(clauses, options);
   const rows = aggregateInputRows(db, query.goals, maxAggregateRows, predicateStrata);
   const result = aggregateValue(query, rows);

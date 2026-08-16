@@ -1,9 +1,10 @@
 # Rembero MVP Roadmap — ship as a public npm package
 
-> Historical v0.1 plan. The repository is now preparing v0.3; see
+> Historical v0.1 plan. The repository is now preparing v0.4; see
 > [ROADMAP-POST-MVP.md](ROADMAP-POST-MVP.md), [STRATIFIED-NEGATION.md](STRATIFIED-NEGATION.md),
-> [QUERY-AGGREGATION.md](QUERY-AGGREGATION.md), and
-> [MIGRATING-0.3.md](MIGRATING-0.3.md) for the current capability boundary.
+> [QUERY-AGGREGATION.md](QUERY-AGGREGATION.md),
+> [ARITHMETIC-COMPARISONS.md](ARITHMETIC-COMPARISONS.md), and
+> [MIGRATING-0.4.md](MIGRATING-0.4.md) for the current capability boundary.
 
 **Definition of shipped:** a stranger on a fresh machine gets working logical memory in
 Claude Code in under 5 minutes:

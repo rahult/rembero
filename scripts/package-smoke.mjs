@@ -38,7 +38,9 @@ try {
       '--eval',
       "import { evaluateQuerySpec, parseProgram, parseQuerySpec } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
-        "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed');",
+        "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
+        "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
+        "if (arithmetic.length !== 1 || arithmetic[0]?.X?.value !== 'a') throw new Error('public arithmetic API failed');",
     ],
     { cwd: directory }
   );
@@ -108,7 +110,8 @@ try {
   writeFileSync(
     memoryFile,
     'parent(a, b). parent(b, c). ancestor(X, Y) :- parent(X, Y). ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y). ' +
-      'employee(alice). employee(bob). suspended(bob). available(X) :- employee(X), \\+ suspended(X).\n'
+      'employee(alice). employee(bob). suspended(bob). available(X) :- employee(X), \\+ suspended(X). ' +
+      'score(alice, 20). score(bob, 14). baseline(team, 10).\n'
   );
   const memoryEnv = { ...process.env, REMBERO_HOME: memoryHome };
   run(process.execPath, [installedCli, 'import', 'default', memoryFile], {
@@ -150,6 +153,19 @@ try {
   if (aggregateRows.length !== 1 || aggregateRows[0].Count !== '2') {
     throw new Error(`unexpected packaged aggregate result: ${aggregateOutput}`);
   }
+  const arithmeticOutput = run(
+    process.execPath,
+    [
+      installedCli,
+      'query',
+      'score(Person, Points), baseline(team, Base), Points > Base + 5',
+    ],
+    { cwd: directory, env: memoryEnv }
+  );
+  const arithmeticRows = JSON.parse(arithmeticOutput);
+  if (arithmeticRows.length !== 1 || arithmeticRows[0].Person !== 'alice') {
+    throw new Error(`unexpected packaged arithmetic result: ${arithmeticOutput}`);
+  }
   const aggregateExplainOutput = run(
     process.execPath,
     [installedCli, 'explain', 'max(Person) as Last where employee(Person)'],
@@ -167,7 +183,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, native recursion, personal proofs, stratified negation, scalar aggregation, and explanation graph passed'
+    'packed install, native recursion, personal proofs, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

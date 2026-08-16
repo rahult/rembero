@@ -34,7 +34,16 @@ export function stringifyBoundedResult(
   label = 'result',
   maxBytes = MAX_OUTPUT_BYTES
 ): string {
-  const text = JSON.stringify(value, null, 2);
+  const text = JSON.stringify(
+    value,
+    (_key, current: unknown) => {
+      if (typeof current === 'number' && !Number.isFinite(current)) {
+        throw new Error(`${label} contains a non-finite number`);
+      }
+      return current;
+    },
+    2
+  );
   if (text === undefined) throw new Error(`${label} is not JSON serializable`);
   assertBoundedOutput(text, label, maxBytes);
   return text;

@@ -179,6 +179,44 @@ describe('explainable personal knowledge graph', () => {
     expect(absence).not.toHaveProperty('sources');
   });
 
+  it('keeps arithmetic comparisons as deterministic proof filters', () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-arithmetic-')));
+    store.assert(
+      'work',
+      'score(alice, 20). baseline(team, 10). ahead(X) :- score(X, S), baseline(team, B), S > B + 5.',
+      { opId: 'score-source' }
+    );
+
+    const result = explainKnowledge(
+      store.load('work'),
+      'ahead(Person)',
+      store.sourcesFor(['work'])
+    );
+    expect(result.rows).toEqual([
+      {
+        bindings: { Person: 'alice' },
+        proofs: [
+          expect.objectContaining({
+            predicate: 'ahead',
+            because: [
+              expect.objectContaining({ predicate: 'score' }),
+              expect.objectContaining({ predicate: 'baseline' }),
+            ],
+          }),
+        ],
+      },
+    ]);
+    expect(result.rules).toEqual([
+      {
+        number: 1,
+        clause: 'ahead(X) :- score(X, S), baseline(team, B), S > B + 5.',
+      },
+    ]);
+    expect(new Set(result.graph.nodes.map((node) => node.kind))).toEqual(
+      new Set(['result', 'claim', 'entity'])
+    );
+  });
+
   it('projects scalar aggregation through contributor rows and sourced claims', () => {
     const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-aggregate-')));
     store.assert('work', 'works_at(alice, acme). works_at(bob, acme).', {

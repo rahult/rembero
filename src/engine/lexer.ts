@@ -14,7 +14,10 @@ export type TokenKind =
   | '('
   | ')'
   | ','
+  | '+'
+  | '-'
   | '*'
+  | '/'
   | '.'
   | ':-'
   | '?-'
@@ -92,8 +95,8 @@ export function tokenize(input: string): Token[] {
       i = j;
       continue;
     }
-    if (/[0-9]/.test(ch) || (ch === '-' && /[0-9]/.test(input[i + 1] ?? ''))) {
-      let j = ch === '-' ? i + 1 : i;
+    if (/[0-9]/.test(ch)) {
+      let j = i;
       while (j < input.length && /[0-9]/.test(input[j])) j++;
       // a decimal point only belongs to the number when a digit follows it
       if (input[j] === '.' && /[0-9]/.test(input[j + 1] ?? '')) {
@@ -128,7 +131,16 @@ export function tokenize(input: string): Token[] {
       i += op.length;
       continue;
     }
-    if (ch === '(' || ch === ')' || ch === ',' || ch === '.' || ch === '*') {
+    if (
+      ch === '(' ||
+      ch === ')' ||
+      ch === ',' ||
+      ch === '.' ||
+      ch === '+' ||
+      ch === '-' ||
+      ch === '*' ||
+      ch === '/'
+    ) {
       push(ch, ch);
       i++;
       continue;

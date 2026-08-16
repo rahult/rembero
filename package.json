@@ -1,6 +1,6 @@
 {
   "name": "rembero",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Logic-based memory for LLM chats and agents: Datalog facts + rules with deterministic inference, an MCP server, and an LLM natural-language pipeline",
   "type": "module",
   "bin": {
@@ -18,8 +18,10 @@
     "docs/EXPLAINABLE-KNOWLEDGE-GRAPH.md",
     "docs/STRATIFIED-NEGATION.md",
     "docs/QUERY-AGGREGATION.md",
+    "docs/ARITHMETIC-COMPARISONS.md",
     "docs/MIGRATING-0.2.md",
     "docs/MIGRATING-0.3.md",
+    "docs/MIGRATING-0.4.md",
     "README.md",
     "LICENSE"
   ],

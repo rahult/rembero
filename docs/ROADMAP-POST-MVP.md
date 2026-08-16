@@ -1,10 +1,10 @@
-# Rembero post-MVP roadmap (v0.3 →)
+# Rembero post-MVP roadmap (v0.4 →)
 
 MVP shipped: public repo, CI, GitHub release v0.1.0, npm package ready (publish pending
 auth). What follows is ordered by user value per unit of effort — each phase is
 independently shippable as a minor release.
 
-## Phase 6 — Reasoning power  *(v0.2–v0.3)*
+## Phase 6 — Reasoning power  *(v0.2–v0.4)*
 
 The engine's expressiveness ceiling is the first thing power users will hit.
 
@@ -14,12 +14,14 @@ The engine's expressiveness ceiling is the first thing power users will hit.
 2. **Aggregation**: complete. `count`, `min`, `max`, and `sum` are exact scalar
    query-level operators (not in rules), with a dedicated input cap, complete contributor
    proofs, and aggregate nodes in the personal knowledge graph.
-3. **Arithmetic in comparisons**: `A > B + 5` style right-hand expressions; still
-   filter-only, so no new termination risk.
+3. **Arithmetic in comparisons**: complete. Both comparison operands accept bounded
+   numeric expressions with `+`, `-`, `*`, `/`, unary signs, parentheses, and standard
+   precedence. Arithmetic remains filter-only, so it cannot expand the finite fact
+   universe; invalid numeric operations fail closed.
 4. **Engine perf pass**: first-argument indexing for relations (today: linear scan per
    goal). Only matters past ~10k facts; benchmark first.
 
-## Phase 7 — Auto-capture  *(v0.4, ~2 days)*
+## Phase 7 — Auto-capture  *(v0.5, ~2 days)*
 
 Today the agent decides when to call `remember`. Auto-capture makes memory ambient:
 
@@ -32,7 +34,7 @@ Today the agent decides when to call `remember`. Auto-capture makes memory ambie
 3. **Review flow**: `rembero review` lists facts captured in the last N days for
    quick pruning (`forget` by number).
 
-## Phase 8 — Time & provenance  *(v0.5, ~2 days)*
+## Phase 8 — Time & provenance  *(v0.6, ~2 days)*
 
 "Where did Mira work *before* Initech?" is unanswerable once supersession retracts the
 old fact. Fix by making time first-class:
@@ -46,7 +48,7 @@ old fact. Fix by making time first-class:
    query-scoped personal knowledge graph. Temporal source history remains.
 3. **`rembero history <pattern>`**: the journal filtered to one predicate's life story.
 
-## Phase 9 — Retrieval quality at scale  *(v0.6, ~2-3 days)*
+## Phase 9 — Retrieval quality at scale  *(v0.7, ~2-3 days)*
 
 Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 
@@ -90,5 +92,6 @@ mutation/source IDs, and query-scoped hypergraphs across the library, CLI, and M
 is the foundation for conflict views, temporal history, and alternative proof inspection
 without replacing the readable personal knowledge base with a second graph store.
 
-The next reasoning milestone is arithmetic filters, followed by an evidence-driven index
-pass once benchmarks show relation scans becoming material.
+The next reasoning milestone is an evidence-driven index pass once benchmarks show
+relation scans becoming material. Product work can now move to opt-in auto-capture while
+the finite, proof-carrying rule language remains the deterministic authority.

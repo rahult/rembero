@@ -37,7 +37,7 @@ function asError(e: unknown) {
 }
 
 export function createServer(deps: PipelineDeps): McpServer {
-  const server = new McpServer({ name: 'rembero', version: '0.3.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.4.0' });
 
   server.registerTool(
     'remember',
@@ -95,7 +95,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Assert facts',
       description:
-        "Store raw Datalog clauses directly, no LLM translation. Facts like 'works_at(rahul, acme).' or rules like 'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'",
+        "Store raw Datalog clauses directly, no LLM translation. Facts like 'works_at(rahul, acme).' or rules like 'senior(X) :- years(X, Y), Y >= 10 + 5.'. Arithmetic is allowed only in comparison filters.",
       inputSchema: { clauses: boundedText(), namespace: namespaceField },
     },
     async ({ clauses, namespace }) => {
@@ -112,7 +112,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Query',
       description:
-        "Run a raw Datalog query and get variable bindings, e.g. 'works_at(X, acme)', 'employee(X), \\+ suspended(X)', or 'count(*) as Count where works_at(Person, acme)'.",
+        "Run a raw Datalog query and get variable bindings, e.g. 'works_at(X, acme)', 'score(X, S), S > 10 + 5', 'employee(X), \\+ suspended(X)', or 'count(*) as Count where works_at(Person, acme)'.",
       inputSchema: { query: boundedText(), namespaces: namespacesField },
     },
     async ({ query, namespaces }) => {

@@ -53,6 +53,7 @@ describe('recall eval corpus', () => {
       'uses_language(atlas, rust).',
       'project_owner(atlas, rahul).',
       'birth_year(chen, 1978).',
+      'birth_year(mira, 1994).',
       'parent(alice, bob).',
     ]) {
       expect(summary).not.toContain(heldOut);
@@ -73,6 +74,12 @@ describe('recall eval corpus', () => {
         'count(*) as Count where colleague(rahul, Person)'
       )
     ).toEqual([['3']]);
+    expect(
+      bindingRows(
+        [{ Person: 'alice', Score: '20', Base: '10' }],
+        'score(Person, Score), baseline(team, Base), Score > Base + 5'
+      )
+    ).toEqual([['alice', '20', '10']]);
   });
 });
 

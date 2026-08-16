@@ -59,7 +59,9 @@ proof and graph objects.
 - When several rules, paths, or namespaces prove the same claim, the first witness wins:
   query-local rule order, requested namespace order, body order, then fact insertion
   order. Only that witness source is attached to the proof.
-- Comparisons filter a proof but do not create claim nodes.
+- Comparisons, including bounded arithmetic expressions, filter a proof but do not create
+  claim nodes. The positive facts that grounded every arithmetic variable remain in the
+  proof, and the canonical rule text retains the exact expression.
 - Successful negated literals create source-free absence nodes in body order.
 - Scalar aggregates inspect the complete result set up to `maxAggregateRows`; exceeding
   the cap fails instead of returning a partial value.

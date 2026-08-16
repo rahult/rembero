@@ -25,6 +25,7 @@ describe('MCP explanation surfaces', () => {
       sourceText: 'My cat is called Luna.',
     });
     store.assert('default', 'employee(alice). employee(bob). suspended(bob).');
+    store.assert('default', 'score(alice, 20). score(bob, 14). baseline(team, 10).');
     const server = createServer({
       store,
       llm: new ScriptedLlm(['?- pet(rahul, Name).', 'Your cat is Luna.']),
@@ -84,6 +85,20 @@ describe('MCP explanation surfaces', () => {
           expect.objectContaining({ kind: 'aggregate', op: 'count', value: 2 }),
         ])
       );
+
+      const arithmetic = await client.callTool({
+        name: 'query',
+        arguments: {
+          query: 'score(Person, Points), baseline(team, Base), Points > Base + 5',
+        },
+      });
+      const arithmeticText = arithmetic.content.find((item) => item.type === 'text');
+      const arithmeticPayload = JSON.parse(
+        arithmeticText?.type === 'text' ? arithmeticText.text : ''
+      );
+      expect(arithmeticPayload.bindings).toEqual([
+        { Person: 'alice', Points: '20', Base: '10' },
+      ]);
 
       const recalled = await client.callTool({
         name: 'recall_explain',

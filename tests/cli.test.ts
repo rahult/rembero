@@ -16,6 +16,15 @@ describe('CLI ingress limits', () => {
     );
   });
 
+  it('rejects non-finite numbers instead of silently serializing them as null', () => {
+    expect(() => stringifyBoundedResult({ value: Number.NaN }, 'test result')).toThrow(
+      /non-finite/i
+    );
+    expect(() =>
+      stringifyBoundedResult({ value: Number.POSITIVE_INFINITY }, 'test result')
+    ).toThrow(/non-finite/i);
+  });
+
   it('fails closed before printing an oversized plain-text recall answer', () => {
     expect(() => assertBoundedOutput('oversized', 'CLI recall answer', 8)).toThrow(
       /CLI recall answer exceeds 8 bytes/i

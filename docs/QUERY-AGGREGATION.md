@@ -19,6 +19,10 @@ The `where` goals run through the normal stratified, semi-naive engine. Aggregat
 consumes the complete logical solution rows in their deterministic query order. Distinct
 wildcard matches remain distinct contributors even when they expose identical bindings:
 
+Arithmetic comparisons may filter the `where` rows before reduction, for example
+`count(*) as Count where score(Person, Points), Points > 10 + 5`. The aggregate input
+itself remains a bound variable (or `*` for `count`), never an arithmetic expression.
+
 - `count(*)` counts result rows and returns `0` for an empty result.
 - `sum(X)` accepts numbers only and returns no row for an empty result.
 - `min(X)` and `max(X)` accept either all numbers or all atoms. Mixed scalar types fail
@@ -81,5 +85,6 @@ to the contributor claims, never fabricated on the aggregate itself.
 ## SQLite boundary
 
 Scalar aggregate query syntax is currently portable-engine only. SQLite adapter entry
-points reject it explicitly, just as they reject portable-only stratified negation, until
-the native extension gains a first-class query-plan boundary with proof parity.
+points reject it explicitly, just as they reject portable-only stratified negation and
+arithmetic comparison expressions, until the native extension gains a first-class
+query-plan boundary with proof parity.

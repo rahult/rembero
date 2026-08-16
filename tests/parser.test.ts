@@ -3,6 +3,7 @@ import {
   parseProgram,
   parseQuery,
   parseQuerySpec,
+  canonicalKey,
   serializeClause,
   serializeQuerySpec,
   ParseError,
@@ -107,6 +108,70 @@ describe('parseProgram', () => {
     );
     expect(() => parseProgram('adult(X) :- A >= 18, age(X, A).')).toThrow(
       /earlier positive/i
+    );
+    expect(() =>
+      parseProgram('ahead(X) :- metric(X, A), A > Missing + 5.')
+    ).toThrow(/earlier positive/i);
+  });
+
+  it('parses bounded arithmetic expressions in comparison filters', () => {
+    const [rule] = parseProgram(
+      'ahead(X) :- metric(X, A), baseline(X, B), A + B * 2 > -(B - 3).'
+    );
+    expect(rule.body[2]).toEqual({
+      op: '>',
+      left: {
+        kind: 'binary',
+        op: '+',
+        left: { type: 'var', name: 'A' },
+        right: {
+          kind: 'binary',
+          op: '*',
+          left: { type: 'var', name: 'B' },
+          right: { type: 'num', value: 2 },
+        },
+      },
+      right: {
+        kind: 'unary',
+        op: '-',
+        operand: {
+          kind: 'binary',
+          op: '-',
+          left: { type: 'var', name: 'B' },
+          right: { type: 'num', value: 3 },
+        },
+      },
+    });
+    expect(serializeClause(rule)).toBe(
+      'ahead(X) :- metric(X, A), baseline(X, B), A + B * 2 > -(B - 3).'
+    );
+  });
+
+  it('preserves arithmetic grouping and left associativity when serializing', () => {
+    const [grouped] = parseProgram(
+      'selected(X) :- metric(X, A), limit(X, B), (A + B) * 2 >= A - (B - 1).'
+    );
+    const serialized = serializeClause(grouped);
+    expect(serialized).toBe(
+      'selected(X) :- metric(X, A), limit(X, B), (A + B) * 2 >= A - (B - 1).'
+    );
+    expect(serializeClause(parseProgram(serialized)[0])).toBe(serialized);
+  });
+
+  it('keeps arithmetic filter-only and rejects malformed or unsafe expressions', () => {
+    expect(() => parseProgram('computed(X + 1).')).toThrow(ParseError);
+    expect(() => parseQuery('metric(X, A), A + _ > 2')).toThrow(/wildcard/i);
+    expect(() => parseQuery('metric(X, A), A + banana > 2')).toThrow(
+      /numbers and variables/i
+    );
+    expect(() => parseQuery('metric(X, A), A + > 2')).toThrow(ParseError);
+    expect(() => parseQuery('metric(X, A), A / 2')).toThrow(/comparison/i);
+  });
+
+  it('caps arithmetic expression complexity', () => {
+    const expression = Array.from({ length: 70 }, () => 'A').join(' + ');
+    expect(() => parseQuery(`metric(X, A), ${expression} > 0`)).toThrow(
+      /depth|complex/i
     );
   });
 
@@ -266,5 +331,15 @@ describe('serializeClause', () => {
   it('quotes atoms only when needed', () => {
     const [fact] = parseProgram("f(abc, 'abc def', 'Abc', 42).");
     expect(serializeClause(fact)).toBe("f(abc, 'abc def', 'Abc', 42).");
+  });
+
+  it('canonicalizes alpha-equivalent arithmetic rules deterministically', () => {
+    const [left] = parseProgram(
+      'ahead(X) :- score(X, A), baseline(B), A > B + 5.'
+    );
+    const [right] = parseProgram(
+      'ahead(Person) :- score(Person, Score), baseline(Base), Score > Base + 5.'
+    );
+    expect(canonicalKey(left)).toBe(canonicalKey(right));
   });
 });

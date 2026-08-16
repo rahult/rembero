@@ -41,10 +41,10 @@ not pass. Rows are deduplicated before comparison. A ground query that is true i
 represented by one empty binding row; a ground query that is false has no rows. Scored
 facts are held out from the sample facts included in the model-visible schema summary.
 
-## Current comparison
+## Last live comparison
 
-Measured on 2026-08-17 AEST (2026-08-16 UTC) with `openai/gpt-5.6-luna`, 19 cases,
-and the current code:
+Measured on 2026-08-17 AEST (2026-08-16 UTC) with `openai/gpt-5.6-luna` against the
+19-case pre-0.4 corpus:
 
 | Prompt | Accuracy | Precision | Recall | F1 | Answerability |
 |---|---:|---:|---:|---:|---:|
@@ -56,6 +56,10 @@ prompt now treats schema examples only as syntax evidence, keeps named entities 
 distinguishes yes/no questions from requested unknowns, and requires a causal predicate
 for causal questions. The shared fallback prompt separately distinguishes valid empty
 retrievals from structurally unanswerable questions.
+
+The checked-in v0.4 corpus now has 20 cases and adds an arithmetic-offset join. Its
+deterministic label and engine path are tested locally; the next credentialed comparison
+should refresh the table before attributing a live-model score to that added case.
 
 This corpus is deliberately small and diagnostic rather than statistically representative.
 Add a labeled case whenever a real recall failure is found, and compare against the

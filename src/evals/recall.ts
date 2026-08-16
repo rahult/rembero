@@ -1,4 +1,12 @@
-import { isComparison, isNegation, parseQuerySpec, type Goal, type Term } from '../engine/index.js';
+import {
+  isArithmeticExpression,
+  isComparison,
+  isNegation,
+  parseQuerySpec,
+  type Goal,
+  type ScalarExpression,
+  type Term,
+} from '../engine/index.js';
 import type { QueryPromptVariant } from '../llm/prompts.js';
 
 export const RECALL_EVAL_PROGRAM = `
@@ -143,6 +151,16 @@ export const RECALL_EVAL_CASES: RecallEvalCase[] = [
     tags: ['comparison', 'multi-answer'],
   },
   {
+    id: 'arithmetic_offset',
+    question: 'Who was born more than 5 years before Mira?',
+    expectedQuery: 'required',
+    expectedRows: [
+      ['chen', '1978', '1994'],
+      ['rahul', '1985', '1994'],
+    ],
+    tags: ['comparison', 'arithmetic', 'join', 'multi-answer'],
+  },
+  {
     id: 'ground_true',
     question: 'Does Chen work at Initech?',
     expectedQuery: 'required',
@@ -239,10 +257,27 @@ function visitTerm(term: Term, order: string[], seen: Set<string>): void {
   }
 }
 
+function visitExpression(
+  expression: ScalarExpression,
+  order: string[],
+  seen: Set<string>
+): void {
+  if (!isArithmeticExpression(expression)) {
+    visitTerm(expression, order, seen);
+    return;
+  }
+  if (expression.kind === 'unary') {
+    visitExpression(expression.operand, order, seen);
+    return;
+  }
+  visitExpression(expression.left, order, seen);
+  visitExpression(expression.right, order, seen);
+}
+
 function visitGoal(goal: Goal, order: string[], seen: Set<string>): void {
   if (isComparison(goal)) {
-    visitTerm(goal.left, order, seen);
-    visitTerm(goal.right, order, seen);
+    visitExpression(goal.left, order, seen);
+    visitExpression(goal.right, order, seen);
   } else {
     for (const term of (isNegation(goal) ? goal.not.args : goal.args)) {
       visitTerm(term, order, seen);

@@ -12,7 +12,11 @@ import {
   EngineSafetyError,
   type EvaluateOptions,
   type Bindings,
+  type Clause,
+  type Goal,
+  type ScalarExpression,
   materializeWithProof,
+  literalMatches,
 } from '../src/engine/index.js';
 
 /** Render bindings as sorted "X=a Y=b" rows for order-independent assertions. */
@@ -151,6 +155,131 @@ describe('evaluate: comparison builtins', () => {
 
   it('supports equality on ground terms', () => {
     expect(rows(run(db, 'age(X, A), A = 38'))).toEqual(['A=38 X=rahul']);
+  });
+
+  it('evaluates arithmetic with standard precedence and grouping', () => {
+    expect(rows(run(db, 'age(X, A), A > 10 + 3 * 6'))).toEqual([
+      'A=29 X=maya',
+      'A=38 X=rahul',
+    ]);
+    expect(rows(run(db, 'age(X, A), A > (10 + 3) * 2'))).toEqual([
+      'A=29 X=maya',
+      'A=38 X=rahul',
+    ]);
+    expect(rows(run(db, 'age(X, A), A > (10 + 5) * 2'))).toEqual([
+      'A=38 X=rahul',
+    ]);
+  });
+
+  it('evaluates subtraction and division left-associatively on either side', () => {
+    const values = 'value(five, 5). value(two, 2). value(negative, -5).';
+    expect(rows(run(values, 'value(X, V), V = 10 - 3 - 2'))).toEqual([
+      'V=5 X=five',
+    ]);
+    expect(rows(run(values, 'value(X, V), 20 / 2 / 2 = V'))).toEqual([
+      'V=5 X=five',
+    ]);
+    expect(rows(run(values, 'value(X, V), -V = 5'))).toEqual([
+      'V=-5 X=negative',
+    ]);
+  });
+
+  it('uses bound variables from multiple relations in arithmetic filters', () => {
+    const program = `
+      score(alice, 20). score(bob, 14). baseline(team, 10).
+      ahead(X) :- score(X, S), baseline(team, B), S > B + 5.
+    `;
+    expect(rows(run(program, 'ahead(X)'))).toEqual(['X=alice']);
+    expect(rows(run(program, 'score(X, S), baseline(team, B), S - B >= 10'))).toEqual([
+      'B=10 S=20 X=alice',
+    ]);
+  });
+
+  it('fails closed on non-numeric, zero-divisor, and non-finite arithmetic', () => {
+    expect(() => run('value(x, banana).', 'value(x, V), V + 1 > 0')).toThrow(
+      EngineSafetyError
+    );
+    expect(() => run('value(x, 1).', 'value(x, V), V / 0 > 0')).toThrow(
+      /division by zero/i
+    );
+    const huge = '9'.repeat(200);
+    expect(() => run(`value(x, ${huge}).`, 'value(x, V), V * V > 0')).toThrow(
+      /non-finite/i
+    );
+  });
+
+  it('revalidates hand-built arithmetic ASTs at the evaluator boundary', () => {
+    const ungrounded: Goal[] = [
+      {
+        op: '>',
+        left: {
+          kind: 'binary',
+          op: '+',
+          left: { type: 'var', name: 'Missing' },
+          right: { type: 'num', value: 1 },
+        },
+        right: { type: 'num', value: 0 },
+      },
+    ];
+    expect(() => evaluate([], ungrounded)).toThrow(/not grounded/i);
+
+    let deep: ScalarExpression = { type: 'num', value: 1 };
+    for (let index = 0; index < 65; index++) {
+      deep = { kind: 'unary', op: '-', operand: deep };
+    }
+    expect(() =>
+      evaluate([], [{ op: '=', left: deep, right: { type: 'num', value: -1 } }])
+    ).toThrow(EngineLimitError);
+
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        evaluate([], [
+          {
+            op: '>',
+            left: { type: 'num', value },
+            right: { type: 'num', value: 0 },
+          },
+        ])
+      ).toThrow(/finite/i);
+    }
+
+    const invalidFact: Clause = {
+      head: { predicate: 'value', args: [{ type: 'num', value: Number.NaN }] },
+      body: [],
+    };
+    expect(() => evaluate([invalidFact], parseQuery('value(_)'))).toThrow(/finite/i);
+    expect(() => serializeTerm({ type: 'num', value: Number.POSITIVE_INFINITY })).toThrow(
+      /finite/i
+    );
+    expect(() =>
+      literalMatches(
+        { predicate: 'value', args: [{ type: 'wildcard' }] },
+        { predicate: 'value', args: [{ type: 'num', value: Number.NaN }] }
+      )
+    ).toThrow(/finite/i);
+  });
+
+  it('keeps arithmetic filters out of derivation proof nodes', () => {
+    const program = `
+      age(alice, 30). threshold(adult, 18).
+      adult(X) :- age(X, A), threshold(adult, T), A >= T + 0.
+    `;
+    expect(explain(program, 'adult(alice)')).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'adult',
+            values: ['alice'],
+            rule: 1,
+            because: [
+              { predicate: 'age', values: ['alice', 30] },
+              { predicate: 'threshold', values: ['adult', 18] },
+            ],
+          },
+        ],
+      },
+    ]);
   });
 });
 
@@ -326,6 +455,16 @@ describe('evaluate: scalar query aggregation', () => {
     expect(
       runSpec(employment, 'count(*) as Count where works_at(_, acme)')
     ).toEqual([{ Count: { type: 'num', value: 2 } }]);
+  });
+
+  it('applies arithmetic filters before exact aggregation', () => {
+    const scores = 'score(alice, 20). score(bob, 14). baseline(team, 10).';
+    expect(
+      runSpec(
+        scores,
+        'count(*) as Count where score(Person, Points), baseline(team, Base), Points > Base + 5'
+      )
+    ).toEqual([{ Count: { type: 'num', value: 1 } }]);
   });
 
   it('computes sum over numeric rows and returns no row for empty input', () => {

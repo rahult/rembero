@@ -60,6 +60,19 @@ describe('MCP tool handlers', () => {
     expect(result.bindings).toEqual([{ X: 'b' }]);
   });
 
+  it('query and explain_query accept arithmetic comparison filters', () => {
+    store.assert(
+      'default',
+      'score(alice, 20). score(bob, 14). baseline(team, 10). ahead(X) :- score(X, S), baseline(team, B), S > B + 5.'
+    );
+    expect(queryTool({ store }, { query: 'ahead(Person)' })).toEqual({
+      bindings: [{ Person: 'alice' }],
+    });
+    expect(
+      explainQueryTool({ store }, { query: 'score(Person, S), S / 2 >= 10' }).rows
+    ).toHaveLength(1);
+  });
+
   it('query and explain_query expose exact scalar aggregation', () => {
     store.assert('default', 'works_at(alice, acme). works_at(bob, acme).', {
       opId: 'aggregate-source',

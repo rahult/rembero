@@ -22,6 +22,34 @@ export interface DatalogExplanation {
   proof: DatalogProof;
 }
 
+function containsArithmeticSyntax(program: string): boolean {
+  const previousSignificant = (index: number): string => {
+    for (let cursor = index - 1; cursor >= 0; cursor--) {
+      if (!/\s/.test(program[cursor])) return program[cursor];
+    }
+    return '';
+  };
+  const nextSignificant = (index: number): string => {
+    for (let cursor = index + 1; cursor < program.length; cursor++) {
+      if (!/\s/.test(program[cursor])) return program[cursor];
+    }
+    return '';
+  };
+
+  for (let index = 0; index < program.length; index++) {
+    const char = program[index];
+    if (char === '+' || char === '*' || char === '/') return true;
+    if (char !== '-') continue;
+    const previous = previousSignificant(index);
+    if (previous === ':' || previous === '?') continue;
+    const next = nextSignificant(index);
+    const previousEndsOperand = /[a-zA-Z0-9_)]/.test(previous);
+    const isNegativeNumericLiteral = !previousEndsOperand && /[0-9]/.test(next);
+    if (!isNegativeNumericLiteral) return true;
+  }
+  return false;
+}
+
 function assertPortableEngineOnlySyntax(program: string): void {
   let quoted = false;
   let visible = '';
@@ -63,6 +91,11 @@ function assertPortableEngineOnlySyntax(program: string): void {
   ) {
     throw new Error(
       'scalar aggregation is currently supported by the portable Datalog engine, not the SQLite extension'
+    );
+  }
+  if (containsArithmeticSyntax(visible)) {
+    throw new Error(
+      'arithmetic comparison expressions are currently supported by the portable Datalog engine, not the SQLite extension'
     );
   }
 }

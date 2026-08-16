@@ -41,7 +41,8 @@ Output one clause per line and nothing else — no prose, no code fences.
 - Predicates and constants: lowercase snake_case (works_at, acme). Variables: uppercase (X, Person).
 - Multi-word or case-sensitive constants must be single-quoted: 'New York'. Prefer short lowercase atoms when natural (rahul, not 'Rahul').
 - Numbers are bare: birth_year(rahul, 1985).
-- Rule bodies may use comparisons: =, !=, <, >, <=, >=, and closed-world negation written \\+ pred(...). Use negation only for a general exception stated by the input, never to guess a missing fact.
+- Rule bodies may use comparisons: =, !=, <, >, <=, >=. Numeric comparison operands may use +, -, *, /, unary signs, and parentheses, e.g. more_experienced(X, Y) :- years(X, A), years(Y, B), A > B + 5. Arithmetic is filter-only and must not appear in facts, rule heads, or relation arguments.
+- Closed-world negation is written \\+ pred(...). Use negation only for a general exception stated by the input, never to guess a missing fact.
 - Facts must be ground (no variables). Every variable in a rule head, comparison, or negated literal must be bound by an earlier positive body relation.
 - Prefer several small binary facts over one wide fact. Emit a rule only when the input states a general relationship ("every X who ... is ...").
 - For relations that should never relate a thing to itself (colleague, sibling, neighbor, ...), add an inequality to the rule body: colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
@@ -78,7 +79,8 @@ export function queryGenSystemPrompt(
 Output exactly one relational or scalar-aggregate query line.
 Relational form: ?- goal1, goal2, ... .
 Scalar aggregate forms: ?- count(*) as Count where goal1, goal2, ... .; ?- sum(Value) as Total where ... .; ?- min(Value) as Minimum where ... .; ?- max(Value) as Maximum where ... .
-Use uppercase variables for the unknowns the question asks about. Positive goals must use predicates that appear in the schema, with matching arity. Comparisons =, !=, <, >, <=, >= are allowed. Closed-world negation is written \\+ pred(...); every variable it uses must be bound by an earlier positive goal. A negated predicate may be absent from the schema because absence is the fact being tested, but use it only when the question explicitly names that missing relation, e.g. ?- employee(X), \\+ suspended(X).
+Use uppercase variables for the unknowns the question asks about. Positive goals must use predicates that appear in the schema, with matching arity. Comparisons =, !=, <, >, <=, >= are allowed. Numeric comparison operands may use +, -, *, /, unary signs, and parentheses with standard precedence; every variable must first be bound by an earlier positive goal. Example: "more than 5 years older than Dana" becomes ?- age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5. Arithmetic is filter-only: never put an expression in a fact, relation argument, rule head, or aggregate input.
+Closed-world negation is written \\+ pred(...); every variable it uses must be bound by an earlier positive goal. A negated predicate may be absent from the schema because absence is the fact being tested, but use it only when the question explicitly names that missing relation, e.g. ?- employee(X), \\+ suspended(X).
 Use scalar aggregation only when explicitly requested: count(*) for "how many" or "number of", sum(Value) for a total, min(Value) for the least/earliest value, and max(Value) for the greatest/latest value. Aggregate queries return only the named output variable, allow exactly one operator, and must bind every sum/min/max input variable in a positive where goal.
 If the question cannot be expressed with these predicates, output exactly: ?- ${UNANSWERABLE}.${grounding}
 

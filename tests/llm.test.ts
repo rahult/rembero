@@ -256,6 +256,28 @@ describe('recallQuestion', () => {
     expect(llm.calls[0][0].content).toContain('count(*) as Count where');
   });
 
+  it('generates and evaluates an explicit arithmetic threshold query', async () => {
+    const numeric = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-arithmetic-')));
+    numeric.assert(
+      'default',
+      'age(alice, 30). age(bob, 20). age(carol, 38). age(dana, 27).'
+    );
+    const llm = new ScriptedLlm([
+      '?- age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5.',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: numeric, llm },
+      'Who is more than 5 years older than Dana?'
+    );
+
+    expect(result).toEqual({
+      query: 'age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5',
+      bindings: [{ Person: 'carol', Years: '38', DanaYears: '27' }],
+    });
+    expect(llm.calls[0][0].content).toContain('Years > DanaYears + 5');
+  });
+
   it('retries an aggregate the question did not explicitly request', async () => {
     const llm = new ScriptedLlm([
       '?- count(*) as Count where works_at(Person, acme).',

@@ -4,10 +4,16 @@ import {
   type Comparison,
   type Goal,
   type Literal,
+  type ArithmeticOp,
   type AggregateOperator,
   type AggregateQuerySpec,
   type QuerySpec,
+  type ScalarExpression,
   type Term,
+  type UnaryArithmeticOp,
+  MAX_ARITHMETIC_EXPRESSION_DEPTH,
+  MAX_ARITHMETIC_EXPRESSION_NODES,
+  isArithmeticExpression,
   isComparison,
   isNegation,
 } from './ast.js';
@@ -39,6 +45,16 @@ class TokenStream {
 
 function parseTerm(ts: TokenStream): Term {
   const token = ts.next();
+  if (token.kind === '-') {
+    const value = ts.next();
+    if (value.kind !== 'num') {
+      throw new ParseError(
+        `expected a numeric literal after '-' but found '${value.text}'`,
+        value.line
+      );
+    }
+    return { type: 'num', value: value.num === 0 ? 0 : -value.num! };
+  }
   switch (token.kind) {
     case 'atom':
     case 'qatom':
@@ -51,6 +67,130 @@ function parseTerm(ts: TokenStream): Term {
       return { type: 'wildcard' };
     default:
       throw new ParseError(`expected a term but found '${token.text}'`, token.line);
+  }
+}
+
+interface ExpressionBudget {
+  nodes: number;
+}
+
+function addExpressionNode(budget: ExpressionBudget, line: number): void {
+  if (++budget.nodes > MAX_ARITHMETIC_EXPRESSION_NODES) {
+    throw new ParseError(
+      `arithmetic expression exceeds ${MAX_ARITHMETIC_EXPRESSION_NODES} nodes`,
+      line
+    );
+  }
+}
+
+function parseExpressionPrimary(
+  ts: TokenStream,
+  budget: ExpressionBudget,
+  nesting: number
+): ScalarExpression {
+  const token = ts.peek();
+  if (nesting > MAX_ARITHMETIC_EXPRESSION_DEPTH) {
+    throw new ParseError(
+      `arithmetic expression exceeds depth ${MAX_ARITHMETIC_EXPRESSION_DEPTH}`,
+      token.line
+    );
+  }
+  if (token.kind === '(') {
+    ts.next();
+    const expression = parseAdditiveExpression(ts, budget, nesting + 1);
+    ts.expect(')');
+    return expression;
+  }
+  addExpressionNode(budget, token.line);
+  return parseTerm(ts);
+}
+
+function parseUnaryExpression(
+  ts: TokenStream,
+  budget: ExpressionBudget,
+  nesting: number
+): ScalarExpression {
+  const token = ts.peek();
+  if (token.kind !== '+' && token.kind !== '-') {
+    return parseExpressionPrimary(ts, budget, nesting);
+  }
+  ts.next();
+  addExpressionNode(budget, token.line);
+  const operand = parseUnaryExpression(ts, budget, nesting + 1);
+  if (!isArithmeticExpression(operand) && operand.type === 'num') {
+    const value = token.kind === '-' ? -operand.value : operand.value;
+    return { type: 'num', value: value === 0 ? 0 : value };
+  }
+  return {
+    kind: 'unary',
+    op: token.kind as UnaryArithmeticOp,
+    operand,
+  };
+}
+
+function parseMultiplicativeExpression(
+  ts: TokenStream,
+  budget: ExpressionBudget,
+  nesting: number
+): ScalarExpression {
+  let expression = parseUnaryExpression(ts, budget, nesting);
+  while (ts.peek().kind === '*' || ts.peek().kind === '/') {
+    const operator = ts.next();
+    addExpressionNode(budget, operator.line);
+    expression = {
+      kind: 'binary',
+      op: operator.kind as ArithmeticOp,
+      left: expression,
+      right: parseUnaryExpression(ts, budget, nesting),
+    };
+  }
+  return expression;
+}
+
+function parseAdditiveExpression(
+  ts: TokenStream,
+  budget: ExpressionBudget,
+  nesting = 1
+): ScalarExpression {
+  let expression = parseMultiplicativeExpression(ts, budget, nesting);
+  while (ts.peek().kind === '+' || ts.peek().kind === '-') {
+    const operator = ts.next();
+    addExpressionNode(budget, operator.line);
+    expression = {
+      kind: 'binary',
+      op: operator.kind as ArithmeticOp,
+      left: expression,
+      right: parseMultiplicativeExpression(ts, budget, nesting),
+    };
+  }
+  return expression;
+}
+
+function expressionDepth(expression: ScalarExpression): number {
+  if (!isArithmeticExpression(expression)) return 1;
+  if (expression.kind === 'unary') return 1 + expressionDepth(expression.operand);
+  return 1 + Math.max(expressionDepth(expression.left), expressionDepth(expression.right));
+}
+
+function expressionTerms(expression: ScalarExpression): Term[] {
+  if (!isArithmeticExpression(expression)) return [expression];
+  if (expression.kind === 'unary') return expressionTerms(expression.operand);
+  return [...expressionTerms(expression.left), ...expressionTerms(expression.right)];
+}
+
+function validateArithmeticExpression(expression: ScalarExpression, line: number): void {
+  if (!isArithmeticExpression(expression)) return;
+  if (expressionDepth(expression) > MAX_ARITHMETIC_EXPRESSION_DEPTH) {
+    throw new ParseError(
+      `arithmetic expression exceeds depth ${MAX_ARITHMETIC_EXPRESSION_DEPTH}`,
+      line
+    );
+  }
+  if (expressionTerms(expression).some((term) => term.type === 'wildcard')) {
+    throw new ParseError('arithmetic expressions may not contain wildcards', line);
+  }
+  if (expressionTerms(expression).some((term) => term.type === 'atom')) {
+    throw new ParseError('arithmetic expressions may contain only numbers and variables', line);
   }
 }
 
@@ -74,21 +214,40 @@ function parseGoal(ts: TokenStream): Goal {
     ts.next();
     return { not: parseLiteral(ts) };
   }
-  // A goal starting with a bare atom + '(' or standing alone is a literal;
-  // anything followed by a comparison operator is a comparison.
+  // A bare predicate call or zero-arity atom is a literal. Arithmetic or a
+  // comparison operator after an atom instead starts a scalar expression.
   const start = ts.peek();
-  if (start.kind === 'atom' && ts.peek(1).kind !== 'cmp') {
+  const afterStart = ts.peek(1).kind;
+  if (
+    start.kind === 'atom' &&
+    (afterStart === '(' ||
+      (afterStart !== 'cmp' &&
+        afterStart !== '+' &&
+        afterStart !== '-' &&
+        afterStart !== '*' &&
+        afterStart !== '/'))
+  ) {
     return parseLiteral(ts);
   }
-  const left = parseTerm(ts);
-  const opToken = ts.expect('cmp');
-  const right = parseTerm(ts);
+  const budget: ExpressionBudget = { nodes: 0 };
+  const left = parseAdditiveExpression(ts, budget);
+  const opToken = ts.peek();
+  if (opToken.kind !== 'cmp') {
+    throw new ParseError(
+      `expected a comparison operator but found '${opToken.text}'`,
+      opToken.line
+    );
+  }
+  ts.next();
+  const right = parseAdditiveExpression(ts, budget);
+  validateArithmeticExpression(left, start.line);
+  validateArithmeticExpression(right, start.line);
   return { op: opToken.text as CmpOp, left, right };
 }
 
 function goalVars(goal: Goal): string[] {
   const terms = isComparison(goal)
-    ? [goal.left, goal.right]
+    ? [...expressionTerms(goal.left), ...expressionTerms(goal.right)]
     : isNegation(goal)
       ? goal.not.args
       : goal.args;
