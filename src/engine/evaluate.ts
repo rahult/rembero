@@ -102,6 +102,17 @@ export interface EvaluateOptions {
   maxProofNodes?: number;
   maxProofsPerRow?: number;
   maxProofEnumerationSteps?: number;
+  /** Use deterministic per-relation lookup indexes, or disable them for profiling. */
+  relationIndex?: 'auto' | 'off';
+  /** Optional deterministic counters reset and populated by each evaluation call. */
+  metrics?: EvaluationMetrics;
+}
+
+export interface EvaluationMetrics {
+  relationLookups: number;
+  indexedRelationLookups: number;
+  indexFactsProcessed: number;
+  candidateFactsVisited: number;
 }
 
 export const DEFAULT_MAX_PROOFS_PER_ROW = 1;
@@ -134,9 +145,17 @@ interface AlternativeProofOptions {
   maxProofEnumerationSteps: number;
 }
 
-/** Ground tuples per predicate, keyed for O(1) dedup while preserving insertion order. */
-type Relation = Map<string, FactEntry>;
+/** Ground tuples and an insertion-ordered first-argument index per predicate. */
+interface Relation {
+  tuples: Map<string, FactEntry>;
+  byFirstArgument?: Map<string, FactEntry[]>;
+}
 type Database = Map<string, Relation>;
+
+interface RelationLookupContext {
+  indexed: boolean;
+  metrics?: EvaluationMetrics;
+}
 
 const litKey = (predicate: string, arity: number) => `${predicate}/${arity}`;
 
@@ -186,6 +205,25 @@ function keyPart(term: Term): readonly [string, string | number] {
 
 function tupleKey(args: Term[]): string {
   return JSON.stringify(args.map(keyPart));
+}
+
+function firstArgumentKey(term: Term): string | undefined {
+  if (term.type !== 'atom' && term.type !== 'num') return undefined;
+  return JSON.stringify(keyPart(term));
+}
+
+function relationLookupContext(options: EvaluateOptions): RelationLookupContext {
+  const mode = options.relationIndex ?? 'auto';
+  if (mode !== 'auto' && mode !== 'off') {
+    throw new EngineSafetyError("relationIndex must be 'auto' or 'off'");
+  }
+  if (options.metrics !== undefined) {
+    options.metrics.relationLookups = 0;
+    options.metrics.indexedRelationLookups = 0;
+    options.metrics.indexFactsProcessed = 0;
+    options.metrics.candidateFactsVisited = 0;
+  }
+  return { indexed: mode === 'auto', metrics: options.metrics };
 }
 
 function assertFiniteNumericTerm(term: Term): void {
@@ -418,6 +456,34 @@ function checkComparison(goal: Comparison, env: Bindings): boolean {
   return comparisonHolds(goal.op, left, right);
 }
 
+function relationCandidates(
+  relation: Relation,
+  args: Term[],
+  env: Bindings,
+  lookup: RelationLookupContext
+): Iterable<FactEntry> {
+  if (lookup.metrics) ++lookup.metrics.relationLookups;
+  if (lookup.indexed && args.length > 0) {
+    const key = firstArgumentKey(resolve(args[0], env));
+    if (key !== undefined) {
+      if (lookup.metrics) ++lookup.metrics.indexedRelationLookups;
+      if (relation.byFirstArgument === undefined) {
+        relation.byFirstArgument = new Map();
+        for (const entry of relation.tuples.values()) {
+          if (lookup.metrics) ++lookup.metrics.indexFactsProcessed;
+          const entryKey = firstArgumentKey(entry.tuple[0]);
+          if (entryKey === undefined) continue;
+          const bucket = relation.byFirstArgument.get(entryKey);
+          if (bucket) bucket.push(entry);
+          else relation.byFirstArgument.set(entryKey, [entry]);
+        }
+      }
+      return relation.byFirstArgument.get(key) ?? [];
+    }
+  }
+  return relation.tuples.values();
+}
+
 /** Walk goals left-to-right, extending env; `source` picks which relation a goal reads. */
 function* solveGoals(
   goals: Goal[],
@@ -425,7 +491,8 @@ function* solveGoals(
   env: Bindings,
   proofs: ProofRef[],
   source: (goalIndex: number, key: string) => Relation | undefined,
-  stratumOf: (key: string) => number
+  stratumOf: (key: string) => number,
+  lookup: RelationLookupContext
 ): Generator<GoalSolution> {
   if (index === goals.length) {
     yield { env, proofs };
@@ -434,7 +501,7 @@ function* solveGoals(
   const goal = goals[index];
   if (isComparison(goal)) {
     if (checkComparison(goal, env)) {
-      yield* solveGoals(goals, index + 1, env, proofs, source, stratumOf);
+      yield* solveGoals(goals, index + 1, env, proofs, source, stratumOf, lookup);
     }
     return;
   }
@@ -451,7 +518,8 @@ function* solveGoals(
     });
     const relation = source(index, key);
     if (relation) {
-      for (const entry of relation.values()) {
+      for (const entry of relationCandidates(relation, resolved, {}, lookup)) {
+        if (lookup.metrics) ++lookup.metrics.candidateFactsVisited;
         if (matchArgs(resolved, entry.tuple, {}) !== null) return;
       }
     }
@@ -463,12 +531,21 @@ function* solveGoals(
       ),
       stratum: stratumOf(key),
     };
-    yield* solveGoals(goals, index + 1, env, [...proofs, absence], source, stratumOf);
+    yield* solveGoals(
+      goals,
+      index + 1,
+      env,
+      [...proofs, absence],
+      source,
+      stratumOf,
+      lookup
+    );
     return;
   }
   const relation = source(index, litKey(goal.predicate, goal.args.length));
   if (!relation) return;
-  for (const entry of relation.values()) {
+  for (const entry of relationCandidates(relation, goal.args, env, lookup)) {
+    if (lookup.metrics) ++lookup.metrics.candidateFactsVisited;
     const extended = matchArgs(goal.args, entry.tuple, env);
     if (extended) {
       yield* solveGoals(
@@ -477,7 +554,8 @@ function* solveGoals(
         extended,
         [...proofs, entry],
         source,
-        stratumOf
+        stratumOf,
+        lookup
       );
     }
   }
@@ -499,12 +577,20 @@ function substituteHead(head: Literal, env: Bindings): Term[] {
 function addTuple(db: Database, key: string, entry: FactEntry): boolean {
   let relation = db.get(key);
   if (!relation) {
-    relation = new Map();
+    relation = { tuples: new Map() };
     db.set(key, relation);
   }
   const tk = tupleKey(entry.tuple);
-  if (relation.has(tk)) return false;
-  relation.set(tk, entry);
+  if (relation.tuples.has(tk)) return false;
+  relation.tuples.set(tk, entry);
+  const index = relation.byFirstArgument;
+  if (index !== undefined && entry.tuple.length > 0) {
+    const firstKey = firstArgumentKey(entry.tuple[0]);
+    if (firstKey === undefined) return true;
+    const bucket = index.get(firstKey);
+    if (bucket) bucket.push(entry);
+    else index.set(firstKey, [entry]);
+  }
   return true;
 }
 
@@ -625,6 +711,7 @@ interface EnumerationContext {
   budget: EnumerationBudget;
   maxProofDepth: number;
   maxProofNodes: number;
+  lookup: RelationLookupContext;
 }
 
 interface ProofRowAccumulator {
@@ -676,6 +763,7 @@ function proofVectorKey(
 function deriveDatabase(
   clauses: Clause[],
   options: EvaluateOptions,
+  lookup: RelationLookupContext,
   collectAlternativeRules = false
 ): DerivedDatabase {
   const { maxFacts = 100_000, maxIterations = 10_000 } = options;
@@ -747,7 +835,8 @@ function deriveDatabase(
             {},
             [],
             source,
-            stratumOf
+            stratumOf,
+            lookup
           )) {
             const tuple = substituteHead(rule.head, solution.env);
             const entry: FactEntry = {
@@ -783,14 +872,15 @@ function queryBindingsWithProofRefs(
   db: Database,
   query: Goal[],
   maxRows: number,
-  predicateStrata: Map<string, number>
+  predicateStrata: Map<string, number>,
+  lookup: RelationLookupContext
 ): QueryRowRef[] {
   const results: QueryRowRef[] = [];
   const seen = new Set<string>();
   const fromDb = (_: number, key: string) => db.get(key);
   const stratumOf = (key: string) => predicateStrata.get(key) ?? 0;
 
-  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf)) {
+  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf, lookup)) {
     const bindings: Bindings = {};
     for (const [name, term] of Object.entries(solution.env)) bindings[name] = term;
     const key = rowKey(bindings);
@@ -807,7 +897,8 @@ function aggregateInputRows(
   db: Database,
   query: Goal[],
   maxAggregateRows: number,
-  predicateStrata: Map<string, number>
+  predicateStrata: Map<string, number>,
+  lookup: RelationLookupContext
 ): QueryRowRef[] {
   if (!Number.isSafeInteger(maxAggregateRows) || maxAggregateRows < 0) {
     throw new EngineSafetyError('maxAggregateRows must be a non-negative safe integer');
@@ -817,7 +908,7 @@ function aggregateInputRows(
   const stratumOf = (key: string) => predicateStrata.get(key) ?? 0;
   let inspected = 0;
 
-  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf)) {
+  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf, lookup)) {
     if (++inspected > maxAggregateRows) {
       throw new EngineLimitError(`aggregate input exceeded ${maxAggregateRows} rows`);
     }
@@ -1011,7 +1102,15 @@ function enumerateProofChoices(
     consumeEnumerationStep(context.budget);
     const seeded = matchArgs(clause.head.args, proof.tuple, {});
     if (seeded === null) continue;
-    for (const solution of solveGoals(clause.body, 0, seeded, [], fromDb, stratumOf)) {
+    for (const solution of solveGoals(
+      clause.body,
+      0,
+      seeded,
+      [],
+      fromDb,
+      stratumOf,
+      context.lookup
+    )) {
       consumeEnumerationStep(context.budget);
       const stopped = enumerateProofVectors(
         solution.proofs,
@@ -1047,7 +1146,8 @@ function queryBindingsWithAlternativeProofs(
   ruleIdentity: Map<number, string>,
   alternativeOptions: AlternativeProofOptions,
   maxProofDepth: number,
-  maxProofNodes: number
+  maxProofNodes: number,
+  lookup: RelationLookupContext
 ): ProofRowAccumulator[] {
   if (maxRows <= 0) return [];
   const rows: ProofRowAccumulator[] = [];
@@ -1065,9 +1165,10 @@ function queryBindingsWithAlternativeProofs(
     },
     maxProofDepth,
     maxProofNodes,
+    lookup,
   };
 
-  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf)) {
+  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf, lookup)) {
     consumeEnumerationStep(context.budget);
     const bindings: Bindings = {};
     for (const [name, term] of Object.entries(solution.env)) bindings[name] = term;
@@ -1103,9 +1204,10 @@ export function evaluate(
   options: EvaluateOptions = {}
 ): Bindings[] {
   const { maxRows = 1000 } = options;
+  const lookup = relationLookupContext(options);
   assertGoalsNumericSafety(query);
-  const { db, predicateStrata } = deriveDatabase(clauses, options);
-  return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata).map(
+  const { db, predicateStrata } = deriveDatabase(clauses, options, lookup);
+  return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata, lookup).map(
     ({ bindings }) => bindings
   );
 }
@@ -1117,15 +1219,17 @@ export function evaluateWithProof(
 ): ExplainedBindings[] {
   const alternativeOptions = resolveAlternativeProofOptions(options);
   const { maxRows = 1000, maxProofDepth = 128, maxProofNodes = 100_000 } = options;
+  const lookup = relationLookupContext(options);
   assertGoalsNumericSafety(query);
   const { db, predicateStrata, rulesByPredicate, ruleIdentity } = deriveDatabase(
     clauses,
     options,
+    lookup,
     alternativeOptions.maxProofsPerRow > DEFAULT_MAX_PROOFS_PER_ROW
   );
   const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
   if (alternativeOptions.maxProofsPerRow === DEFAULT_MAX_PROOFS_PER_ROW) {
-    return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata).map(
+    return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata, lookup).map(
       ({ bindings, proofs }) => ({
         bindings,
         proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, proofBudget)),
@@ -1141,7 +1245,8 @@ export function evaluateWithProof(
     ruleIdentity,
     alternativeOptions,
     maxProofDepth,
-    maxProofNodes
+    maxProofNodes,
+    lookup
   ).map(({ bindings, proofs }) => ({
     bindings,
     proofs: proofs[0].map((proof) => cloneProofStep(proof, maxProofDepth, proofBudget)),
@@ -1165,10 +1270,17 @@ export function evaluateQuerySpec(
 ): Bindings[] {
   if (query.kind === 'relational') return evaluate(clauses, query.goals, options);
   const { maxRows = 1000, maxAggregateRows = 100_000 } = options;
+  const lookup = relationLookupContext(options);
   if (maxRows < 1) return [];
   assertGoalsNumericSafety(query.goals);
-  const { db, predicateStrata } = deriveDatabase(clauses, options);
-  const rows = aggregateInputRows(db, query.goals, maxAggregateRows, predicateStrata);
+  const { db, predicateStrata } = deriveDatabase(clauses, options, lookup);
+  const rows = aggregateInputRows(
+    db,
+    query.goals,
+    maxAggregateRows,
+    predicateStrata,
+    lookup
+  );
   const result = aggregateValue(query, rows);
   return result === null ? [] : [result.bindings];
 }
@@ -1191,10 +1303,17 @@ export function evaluateQuerySpecWithProof(
     maxProofDepth = 128,
     maxProofNodes = 100_000,
   } = options;
+  const lookup = relationLookupContext(options);
   if (maxRows < 1) return [];
   assertGoalsNumericSafety(query.goals);
-  const { db, predicateStrata } = deriveDatabase(clauses, options);
-  const rows = aggregateInputRows(db, query.goals, maxAggregateRows, predicateStrata);
+  const { db, predicateStrata } = deriveDatabase(clauses, options, lookup);
+  const rows = aggregateInputRows(
+    db,
+    query.goals,
+    maxAggregateRows,
+    predicateStrata,
+    lookup
+  );
   const result = aggregateValue(query, rows);
   if (result === null) return [];
   if (!Number.isSafeInteger(maxAggregateProofRows) || maxAggregateProofRows < 0) {
@@ -1221,12 +1340,13 @@ export function materializeWithProof(
   options: EvaluateOptions = {}
 ): MaterializedFactWithProof[] {
   const { maxProofDepth = 128, maxProofNodes = 100_000 } = options;
-  const { db } = deriveDatabase(clauses, options);
+  const lookup = relationLookupContext(options);
+  const { db } = deriveDatabase(clauses, options, lookup);
   const facts: MaterializedFactWithProof[] = [];
   const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
 
   for (const relation of db.values()) {
-    for (const entry of relation.values()) {
+    for (const entry of relation.tuples.values()) {
       facts.push({
         predicate: entry.predicate,
         values: entry.tuple.map(groundValue),

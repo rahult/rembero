@@ -37,6 +37,7 @@ export {
   type AggregateProof,
   type Bindings,
   type DerivationProof,
+  type EvaluationMetrics,
   type ExplainedBindings,
   type ExplainedQueryBindings,
   type EvaluateOptions,

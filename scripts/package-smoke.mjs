@@ -36,11 +36,16 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuerySpec, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuery, parseQuerySpec, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
         "if (arithmetic.length !== 1 || arithmetic[0]?.X?.value !== 'a') throw new Error('public arithmetic API failed'); " +
+        "const indexedProgram = parseProgram([...Array.from({ length: 100 }, (_, i) => `related(person_${i}, topic_${i % 7}).`), 'selected(person_99).', 'relevant(X, Y) :- selected(X), related(X, Y).'].join('\\n')); " +
+        "const indexedMetrics = { relationLookups: 0, indexedRelationLookups: 0, indexFactsProcessed: 0, candidateFactsVisited: 0 }; " +
+        "const indexedRows = evaluate(indexedProgram, parseQuery('relevant(X, Y)'), { metrics: indexedMetrics }); " +
+        "const scannedRows = evaluate(indexedProgram, parseQuery('relevant(X, Y)'), { relationIndex: 'off' }); " +
+        "if (JSON.stringify(indexedRows) !== JSON.stringify(scannedRows) || indexedMetrics.indexedRelationLookups < 1 || indexedMetrics.indexFactsProcessed !== 100) throw new Error('public relation index API failed'); " +
         "const noise = Array.from({ length: 100 }, (_, i) => `noise_${i}(value_${i}).`).join('\\n'); " +
         "const schema = selectRecallSchema(parseProgram(`${noise}\\nworks_at(mira, acme).`), 'Who employs Mira?', { predicateLimit: 4 }); " +
         "if (!schema.pruned || !schema.selectedPredicates.includes('works_at/2') || schema.summaryBytes > 24576) throw new Error('public recall schema API failed'); " +
@@ -367,7 +372,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

@@ -164,6 +164,14 @@ retry, journal, and crash-recovery boundary as other writes. A caller-supplied `
 be a canonical UTC instant; it is descriptive valid-time metadata, never an ordering
 authority. See [the temporal-correction contract](docs/TEMPORAL-CORRECTIONS.md).
 
+Version 0.17 lazily indexes a relation's first argument whenever a rule or query has
+already bound it. Selective joins, negation, recursion, aggregates, explanations, and the
+SQLite portable bridge use the same insertion-ordered lookup without persisting a second
+authority or reordering authored goals. Checked-in selective-join and recursive-growth
+benchmarks require byte-identical rows and proofs, at least a 2x median speedup, and at
+least a 100x reduction in deterministic relation work. Run `npm run bench:engine`; see
+[the deterministic indexing contract](docs/ENGINE-INDEXING.md).
+
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
 complete selected namespaces. Empty or unanswerable results from a partial slice trigger

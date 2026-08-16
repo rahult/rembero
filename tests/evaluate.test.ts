@@ -158,6 +158,167 @@ describe('evaluate: rules', () => {
   });
 });
 
+describe('evaluate: deterministic relation indexing', () => {
+  const program = `
+    selected(person_97).
+    selected(person_98).
+    selected(person_99).
+    ${Array.from(
+      { length: 100 },
+      (_, index) => `related(person_${index}, topic_${index % 7}).`
+    ).join('\n')}
+    blocked(person_98).
+    relevant(X, Y) :- selected(X), related(X, Y), \\+ blocked(X).
+  `;
+
+  it('preserves byte-identical rows and proofs when the index is disabled', () => {
+    const clauses = parseProgram(program);
+    const query = parseQuery('relevant(X, Y)');
+    const indexed = evaluateWithProof(clauses, query, {
+      maxProofsPerRow: 4,
+      relationIndex: 'auto',
+    });
+    const scanned = evaluateWithProof(clauses, query, {
+      maxProofsPerRow: 4,
+      relationIndex: 'off',
+    });
+
+    expect(JSON.stringify(indexed)).toBe(JSON.stringify(scanned));
+  });
+
+  it('preserves recursive first-witness and aggregate proof order', () => {
+    const recursive = parseProgram(`
+      edge(a, b). edge(b, d). edge(a, c). edge(c, d). edge(d, e).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `);
+    const relational = parseQuery('path(a, Y)');
+    const aggregate = parseQuerySpec('count(*) as Count where path(a, Y)');
+
+    expect(
+      JSON.stringify(
+        evaluateWithProof(recursive, relational, {
+          relationIndex: 'auto',
+          maxProofsPerRow: 4,
+        })
+      )
+    ).toBe(
+      JSON.stringify(
+        evaluateWithProof(recursive, relational, {
+          relationIndex: 'off',
+          maxProofsPerRow: 4,
+        })
+      )
+    );
+    expect(
+      JSON.stringify(
+        evaluateQuerySpecWithProof(recursive, aggregate, { relationIndex: 'auto' })
+      )
+    ).toBe(
+      JSON.stringify(
+        evaluateQuerySpecWithProof(recursive, aggregate, { relationIndex: 'off' })
+      )
+    );
+  });
+
+  it('profiles a bounded-first-argument join without relying on wall-clock timing', () => {
+    const clauses = parseProgram(program);
+    const query = parseQuery('relevant(X, Y)');
+    const indexedMetrics = {
+      relationLookups: 0,
+      indexedRelationLookups: 0,
+      indexFactsProcessed: 0,
+      candidateFactsVisited: 0,
+    };
+    const scannedMetrics = { ...indexedMetrics };
+
+    const indexed = evaluate(clauses, query, {
+      relationIndex: 'auto',
+      metrics: indexedMetrics,
+    });
+    const scanned = evaluate(clauses, query, {
+      relationIndex: 'off',
+      metrics: scannedMetrics,
+    });
+
+    expect(indexed).toEqual(scanned);
+    expect(indexedMetrics.indexedRelationLookups).toBeGreaterThan(0);
+    expect(indexedMetrics.candidateFactsVisited * 10).toBeLessThan(
+      scannedMetrics.candidateFactsVisited
+    );
+  });
+
+  it('does not build an index for an unbound full-relation scan', () => {
+    const facts = Array.from(
+      { length: 100 },
+      (_, index) => `related(person_${index}, topic_${index % 7}).`
+    ).join('\n');
+    const metrics = {
+      relationLookups: 0,
+      indexedRelationLookups: 0,
+      indexFactsProcessed: 0,
+      candidateFactsVisited: 0,
+    };
+
+    expect(run(facts, 'related(X, Y)', { metrics })).toHaveLength(100);
+    expect(metrics.indexedRelationLookups).toBe(0);
+    expect(metrics.indexFactsProcessed).toBe(0);
+    expect(metrics.candidateFactsVisited).toBe(100);
+  });
+
+  it('resets caller-supplied metrics for each public evaluation', () => {
+    const metrics = {
+      relationLookups: 99,
+      indexedRelationLookups: 99,
+      indexFactsProcessed: 99,
+      candidateFactsVisited: 99,
+    };
+
+    expect(run('fact(a).', 'fact(X)', { metrics })).toHaveLength(1);
+    expect(metrics).toEqual({
+      relationLookups: 1,
+      indexedRelationLookups: 0,
+      indexFactsProcessed: 0,
+      candidateFactsVisited: 1,
+    });
+    expect(
+      runSpec('fact(a).', 'count(*) as Count where fact(X)', {
+        maxRows: 0,
+        metrics,
+      })
+    ).toEqual([]);
+    expect(metrics).toEqual({
+      relationLookups: 0,
+      indexedRelationLookups: 0,
+      indexFactsProcessed: 0,
+      candidateFactsVisited: 0,
+    });
+  });
+
+  it('keeps numeric and atom first-argument buckets type-distinct', () => {
+    const metrics = {
+      relationLookups: 0,
+      indexedRelationLookups: 0,
+      indexFactsProcessed: 0,
+      candidateFactsVisited: 0,
+    };
+
+    expect(rows(run("value(1, numeric). value('1', atom).", 'value(1, X)', { metrics }))).toEqual([
+      'X=numeric',
+    ]);
+    expect(metrics.indexFactsProcessed).toBe(2);
+    expect(metrics.candidateFactsVisited).toBe(1);
+  });
+
+  it('rejects unknown relation index modes instead of silently changing execution', () => {
+    expect(() =>
+      run('fact(a).', 'fact(X)', {
+        relationIndex: 'sometimes',
+      } as unknown as EvaluateOptions)
+    ).toThrow(EngineSafetyError);
+  });
+});
+
 describe('evaluate: comparison builtins', () => {
   const db = `
     age(rahul, 38).

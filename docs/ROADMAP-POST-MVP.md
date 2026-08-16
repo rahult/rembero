@@ -18,8 +18,10 @@ The engine's expressiveness ceiling is the first thing power users will hit.
    numeric expressions with `+`, `-`, `*`, `/`, unary signs, parentheses, and standard
    precedence. Arithmetic remains filter-only, so it cannot expand the finite fact
    universe; invalid numeric operations fail closed.
-4. **Engine perf pass**: first-argument indexing for relations (today: linear scan per
-   goal). Only matters past ~10k facts; benchmark first.
+4. **Complete — measured engine perf pass**: lazy insertion-ordered first-argument
+   indexes accelerate goals whose first term is ground or already bound. Checked-in
+   selective-join and recursive-growth controls prove byte-identical rows/proofs, at
+   least 2x median speedup, and at least 100x less deterministic relation work.
 
 ## Phase 7 — Auto-capture  *(v0.5)*
 
@@ -189,6 +191,19 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    cross-process locks, crash recovery, exact journal lineage, idempotent operation replay,
    structured conflicts, package smoke tests, and historical recall/proof behavior.
 
+## Phase 20 — Deterministic relation indexing  *(v0.17)*
+
+1. **Complete — lazy selective lookup**: positive and negative goals use an
+   insertion-ordered first-argument bucket when the term is ground or bound by an earlier
+   goal. Unbound scans do not build an index.
+2. **Complete — semantic and proof parity**: recursion, semi-naive delta relations,
+   aggregate contributors, default and alternative proofs, and the SQLite portable bridge
+   retain byte-identical output with indexing disabled as the reproducible control.
+3. **Complete — evidence before optimization**: `npm run bench:engine` compares 10k and
+   50k-fact selective joins plus 2k-step recursive growth, reports wall time and
+   deterministic work counters, and fails below the 2x speedup or 100x work-reduction
+   acceptance thresholds.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
@@ -221,9 +236,9 @@ mutation/source IDs, and query-scoped hypergraphs across the library, CLI, and M
 is the foundation for conflict views, temporal history, and alternative proof inspection
 without replacing the readable personal knowledge base with a second graph store.
 
-The next reasoning milestone remains an evidence-driven index pass once benchmarks show
-relation scans becoming material. Retrieval context, alternative evidence, explicit
-identity projection, integrity audits, and enforced candidate writes are bounded independently of
-knowledge-base growth while the finite, proof-carrying rule language remains the
-deterministic authority. Direct hand edits and older writers remain outside the lock and
-must be followed by an explicit audit.
+The measured index pass now removes repeated full relation scans from selective joins
+without reordering rules or changing proof bytes. Retrieval context, alternative evidence,
+explicit identity projection, integrity audits, and enforced candidate writes remain
+bounded independently of knowledge-base growth while the finite, proof-carrying rule
+language stays the deterministic authority. Direct hand edits and older writers remain
+outside the lock and must be followed by an explicit audit.

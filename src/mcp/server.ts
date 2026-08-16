@@ -221,7 +221,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.16.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.17.0' });
 
   server.registerTool(
     'remember',
