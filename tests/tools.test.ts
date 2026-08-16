@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MemoryStore } from '../src/store/store.js';
+import { MemoryStore, OperationConflictError } from '../src/store/store.js';
 import { IntegrityViolationError } from '../src/knowledge/enforcement.js';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT } from '../src/safety.js';
@@ -55,6 +55,28 @@ describe('MCP tool handlers', () => {
     expect(result.added).toEqual(['f(a).', 'g(X) :- f(X).']);
     expect(result.duplicates).toBe(0);
     expect(result.opId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('assert_facts and forget forward caller operation ids for safe retries', () => {
+    const asserted = assertFactsTool(
+      { store },
+      { clauses: 'f(a). f(b).', opId: 'tool-assert' }
+    );
+    expect(
+      assertFactsTool({ store }, { clauses: 'f(a). f(b).', opId: 'tool-assert' })
+    ).toEqual(asserted);
+    expect(() =>
+      assertFactsTool({ store }, { clauses: 'g(a).', opId: 'tool-assert' })
+    ).toThrow(OperationConflictError);
+
+    const forgotten = forgetTool(
+      { store },
+      { pattern: 'f(_)', opId: 'tool-forget' }
+    );
+    expect(
+      forgetTool({ store }, { pattern: 'f( _ )', opId: 'tool-forget' })
+    ).toEqual(forgotten);
+    expect(forgotten).toEqual({ removed: 2, opId: 'tool-forget' });
   });
 
   it('write tools share atomic integrity enforcement and structured rejection', () => {

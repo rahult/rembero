@@ -143,6 +143,19 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    and atomic write rejections expose the same selector and selection metadata without a
    graph sidecar.
 
+## Phase 16 — Retry-safe raw writes  *(v0.13)*
+
+1. **Complete — durable assertion and retraction replay**: explicit operation IDs are
+   resolved under the existing mutation, namespace, and journal locks. Matching retries
+   return the first result, including original added/duplicate/removed counts, without a
+   second mutation or journal entry.
+2. **Complete — deterministic conflicts and no-ops**: normalized request mismatch raises
+   typed `OperationConflictError`; explicit no-op writes record one bounded replay marker
+   while unchanged implicit no-ops remain unjournaled.
+3. **Complete — public ingress and cross-process proof**: library, CLI assert/forget/import,
+   and MCP assert/forget accept bounded IDs. Concurrent process retries collapse to one
+   durable operation, and CLI/MCP expose stable machine-readable conflicts.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

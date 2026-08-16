@@ -136,6 +136,75 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('replays explicit write operation ids and reports deterministic conflicts', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-op-id-'));
+    const home = join(root, 'home');
+    const runAssert = (clause: string) =>
+      spawnSync(
+        process.execPath,
+        [resolve('dist/cli.js'), 'assert', clause, '--op-id', 'cli-assert-retry'],
+        { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+      );
+
+    const first = runAssert('retry_fact(alpha).');
+    const replay = runAssert('retry_fact(alpha).');
+    const conflict = runAssert('retry_fact(beta).');
+
+    expect(first.status).toBe(0);
+    expect(replay.status).toBe(0);
+    expect(JSON.parse(replay.stdout)).toEqual(JSON.parse(first.stdout));
+    expect(conflict.status).toBe(4);
+    expect(JSON.parse(conflict.stderr)).toEqual({
+      error: 'operation_conflict',
+      message: "assert operation 'cli-assert-retry' was already used for another mutation",
+      operation: 'assert',
+      namespace: 'default',
+      opId: 'cli-assert-retry',
+    });
+
+    const firstForget = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'forget',
+        'retry_fact(_)',
+        '--op-id',
+        'cli-forget-retry',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    const replayForget = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'forget',
+        'retry_fact( _ )',
+        '--op-id',
+        'cli-forget-retry',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(firstForget.status).toBe(0);
+    expect(replayForget.status).toBe(0);
+    expect(firstForget.stdout).toBe('removed 1 clause(s)\n');
+    expect(replayForget.stdout).toBe(firstForget.stdout);
+  });
+
+  it('rejects operation ids on commands without idempotent write semantics', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-op-id-command-'));
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'query', 'f(X)', '--op-id', 'unsupported'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: join(root, 'home') },
+      }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/--op-id is available for assert, forget, and import/i);
+  });
+
   it('exports one complete result support graph without changing query rows', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-graph-select-'));
     const home = join(root, 'home');

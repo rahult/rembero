@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MemoryStore } from '../src/store/store.js';
+import { MemoryStore, OperationConflictError } from '../src/store/store.js';
 import { canonicalKey, parseProgram, serializeClause } from '../src/engine/index.js';
 
 let root: string;
@@ -156,6 +156,19 @@ describe('MemoryStore.retract', () => {
   it('removes nothing when the pattern matches nothing', () => {
     expect(store.retract('default', 'works_at(nobody, _)').removed).toBe(0);
   });
+
+  it("treats ':-' inside quoted fact values as data, not rule syntax", () => {
+    store.assert('default', "note(a, 'a :- b').", { opId: 'quoted-source' });
+    expect(
+      store.retract('default', "note(_, 'a :- b')", { opId: 'quoted-retract' })
+    ).toEqual({ removed: 1, opId: 'quoted-retract' });
+    const noteKey = canonicalKey(parseProgram("note(a, 'a :- b').")[0]);
+    expect(store.sourcesFor(['default']).has(noteKey)).toBe(false);
+    expect(store.history('note(_, _)').events.map((event) => event.action)).toEqual([
+      'asserted',
+      'retracted',
+    ]);
+  });
 });
 
 describe('journal', () => {
@@ -220,6 +233,132 @@ describe('journal', () => {
     store.assert('default', 'f(a).');
     store.assert('default', 'f(a).');
     expect(journalLines()).toHaveLength(1);
+  });
+
+  it('replays an explicit assert operation exactly and rejects conflicting reuse', () => {
+    store.assert('default', 'f(a).');
+    const first = store.assert('default', 'f(a). g(X) :- f(X).', {
+      opId: 'assert-stable',
+    });
+    const beforeReplay = journalLines();
+
+    const replay = new MemoryStore(root).assert('default', 'f(a). g(Value) :- f(Value).', {
+      opId: 'assert-stable',
+    });
+
+    expect(replay).toEqual(first);
+    expect(replay.added.map(serializeClause)).toEqual(['g(X) :- f(X).']);
+    expect(replay.duplicates).toBe(1);
+    expect(journalLines()).toEqual(beforeReplay);
+    expect(() =>
+      store.assert('default', 'h(a).', { opId: 'assert-stable' })
+    ).toThrow(OperationConflictError);
+    expect(() =>
+      store.assert('default', 'h(a).', { opId: 'assert-stable' })
+    ).toThrow(/already used for another mutation/i);
+  });
+
+  it('durably replays an explicit no-op assert without growing the journal', () => {
+    store.assert('default', 'f(a).');
+    const first = store.assert('default', 'f(a).', { opId: 'assert-noop' });
+    const beforeReplay = journalLines();
+
+    expect(first).toMatchObject({ added: [], duplicates: 1, opId: 'assert-noop' });
+    expect(beforeReplay.at(-1)).toMatchObject({
+      op: 'assert',
+      opId: 'assert-noop',
+      requested: ['f(a).'],
+      added: [],
+      duplicates: 1,
+    });
+    expect(
+      new MemoryStore(root).assert('default', 'f(a).', { opId: 'assert-noop' })
+    ).toEqual(first);
+    expect(journalLines()).toEqual(beforeReplay);
+  });
+
+  it('replays an explicit retract operation exactly and rejects conflicting reuse', () => {
+    store.assert('default', 'f(a). f(b). g(a).');
+    const first = store.retract('default', 'f(Value)', { opId: 'retract-stable' });
+    const beforeReplay = journalLines();
+
+    const replay = new MemoryStore(root).retract('default', 'f(Other)', {
+      opId: 'retract-stable',
+    });
+
+    expect(replay).toEqual(first);
+    expect(replay).toEqual({ removed: 2, opId: 'retract-stable' });
+    expect(journalLines()).toEqual(beforeReplay);
+    expect(() =>
+      store.retract('default', 'g(_)', { opId: 'retract-stable' })
+    ).toThrow(OperationConflictError);
+  });
+
+  it('durably replays an explicit no-op retract without growing the journal', () => {
+    const first = store.retract('default', 'missing(_)', { opId: 'retract-noop' });
+    const beforeReplay = journalLines();
+
+    expect(first).toEqual({ removed: 0, opId: 'retract-noop' });
+    expect(beforeReplay).toEqual([
+      expect.objectContaining({
+        op: 'retract',
+        opId: 'retract-noop',
+        pattern: 'missing(_)',
+        removed: 0,
+        removedClauses: [],
+      }),
+    ]);
+    expect(
+      new MemoryStore(root).retract('default', 'missing(_)', { opId: 'retract-noop' })
+    ).toEqual(first);
+    expect(journalLines()).toEqual(beforeReplay);
+  });
+
+  it('rejects empty or oversized operation ids before mutating', () => {
+    expect(() => store.assert('default', 'f(a).', { opId: '' })).toThrow(
+      /operation id must not be empty/i
+    );
+    expect(() => store.retract('default', 'f(_)', { opId: 'x'.repeat(257) })).toThrow(
+      /operation id exceeds 256 bytes/i
+    );
+    expect(store.load('default')).toEqual([]);
+  });
+
+  it('replays provable legacy assertions and rejects ambiguous legacy duplicates', () => {
+    writeFileSync(join(root, 'default.dl'), 'f(a).\n');
+    writeFileSync(
+      join(root, 'journal.log'),
+      [
+        JSON.stringify({
+          ts: '2026-08-17T00:00:00.000Z',
+          op: 'assert',
+          namespace: 'default',
+          opId: 'legacy-provable',
+          added: ['f(a).'],
+          duplicates: 0,
+        }),
+        JSON.stringify({
+          ts: '2026-08-17T00:00:01.000Z',
+          op: 'assert',
+          namespace: 'default',
+          opId: 'legacy-ambiguous',
+          added: [],
+          duplicates: 1,
+        }),
+        '',
+      ].join('\n')
+    );
+
+    expect(
+      new MemoryStore(root).assert('default', 'f(a).', { opId: 'legacy-provable' })
+    ).toMatchObject({
+      added: [expect.objectContaining({ head: expect.objectContaining({ predicate: 'f' }) })],
+      duplicates: 0,
+      opId: 'legacy-provable',
+    });
+    expect(() =>
+      new MemoryStore(root).assert('default', 'f(a).', { opId: 'legacy-ambiguous' })
+    ).toThrow(/invalid durable parameters/i);
   });
 
   it('links current clauses to their latest durable source', () => {
@@ -450,6 +589,52 @@ describe('namespaces', () => {
     ).toEqual(
       Array.from({ length: 8 }, (_, index) => `concurrent(writer_${index}).`).sort()
     );
+  });
+
+  it('collapses simultaneous cross-process retries to one durable assertion', async () => {
+    const script = `
+      import { MemoryStore } from './dist/store/store.js';
+      const result = new MemoryStore(process.env.TEST_MEMORY_ROOT).assert(
+        'default',
+        'retry_once(value).',
+        { opId: 'cross-process-retry' }
+      );
+      if (result.opId !== 'cross-process-retry' || result.added.length !== 1) process.exit(2);
+    `;
+    await Promise.all(
+      Array.from({ length: 8 }, () =>
+        new Promise<void>((resolve, reject) => {
+          const child = spawn(process.execPath, ['--input-type=module', '--eval', script], {
+            cwd: process.cwd(),
+            env: { ...process.env, TEST_MEMORY_ROOT: root },
+            stdio: ['ignore', 'ignore', 'pipe'],
+          });
+          let stderr = '';
+          child.stderr.setEncoding('utf8');
+          child.stderr.on('data', (chunk) => {
+            stderr += chunk;
+          });
+          child.on('error', reject);
+          child.on('close', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`retrying writer exited ${code}: ${stderr}`));
+          });
+        })
+      )
+    );
+
+    expect(new MemoryStore(root).load('default').map(serializeClause)).toEqual([
+      'retry_once(value).',
+    ]);
+    const journal = readFileSync(join(root, 'journal.log'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(
+      journal.filter(
+        (entry) => entry.op === 'assert' && entry.opId === 'cross-process-retry'
+      )
+    ).toHaveLength(1);
   });
 
   it('sees facts asserted by another store instance', () => {

@@ -121,6 +121,7 @@ export function assertFactsTool(
   args: {
     clauses: string;
     namespace?: string;
+    opId?: string;
     integrityEnforcement?: IntegrityEnforcementOptions;
   }
 ): { added: string[]; duplicates: number; opId: string } {
@@ -130,7 +131,10 @@ export function assertFactsTool(
   const { added, duplicates, opId } = deps.store.assert(
     args.namespace ?? 'default',
     args.clauses,
-    integrity === undefined ? {} : { integrity }
+    {
+      ...(args.opId === undefined ? {} : { opId: args.opId }),
+      ...(integrity === undefined ? {} : { integrity }),
+    }
   );
   return { added: added.map(serializeClause), duplicates, opId };
 }
@@ -222,6 +226,7 @@ export function forgetTool(
   args: {
     pattern: string;
     namespace?: string;
+    opId?: string;
     integrityEnforcement?: IntegrityEnforcementOptions;
   }
 ): { removed: number; opId: string } {
@@ -231,7 +236,10 @@ export function forgetTool(
   return deps.store.retract(
     args.namespace ?? 'default',
     args.pattern,
-    integrity === undefined ? {} : { integrity }
+    {
+      ...(args.opId === undefined ? {} : { opId: args.opId }),
+      ...(integrity === undefined ? {} : { integrity }),
+    }
   );
 }
 

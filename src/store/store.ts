@@ -44,6 +44,7 @@ const MAX_CAPTURE_ERROR_BYTES = 1024 * 1024;
 const MAX_JOURNAL_ENTRIES = 100_000;
 const MAX_PENDING_MUTATION_BYTES = 256 * 1024;
 export const MAX_HISTORY_EVENTS = 1_000;
+export const MAX_OPERATION_ID_BYTES = 256;
 const MAX_HISTORY_SOURCE_BYTES = 4_096;
 const LOCK_WAIT_MS = 2_000;
 const LOCK_STALE_MS = 30_000;
@@ -65,6 +66,31 @@ export interface MutationContext {
   at?: Date;
   /** Optional atomic reject-on-write policy for this mutation. */
   integrity?: IntegrityEnforcementOptions;
+}
+
+export type IdempotentMutationOperation = 'assert' | 'retract' | 'supersede';
+
+export class OperationConflictError extends Error {
+  readonly code = 'operation_conflict';
+
+  constructor(
+    readonly operation: IdempotentMutationOperation,
+    readonly namespace: string,
+    readonly opId: string
+  ) {
+    super(`${operation} operation '${opId}' was already used for another mutation`);
+    this.name = 'OperationConflictError';
+  }
+
+  toJSON(): Record<string, string> {
+    return {
+      error: this.code,
+      message: this.message,
+      operation: this.operation,
+      namespace: this.namespace,
+      opId: this.opId,
+    };
+  }
 }
 
 export type ValidTimeMode = 'delete' | 'archive_until';
@@ -233,6 +259,14 @@ function validDate(value: Date, label: string): Date {
   return value;
 }
 
+function validateOperationId(opId: string): string {
+  if (opId.length === 0) throw new Error('operation id must not be empty');
+  if (Buffer.byteLength(opId, 'utf8') > MAX_OPERATION_ID_BYTES) {
+    throw new Error(`operation id exceeds ${MAX_OPERATION_ID_BYTES} bytes`);
+  }
+  return opId;
+}
+
 function assertIsoTimestamp(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string') throw new Error(`${label} must be an ISO timestamp`);
   const parsed = new Date(value);
@@ -253,6 +287,38 @@ function parseFactPattern(pattern: string, label: string): Literal {
     throw new ParseError(`${label} must be a single literal, e.g. works_at(rahul, _)`);
   }
   return goals[0] as Literal;
+}
+
+type RetractionTarget =
+  | { serialized: string; identity: string; literal: Literal }
+  | { serialized: string; identity: string; clauseKey: string };
+
+function parseRetractionTarget(pattern: string, label: string): RetractionTarget {
+  let literalError: unknown;
+  try {
+    const literal = parseFactPattern(pattern, label);
+    return {
+      serialized: serializeGoal(literal),
+      identity: canonicalKey({ head: literal, body: [] }),
+      literal,
+    };
+  } catch (error) {
+    literalError = error;
+  }
+  let clauses: Clause[];
+  try {
+    clauses = parseProgram(pattern);
+  } catch {
+    throw literalError;
+  }
+  if (clauses.length !== 1 || clauses[0].body.length === 0) {
+    throw literalError;
+  }
+  return {
+    serialized: serializeClause(clauses[0]),
+    identity: canonicalKey(clauses[0]),
+    clauseKey: canonicalKey(clauses[0]),
+  };
 }
 
 function parseJournalClause(value: unknown, label: string): Clause {
@@ -899,63 +965,133 @@ export class MemoryStore {
     clauses: string | Clause[],
     context: MutationContext = {}
   ): AssertResult {
-    const opId = context.opId ?? this.createOperationId();
+    const explicitOpId = context.opId !== undefined;
+    const opId = validateOperationId(context.opId ?? this.createOperationId());
     const at = validDate(context.at ?? new Date(), 'assert timestamp');
     const effectiveContext = { ...context, opId };
     const parsed = typeof clauses === 'string' ? parseProgram(clauses) : clauses;
+    const requested = parsed.map(serializeClause);
+    const requestKeys = parsed.map(canonicalKey);
     return this.withMutationLock(() =>
       this.withNamespaceLock(namespace, () => {
-        const loaded = this.loadCached(namespace);
-        const entry: CachedNamespace = {
-          clauses: [...loaded.clauses],
-          keys: new Set(loaded.keys),
-          fileStamp: loaded.fileStamp,
-        };
-        const added: Clause[] = [];
-        let duplicates = 0;
-        for (const clause of parsed) {
-          const key = canonicalKey(clause);
-          if (entry.keys.has(key)) {
-            duplicates++;
-          } else {
-            entry.keys.add(key);
-            entry.clauses.push(clause);
-            added.push(clause);
-          }
-        }
-        if (added.length > 0) {
-          this.enforceMutation(
-            namespace,
-            loaded.clauses,
-            entry.clauses,
-            added,
-            effectiveContext,
-            at
-          );
-          const journalEntry = this.createJournalEntry(
-            namespace,
-            'assert',
-            {
-              opId,
-              added: added.map(serializeClause),
-              duplicates,
-              ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
-              ...(context.origin === undefined ? {} : { origin: context.origin }),
-              ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
-            },
-            at
-          );
-          this.withLock('journal', () => {
-            const lineBytes = Buffer.byteLength(`${JSON.stringify(journalEntry)}\n`, 'utf8');
-            const path = this.journalPath();
-            const currentBytes = existsSync(path) ? statSync(path).size : 0;
-            if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
-              throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+        return this.withLock('journal', () => {
+          const priorOperation = explicitOpId
+            ? this.readJournalUnlocked().find(
+                (journalEntry) =>
+                  journalEntry.op === 'assert' &&
+                  journalEntry.namespace === namespace &&
+                  journalEntry.opId === opId
+              )
+            : undefined;
+          if (priorOperation !== undefined) {
+            const added = parseJournalClauseList(
+              priorOperation.added,
+              `assert operation '${opId}' added`
+            );
+            if (
+              typeof priorOperation.duplicates !== 'number' ||
+              !Number.isSafeInteger(priorOperation.duplicates) ||
+              priorOperation.duplicates < 0
+            ) {
+              throw new Error(`assert operation '${opId}' has an invalid duplicate count`);
             }
-            this.commitMutation(namespace, entry, journalEntry);
-          });
-        }
-        return { added, duplicates, opId };
+            const durableRequested = priorOperation.requested === undefined &&
+                priorOperation.duplicates === 0
+              ? added.map(serializeClause)
+              : priorOperation.requested;
+            if (
+              !Array.isArray(durableRequested) ||
+              !durableRequested.every((value) => typeof value === 'string')
+            ) {
+              throw new Error(`assert operation '${opId}' has invalid durable parameters`);
+            }
+            let durableRequestKeys: string[];
+            try {
+              durableRequestKeys = (durableRequested as string[]).map((value, index) =>
+                canonicalKey(
+                  parseJournalClause(
+                    value,
+                    `assert operation '${opId}' requested[${index}]`
+                  )
+                )
+              );
+            } catch {
+              throw new Error(`assert operation '${opId}' has invalid durable parameters`);
+            }
+            if (
+              priorOperation.requestKeys !== undefined &&
+              (!Array.isArray(priorOperation.requestKeys) ||
+                !priorOperation.requestKeys.every((value) => typeof value === 'string') ||
+                JSON.stringify(priorOperation.requestKeys) !==
+                  JSON.stringify(durableRequestKeys))
+            ) {
+              throw new Error(`assert operation '${opId}' has invalid durable parameters`);
+            }
+            if (JSON.stringify(durableRequestKeys) !== JSON.stringify(requestKeys)) {
+              throw new OperationConflictError('assert', namespace, opId);
+            }
+            return { added, duplicates: priorOperation.duplicates, opId };
+          }
+
+          const loaded = this.loadCached(namespace);
+          const entry: CachedNamespace = {
+            clauses: [...loaded.clauses],
+            keys: new Set(loaded.keys),
+            fileStamp: loaded.fileStamp,
+          };
+          const added: Clause[] = [];
+          let duplicates = 0;
+          for (const clause of parsed) {
+            const key = canonicalKey(clause);
+            if (entry.keys.has(key)) {
+              duplicates++;
+            } else {
+              entry.keys.add(key);
+              entry.clauses.push(clause);
+              added.push(clause);
+            }
+          }
+          if (added.length > 0) {
+            this.enforceMutation(
+              namespace,
+              loaded.clauses,
+              entry.clauses,
+              added,
+              effectiveContext,
+              at
+            );
+          }
+          if (added.length > 0 || explicitOpId) {
+            const journalEntry = this.createJournalEntry(
+              namespace,
+              'assert',
+              {
+                opId,
+                requested,
+                requestKeys,
+                added: added.map(serializeClause),
+                duplicates,
+                ...(context.sourceText === undefined
+                  ? {}
+                  : { sourceText: context.sourceText }),
+                ...(context.origin === undefined ? {} : { origin: context.origin }),
+                ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
+              },
+              at
+            );
+            if (added.length === 0) this.appendJournalUnlocked(journalEntry);
+            else {
+              const lineBytes = Buffer.byteLength(`${JSON.stringify(journalEntry)}\n`, 'utf8');
+              const path = this.journalPath();
+              const currentBytes = existsSync(path) ? statSync(path).size : 0;
+              if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
+                throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+              }
+              this.commitMutation(namespace, entry, journalEntry);
+            }
+          }
+          return { added, duplicates, opId };
+        });
       })
     );
   }
@@ -965,74 +1101,116 @@ export class MemoryStore {
     pattern: string,
     context: MutationContext = {}
   ): { removed: number; opId: string } {
-    const opId = context.opId ?? this.createOperationId();
+    const explicitOpId = context.opId !== undefined;
+    const opId = validateOperationId(context.opId ?? this.createOperationId());
     const at = validDate(context.at ?? new Date(), 'retract timestamp');
     const effectiveContext = { ...context, opId };
+    const target = parseRetractionTarget(pattern, 'forget pattern');
     return this.withMutationLock(() =>
       this.withNamespaceLock(namespace, () => {
-        const loaded = this.loadCached(namespace);
-        const entry: CachedNamespace = {
-          clauses: [...loaded.clauses],
-          keys: new Set(loaded.keys),
-          fileStamp: loaded.fileStamp,
-        };
-        let keep: Clause[];
-        if (pattern.includes(':-')) {
-          // exact rule or integrity-constraint removal by alpha-equivalence
-          const [rule] = parseProgram(pattern);
-          const key = canonicalKey(rule);
-          keep = entry.clauses.filter((c) => canonicalKey(c) !== key);
-        } else {
-          const goals = parseQuery(pattern);
-          if (goals.length !== 1 || isComparison(goals[0]) || isNegation(goals[0])) {
-            throw new ParseError('forget pattern must be a single literal, e.g. works_at(rahul, _)');
-          }
-          const literal = goals[0] as Literal;
-          keep = entry.clauses.filter(
-            (c) => c.body.length > 0 || !literalMatches(literal, c.head)
-          );
-        }
-        const keptKeys = new Set(keep.map(canonicalKey));
-        const removedClauses = entry.clauses.filter(
-          (clause) => !keptKeys.has(canonicalKey(clause))
-        );
-        const removed = removedClauses.length;
-        if (removed > 0) {
-          this.enforceMutation(
-            namespace,
-            loaded.clauses,
-            keep,
-            [],
-            effectiveContext,
-            at
-          );
-          const journalEntry = this.createJournalEntry(
-            namespace,
-            'retract',
-            {
-              opId,
-              pattern,
-              removed,
-              removedClauses: removedClauses.map(serializeClause),
-              ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
-              ...(context.origin === undefined ? {} : { origin: context.origin }),
-              ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
-            },
-            at
-          );
-          this.withLock('journal', () => {
-            const lineBytes = Buffer.byteLength(`${JSON.stringify(journalEntry)}\n`, 'utf8');
-            const path = this.journalPath();
-            const currentBytes = existsSync(path) ? statSync(path).size : 0;
-            if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
-              throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+        return this.withLock('journal', () => {
+          const priorOperation = explicitOpId
+            ? this.readJournalUnlocked().find(
+                (journalEntry) =>
+                  journalEntry.op === 'retract' &&
+                  journalEntry.namespace === namespace &&
+                  journalEntry.opId === opId
+              )
+            : undefined;
+          if (priorOperation !== undefined) {
+            if (typeof priorOperation.pattern !== 'string') {
+              throw new Error(`retract operation '${opId}' has invalid durable parameters`);
             }
-            entry.clauses = keep;
-            entry.keys = new Set(keep.map(canonicalKey));
-            this.commitMutation(namespace, entry, journalEntry);
-          });
-        }
-        return { removed, opId };
+            let priorTarget: RetractionTarget;
+            try {
+              priorTarget = parseRetractionTarget(
+                priorOperation.pattern,
+                `retract operation '${opId}' pattern`
+              );
+            } catch {
+              throw new Error(`retract operation '${opId}' has invalid durable parameters`);
+            }
+            if (priorTarget.identity !== target.identity) {
+              throw new OperationConflictError('retract', namespace, opId);
+            }
+            if (
+              typeof priorOperation.removed !== 'number' ||
+              !Number.isSafeInteger(priorOperation.removed) ||
+              priorOperation.removed < 0
+            ) {
+              throw new Error(`retract operation '${opId}' has an invalid removed count`);
+            }
+            if (priorOperation.removedClauses !== undefined) {
+              const removedClauses = parseJournalClauseList(
+                priorOperation.removedClauses,
+                `retract operation '${opId}' removedClauses`
+              );
+              if (removedClauses.length !== priorOperation.removed) {
+                throw new Error(`retract operation '${opId}' has invalid removed facts`);
+              }
+            }
+            return { removed: priorOperation.removed, opId };
+          }
+
+          const loaded = this.loadCached(namespace);
+          const entry: CachedNamespace = {
+            clauses: [...loaded.clauses],
+            keys: new Set(loaded.keys),
+            fileStamp: loaded.fileStamp,
+          };
+          const keep = 'clauseKey' in target
+            ? entry.clauses.filter((clause) => canonicalKey(clause) !== target.clauseKey)
+            : entry.clauses.filter(
+                (clause) =>
+                  clause.body.length > 0 || !literalMatches(target.literal, clause.head)
+              );
+          const keptKeys = new Set(keep.map(canonicalKey));
+          const removedClauses = entry.clauses.filter(
+            (clause) => !keptKeys.has(canonicalKey(clause))
+          );
+          const removed = removedClauses.length;
+          if (removed > 0) {
+            this.enforceMutation(
+              namespace,
+              loaded.clauses,
+              keep,
+              [],
+              effectiveContext,
+              at
+            );
+          }
+          if (removed > 0 || explicitOpId) {
+            const journalEntry = this.createJournalEntry(
+              namespace,
+              'retract',
+              {
+                opId,
+                pattern: target.serialized,
+                removed,
+                removedClauses: removedClauses.map(serializeClause),
+                ...(context.sourceText === undefined
+                  ? {}
+                  : { sourceText: context.sourceText }),
+                ...(context.origin === undefined ? {} : { origin: context.origin }),
+                ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
+              },
+              at
+            );
+            if (removed === 0) this.appendJournalUnlocked(journalEntry);
+            else {
+              const lineBytes = Buffer.byteLength(`${JSON.stringify(journalEntry)}\n`, 'utf8');
+              const path = this.journalPath();
+              const currentBytes = existsSync(path) ? statSync(path).size : 0;
+              if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
+                throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+              }
+              entry.clauses = keep;
+              entry.keys = new Set(keep.map(canonicalKey));
+              this.commitMutation(namespace, entry, journalEntry);
+            }
+          }
+          return { removed, opId };
+        });
       })
     );
   }
@@ -1089,14 +1267,16 @@ export class MemoryStore {
         continue;
       }
       if (typeof journalEntry.pattern !== 'string') throw new Error(`${label} has no pattern`);
-      if (journalEntry.pattern.includes(':-')) {
-        const [rule] = parseProgram(journalEntry.pattern);
-        sources.delete(canonicalKey(rule));
+      const target = parseRetractionTarget(journalEntry.pattern, `${label} pattern`);
+      if ('clauseKey' in target) {
+        sources.delete(target.clauseKey);
         continue;
       }
-      const pattern = parseFactPattern(journalEntry.pattern, `${label} pattern`);
       for (const [key, candidate] of sources) {
-        if (candidate.clause.body.length === 0 && literalMatches(pattern, candidate.clause.head)) {
+        if (
+          candidate.clause.body.length === 0 &&
+          literalMatches(target.literal, candidate.clause.head)
+        ) {
           sources.delete(key);
         }
       }
@@ -1143,7 +1323,7 @@ export class MemoryStore {
     const requestedPatterns = parsedPatterns.map((pattern) => serializeGoal(pattern.literal));
     const parsedReplacements =
       typeof replacements === 'string' ? parseProgram(replacements) : replacements;
-    const opId = context.opId ?? this.createOperationId();
+    const opId = validateOperationId(context.opId ?? this.createOperationId());
     const at = validDate(
       context.at ?? new Date(),
       archive ? 'supersession timestamp' : 'replacement timestamp'
@@ -1184,7 +1364,7 @@ export class MemoryStore {
             (priorOperation.validTimeMode ?? 'archive_until') !==
               (archive ? 'archive_until' : 'delete')
           ) {
-            throw new Error(`supersede operation '${opId}' was already used for another mutation`);
+            throw new OperationConflictError('supersede', namespace, opId);
           }
           if (!Array.isArray(priorOperation.ended)) {
             throw new Error(`supersede operation '${opId}' has invalid ended facts`);
@@ -1925,17 +2105,16 @@ export class MemoryStore {
           ) {
             throw new Error(`${label} has an invalid removed count`);
           }
-          let retractionLiteral: Literal | undefined;
-          let retractionRuleKey: string | undefined;
-          if (journalEntry.pattern.includes(':-')) {
-            const rules = parseProgram(journalEntry.pattern);
-            if (rules.length !== 1 || rules[0].body.length === 0) {
-              throw new Error(`${label} has an invalid rule retraction pattern`);
-            }
-            retractionRuleKey = canonicalKey(rules[0]);
-          } else {
-            retractionLiteral = parseFactPattern(journalEntry.pattern, `${label} pattern`);
-          }
+          const retractionTarget = parseRetractionTarget(
+            journalEntry.pattern,
+            `${label} pattern`
+          );
+          const retractionLiteral = 'literal' in retractionTarget
+            ? retractionTarget.literal
+            : undefined;
+          const retractionRuleKey = 'clauseKey' in retractionTarget
+            ? retractionTarget.clauseKey
+            : undefined;
           let removedClauses: Clause[];
           if (Array.isArray(journalEntry.removedClauses)) {
             removedClauses = parseJournalClauseList(

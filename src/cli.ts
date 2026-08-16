@@ -43,7 +43,13 @@ import {
   listMemoriesTool,
   queryTool,
 } from './mcp/tools.js';
-import { MAX_HISTORY_EVENTS, MemoryStore, type ValidTimeMode } from './store/store.js';
+import {
+  MAX_HISTORY_EVENTS,
+  MAX_OPERATION_ID_BYTES,
+  MemoryStore,
+  OperationConflictError,
+  type ValidTimeMode,
+} from './store/store.js';
 import {
   MAX_INPUT_BYTES,
   assertBoundedOutput,
@@ -87,6 +93,7 @@ Options:
       --integrity-mode <mode>  Write guard: off, strict, or no_new_violations
       --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
       --entity-identity <mode>  Read projection: off (default) or canonical
+      --op-id <id>        Stable idempotency key for assert, forget, or import retries
       --graph-result <n>  Export the complete support graph for result row n
       --graph-support <node-id>  Export the support closure for one graph node
       --graph-neighbors <node-id>  Export a bounded undirected neighborhood
@@ -122,6 +129,7 @@ interface ParsedArgs {
   integrityMode?: string;
   integrityNamespaces?: string[] | '*';
   entityIdentity?: string;
+  opId?: string;
   graphResult?: string;
   graphSupport?: string;
   graphNeighbors?: string;
@@ -181,6 +189,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.integrityNamespaces = value === '*' ? '*' : value.split(',');
     } else if (arg === '--entity-identity') {
       parsed.entityIdentity = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--op-id') {
+      parsed.opId = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--graph-result') {
       parsed.graphResult = valueAfter(i, arg);
@@ -274,6 +285,15 @@ function graphNodeIdOption(value: string, label: string): string {
   if (value.length === 0) throw new Error(`${label} must not be empty`);
   if (Buffer.byteLength(value, 'utf8') > MAX_GRAPH_NODE_ID_BYTES) {
     throw new Error(`${label} exceeds ${MAX_GRAPH_NODE_ID_BYTES} bytes`);
+  }
+  return value;
+}
+
+function operationIdOption(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (value.length === 0) throw new Error('operation id must not be empty');
+  if (Buffer.byteLength(value, 'utf8') > MAX_OPERATION_ID_BYTES) {
+    throw new Error(`operation id exceeds ${MAX_OPERATION_ID_BYTES} bytes`);
   }
   return value;
 }
@@ -406,6 +426,7 @@ async function main(): Promise<void> {
   const args = parseArgs(rest);
   const store = new MemoryStore();
   const graphSelector = graphSelectorOption(args);
+  const operationId = operationIdOption(args.opId);
   const entityIdentitySetting = entityIdentityOption(args.entityIdentity);
   const entityIdentity = entityIdentitySetting === false
     ? undefined
@@ -418,6 +439,12 @@ async function main(): Promise<void> {
     throw new Error(
       'graph selection is available for recall-explain, explain, check, and integrity-guarded writes'
     );
+  }
+  if (
+    operationId !== undefined &&
+    !['assert', 'forget', 'import'].includes(command ?? '')
+  ) {
+    throw new Error('--op-id is available for assert, forget, and import');
   }
   const rawIntegritySetting = integrityEnforcementOption(
     args.integrityMode,
@@ -560,7 +587,7 @@ async function main(): Promise<void> {
     case 'assert': {
       const result = assertFactsTool(
         { store, integrityEnforcement },
-        { clauses: text, namespace: args.namespace }
+        { clauses: text, namespace: args.namespace, opId: operationId }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
@@ -598,7 +625,7 @@ async function main(): Promise<void> {
     case 'forget': {
       const result = forgetTool(
         { store, integrityEnforcement },
-        { pattern: text, namespace: args.namespace }
+        { pattern: text, namespace: args.namespace, opId: operationId }
       );
       console.log(`removed ${result.removed} clause(s)`);
       return;
@@ -652,7 +679,10 @@ async function main(): Promise<void> {
       const result = store.assert(
         ns,
         readFileSync(file, 'utf8'),
-        integrityEnforcement === undefined ? {} : { integrity: integrityEnforcement }
+        {
+          ...(operationId === undefined ? {} : { opId: operationId }),
+          ...(integrityEnforcement === undefined ? {} : { integrity: integrityEnforcement }),
+        }
       );
       console.log(`imported ${result.added.length} clause(s), ${result.duplicates} duplicate(s) skipped`);
       return;
@@ -773,6 +803,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((e: unknown) => {
+  if (e instanceof OperationConflictError) {
+    console.error(stringifyBoundedResult(e.toJSON(), 'CLI operation conflict'));
+    process.exitCode = 4;
+    return;
+  }
   if (e instanceof IntegrityViolationError) {
     try {
       console.error(stringifyBoundedResult(e.toJSON(), 'CLI integrity rejection'));

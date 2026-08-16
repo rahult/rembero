@@ -70,6 +70,11 @@ Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`, `query`,
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
+Raw MCP writes accept an optional caller-stable `opId`. Retrying `assert_facts` or
+`forget` with the same namespace, operation, ID, and normalized request returns the
+original result without applying the mutation again. Reusing an ID for a different
+request returns a structured `operation_conflict` error.
+
 For inspectable reasoning, `recall_explain` and `explain_query` return the bindings plus
 deterministic derivation proofs, durable source statements, and a query-scoped personal
 knowledge graph. Facts remain authoritative in the same portable `.dl` files; the graph
@@ -120,6 +125,7 @@ node dist/cli.js recall-explain "Who are Rahul's colleagues?"
 node dist/cli.js assert   ':- status(Person, active), status(Person, terminated).'
 node dist/cli.js check    --proof-limit 2 --max-violations 100
 node dist/cli.js assert   'status(mira, terminated).' --integrity-mode strict
+node dist/cli.js assert   'status(mira, active).' --op-id change-123 # retry-safe
 node dist/cli.js remember 'Mira is now terminated' --integrity-mode no_new_violations
 node dist/cli.js explain  'path(a, X)' --proof-limit 4 # inspect every bounded proof path
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
@@ -131,6 +137,7 @@ node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete 
 node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
 node dist/cli.js forget   'dentist(rahul, _)'
+node dist/cli.js forget   'dentist(rahul, _)' --op-id forget-123 # retry-safe
 node dist/cli.js history  'works_at(mira, _)' --json
 node dist/cli.js list
 node dist/cli.js review --namespace personal           # inspect ambient captures
@@ -194,6 +201,12 @@ write-rejection evidence. Use `--graph-result`, `--graph-support`, or
 `graphSelector` object in MCP/library calls. Selection never changes result rows, proofs,
 rules, or stored facts; it only projects the returned graph. See
 [the graph-navigation contract](docs/GRAPH-NAVIGATION.md).
+
+Version 0.13 makes raw assertions, retractions, and imports retry-safe. Supply a stable
+`--op-id` in the CLI, `opId` in MCP, or `MutationContext.opId` in the library. Matching
+retries return the first durable result even when it included duplicates or removed
+facts; conflicting reuse fails with `OperationConflictError` (`operation_conflict`, CLI
+exit `4`). See [the retry-safe write contract](docs/RETRY-SAFE-WRITES.md).
 
 `-n <ns>` / `--namespace <ns>` selects the namespace to write to; `--namespaces a,b` or
 `--namespaces '*'` selects which namespaces recall, query, check, list, and history read

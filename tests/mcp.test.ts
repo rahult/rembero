@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.12.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.13.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -59,6 +59,63 @@ describe('MCP explanation surfaces', () => {
           'history',
         ])
       );
+
+      const asserted = await client.callTool({
+        name: 'assert_facts',
+        arguments: { clauses: 'retry_fact(alpha).', opId: 'mcp-assert-retry' },
+      });
+      const assertedText = asserted.content.find((item) => item.type === 'text');
+      const assertedPayload = JSON.parse(
+        assertedText?.type === 'text' ? assertedText.text : ''
+      );
+      expect(assertedPayload).toMatchObject({
+        added: ['retry_fact(alpha).'],
+        duplicates: 0,
+        opId: 'mcp-assert-retry',
+      });
+      const replayed = await client.callTool({
+        name: 'assert_facts',
+        arguments: { clauses: 'retry_fact(alpha).', opId: 'mcp-assert-retry' },
+      });
+      const replayedText = replayed.content.find((item) => item.type === 'text');
+      expect(JSON.parse(replayedText?.type === 'text' ? replayedText.text : '')).toEqual(
+        assertedPayload
+      );
+      const conflict = await client.callTool({
+        name: 'assert_facts',
+        arguments: { clauses: 'retry_fact(beta).', opId: 'mcp-assert-retry' },
+      });
+      expect(conflict.isError).toBe(true);
+      const conflictText = conflict.content.find((item) => item.type === 'text');
+      expect(JSON.parse(conflictText?.type === 'text' ? conflictText.text : '')).toEqual({
+        error: 'operation_conflict',
+        message: "assert operation 'mcp-assert-retry' was already used for another mutation",
+        operation: 'assert',
+        namespace: 'default',
+        opId: 'mcp-assert-retry',
+      });
+
+      const forgotten = await client.callTool({
+        name: 'forget',
+        arguments: { pattern: 'retry_fact(_)', opId: 'mcp-forget-retry' },
+      });
+      const forgottenText = forgotten.content.find((item) => item.type === 'text');
+      const forgottenPayload = JSON.parse(
+        forgottenText?.type === 'text' ? forgottenText.text : ''
+      );
+      expect(forgottenPayload).toEqual({ removed: 1, opId: 'mcp-forget-retry' });
+      const forgottenReplay = await client.callTool({
+        name: 'forget',
+        arguments: { pattern: 'retry_fact( _ )', opId: 'mcp-forget-retry' },
+      });
+      const forgottenReplayText = forgottenReplay.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          forgottenReplayText?.type === 'text' ? forgottenReplayText.text : ''
+        )
+      ).toEqual(forgottenPayload);
 
       const explained = await client.callTool({
         name: 'explain_query',

@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IntegrityViolationError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuerySpec, selectExplanationGraph, selectRecallSchema } from 'rembero'; " +
+      "import { IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuerySpec, selectExplanationGraph, selectRecallSchema } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -51,7 +51,8 @@ try {
         "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed'); " +
         "const fullGraph = explainKnowledge(parseProgram('edge(a, b). edge(b, c).'), 'edge(X, Y)'); " +
         "const selectedGraph = selectExplanationGraph(fullGraph, { kind: 'result', row: 1 }); " +
-        "if (selectedGraph.rows.length !== 2 || selectedGraph.graphSelection?.selector?.row !== 1 || selectedGraph.graph.nodes.length >= fullGraph.graph.nodes.length) throw new Error('public graph navigation API failed');",
+        "if (selectedGraph.rows.length !== 2 || selectedGraph.graphSelection?.selector?.row !== 1 || selectedGraph.graph.nodes.length >= fullGraph.graph.nodes.length) throw new Error('public graph navigation API failed'); " +
+        "if (typeof OperationConflictError !== 'function') throw new Error('public operation conflict API failed');",
     ],
     { cwd: directory }
   );
@@ -192,10 +193,32 @@ try {
   ) {
     throw new Error(`unexpected packaged temporal history: ${temporalOutput}`);
   }
-  run(process.execPath, [installedCli, 'import', 'default', memoryFile], {
-    cwd: directory,
-    env: memoryEnv,
-  });
+  const importOutput = run(
+    process.execPath,
+    [installedCli, 'import', 'default', memoryFile, '--op-id', 'package-import'],
+    { cwd: directory, env: memoryEnv }
+  );
+  const importReplay = run(
+    process.execPath,
+    [installedCli, 'import', 'default', memoryFile, '--op-id', 'package-import'],
+    { cwd: directory, env: memoryEnv }
+  );
+  if (importReplay !== importOutput) {
+    throw new Error(`unexpected packaged import replay: ${importReplay}`);
+  }
+  const retryAssert = run(
+    process.execPath,
+    [installedCli, 'assert', 'package_retry(value).', '--op-id', 'package-retry'],
+    { cwd: directory, env: memoryEnv }
+  );
+  const retryReplay = run(
+    process.execPath,
+    [installedCli, 'assert', 'package_retry(value).', '--op-id', 'package-retry'],
+    { cwd: directory, env: memoryEnv }
+  );
+  if (retryReplay !== retryAssert || JSON.parse(retryReplay).added[0] !== 'package_retry(value).') {
+    throw new Error(`unexpected packaged operation replay: ${retryReplay}`);
+  }
   const graphOutput = run(process.execPath, [installedCli, 'explain', 'ancestor(a, Y)'], {
     cwd: directory,
     env: memoryEnv,
@@ -274,7 +297,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

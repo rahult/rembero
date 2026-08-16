@@ -32,6 +32,10 @@ import {
 } from '../knowledge/enforcement.js';
 import type { EntityIdentityMode } from '../knowledge/identity.js';
 import {
+  MAX_OPERATION_ID_BYTES,
+  OperationConflictError,
+} from '../store/store.js';
+import {
   MAX_GRAPH_NEIGHBOR_DEPTH,
   MAX_GRAPH_NODE_ID_BYTES,
   MAX_GRAPH_RESULT_ROW,
@@ -101,6 +105,12 @@ const boundedText = (description?: string) => {
   const field = z.string().max(MAX_INPUT_BYTES);
   return description ? field.describe(description) : field;
 };
+const operationIdField = z
+  .string()
+  .min(1)
+  .max(MAX_OPERATION_ID_BYTES)
+  .optional()
+  .describe('Caller-stable idempotency key for safe retries');
 
 function asContent(result: unknown) {
   return { content: [{ type: 'text' as const, text: stringifyBoundedResult(result, 'MCP result') }] };
@@ -108,7 +118,9 @@ function asContent(result: unknown) {
 
 function asError(e: unknown) {
   let text: string;
-  if (e instanceof IntegrityViolationError) {
+  if (e instanceof OperationConflictError) {
+    text = stringifyBoundedResult(e.toJSON(), 'MCP operation conflict');
+  } else if (e instanceof IntegrityViolationError) {
     try {
       text = stringifyBoundedResult(e.toJSON(), 'MCP integrity rejection');
     } catch {
@@ -193,7 +205,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.12.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.13.0' });
 
   server.registerTool(
     'remember',
@@ -316,6 +328,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       inputSchema: {
         clauses: boundedText(),
         namespace: namespaceField,
+        opId: operationIdField,
         integrityMode: integrityModeField,
         integrityNamespaces: integrityNamespacesField,
         proofLimit: proofLimitField,
@@ -327,6 +340,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     async ({
       clauses,
       namespace,
+      opId,
       integrityMode,
       integrityNamespaces,
       proofLimit,
@@ -339,6 +353,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           assertFactsTool({ store: resolvedDeps.store }, {
             clauses,
             namespace,
+            opId,
             integrityEnforcement: requestedIntegrity(
               resolvedDeps.integrityEnforcement,
               integrityMode,
@@ -448,6 +463,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       inputSchema: {
         pattern: boundedText(),
         namespace: namespaceField,
+        opId: operationIdField,
         integrityMode: integrityModeField,
         integrityNamespaces: integrityNamespacesField,
         proofLimit: proofLimitField,
@@ -459,6 +475,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     async ({
       pattern,
       namespace,
+      opId,
       integrityMode,
       integrityNamespaces,
       proofLimit,
@@ -471,6 +488,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           forgetTool({ store: resolvedDeps.store }, {
             pattern,
             namespace,
+            opId,
             integrityEnforcement: requestedIntegrity(
               resolvedDeps.integrityEnforcement,
               integrityMode,
