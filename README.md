@@ -55,15 +55,23 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 - Never store secrets or transient details. When unsure whether to remember, ask.
 ```
 
-Tools exposed: `remember`, `recall`, `assert_facts`, `query`, `forget`, `list_memories`.
-`remember`/`recall` take natural language; the rest take raw Datalog for direct, LLM-free access.
+Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`, `query`,
+`explain_query`, `forget`, and `list_memories`. `remember`/`recall` take natural
+language; the raw query tools are direct and LLM-free.
+
+For inspectable reasoning, `recall_explain` and `explain_query` return the bindings plus
+deterministic derivation proofs, durable source statements, and a query-scoped personal
+knowledge graph. Facts remain authoritative in the same portable `.dl` files; the graph
+is derived and cannot drift into a second source of truth.
 
 ## CLI
 
 ```bash
 node dist/cli.js remember "Rahul's dentist is Dr Chen"
 node dist/cli.js recall   "Who is Rahul's dentist?"
+node dist/cli.js recall-explain "Who are Rahul's colleagues?"
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
+node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
 node dist/cli.js forget   'dentist(rahul, _)'
 node dist/cli.js list
 node dist/cli.js serve                                # MCP server on stdio
@@ -72,11 +80,20 @@ node dist/cli.js serve                                # MCP server on stdio
 `-n <ns>` / `--namespace <ns>` selects the namespace to write to; `--namespaces a,b` or
 `--namespaces '*'` selects which namespaces recall/query/list read from.
 
+Namespaces organize one local personal store; they are not access-control or tenant
+boundaries. Use separate `REMBERO_HOME` roots and server processes when data must be
+isolated. Natural-language operations reject credential-like input before calling an
+external LLM. Raw Datalog operations remain local and should never be used to store
+secrets.
+
 ## Storage
 
 Memories live in plain text at `~/.rembero/memory/<namespace>.dl`, one canonical clause per
 line — readable, hand-editable, diffable. Duplicate facts (and alpha-equivalent rules) are
-deduplicated on write. Files are written atomically.
+deduplicated on write. Files are written atomically. Journaled mutations carry stable
+operation IDs; facts captured through `remember` retain their source statement for later
+explanation. Credential-like source text is redacted before journaling. See
+[the explainable graph contract](docs/EXPLAINABLE-KNOWLEDGE-GRAPH.md).
 
 ## SQLite extension (experimental)
 

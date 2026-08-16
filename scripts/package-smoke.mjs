@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -11,6 +11,7 @@ function run(command, args, options = {}) {
     cwd: options.cwd ?? projectRoot,
     encoding: 'utf8',
     input: options.input,
+    env: options.env,
   });
   if (result.status !== 0) {
     throw new Error(
@@ -90,7 +91,33 @@ try {
   if (recursiveProof?.rule !== 2 || recursiveProof.because?.length !== 2) {
     throw new Error(`unexpected packaged explanation: ${explainOutput}`);
   }
-  console.log('packed install, native build, recursive query, and explanation passed');
+
+  const memoryFile = join(directory, 'personal.dl');
+  const memoryHome = join(directory, 'personal-home');
+  writeFileSync(
+    memoryFile,
+    'parent(a, b). parent(b, c). ancestor(X, Y) :- parent(X, Y). ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).\n'
+  );
+  const memoryEnv = { ...process.env, REMBERO_HOME: memoryHome };
+  run(process.execPath, [installedCli, 'import', 'default', memoryFile], {
+    cwd: directory,
+    env: memoryEnv,
+  });
+  const graphOutput = run(process.execPath, [installedCli, 'explain', 'ancestor(a, Y)'], {
+    cwd: directory,
+    env: memoryEnv,
+  });
+  const graph = JSON.parse(graphOutput);
+  if (
+    graph.rows.length !== 2 ||
+    !graph.rows.some(({ bindings }) => bindings.Y === 'c') ||
+    !graph.graph.nodes.some(({ kind }) => kind === 'claim')
+  ) {
+    throw new Error(`unexpected packaged personal graph: ${graphOutput}`);
+  }
+  console.log(
+    'packed install, native recursion, personal proofs, and explanation graph passed'
+  );
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }

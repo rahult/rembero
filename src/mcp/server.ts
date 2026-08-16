@@ -3,11 +3,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import type { LlmClient } from '../llm/client.js';
 import type { MemoryStore } from '../store/store.js';
+import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT } from '../safety.js';
 import {
   assertFactsTool,
+  explainQueryTool,
   forgetTool,
   listMemoriesTool,
   queryTool,
+  recallExplainTool,
   recallTool,
   rememberTool,
 } from './tools.js';
@@ -17,9 +20,13 @@ const namespaceField = z
   .optional()
   .describe('Memory namespace (default: "default")');
 const namespacesField = z
-  .union([z.array(z.string()), z.literal('*')])
+  .union([z.array(z.string()).max(MAX_NAMESPACE_COUNT), z.literal('*')])
   .optional()
   .describe('Namespaces to search: a list, or "*" for all (default: ["default"])');
+const boundedText = (description?: string) => {
+  const field = z.string().max(MAX_INPUT_BYTES);
+  return description ? field.describe(description) : field;
+};
 
 function asContent(result: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
@@ -39,7 +46,7 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
       title: 'Remember',
       description:
         "Store a natural-language statement in long-term memory as logical facts/rules. Use proactively when the user states something durable: preferences, relationships, decisions, project facts, biography ('my dentist is Dr Chen', 'we picked Postgres', 'Mira now works at Initech' — updates supersede old facts). Do NOT store secrets (passwords, keys) or transient context (today's error message).",
-      inputSchema: { text: z.string().describe('What to remember, in plain language'), namespace: namespaceField },
+      inputSchema: { text: boundedText('What to remember, in plain language'), namespace: namespaceField },
     },
     async ({ text, namespace }) => {
       try {
@@ -56,11 +63,28 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
       title: 'Recall',
       description:
         "Answer a question from long-term memory using logical inference over stored facts and rules. Use when the user asks about anything previously discussed or personal ('who is my dentist?', 'what did we decide about the database?'), and at the start of tasks where remembered context would help. Returns the answer plus the query and bindings used to derive it.",
-      inputSchema: { question: z.string(), namespaces: namespacesField },
+      inputSchema: { question: boundedText(), namespaces: namespacesField },
     },
     async ({ question, namespaces }) => {
       try {
         return asContent(await recallTool(deps, { question, namespaces }));
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'recall_explain',
+    {
+      title: 'Recall with explanation',
+      description:
+        'Answer from long-term memory and return the generated query, bindings, deterministic derivation proofs, durable source statements, and a query-scoped knowledge graph.',
+      inputSchema: { question: boundedText(), namespaces: namespacesField },
+    },
+    async ({ question, namespaces }) => {
+      try {
+        return asContent(await recallExplainTool(deps, { question, namespaces }));
       } catch (e) {
         return asError(e);
       }
@@ -73,7 +97,7 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
       title: 'Assert facts',
       description:
         "Store raw Datalog clauses directly, no LLM translation. Facts like 'works_at(rahul, acme).' or rules like 'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'",
-      inputSchema: { clauses: z.string(), namespace: namespaceField },
+      inputSchema: { clauses: boundedText(), namespace: namespaceField },
     },
     async ({ clauses, namespace }) => {
       try {
@@ -90,11 +114,28 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
       title: 'Query',
       description:
         "Run a raw Datalog query and get variable bindings, e.g. 'works_at(X, acme)' or 'works_at(X, C), lives_in(X, sydney)'.",
-      inputSchema: { query: z.string(), namespaces: namespacesField },
+      inputSchema: { query: boundedText(), namespaces: namespacesField },
     },
     async ({ query, namespaces }) => {
       try {
         return asContent(queryTool(deps, { query, namespaces }));
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'explain_query',
+    {
+      title: 'Explain query',
+      description:
+        'Run a raw Datalog query and return bindings, deterministic first-witness derivation proofs, durable memory sources, and a query-scoped knowledge graph.',
+      inputSchema: { query: boundedText(), namespaces: namespacesField },
+    },
+    async ({ query, namespaces }) => {
+      try {
+        return asContent(explainQueryTool(deps, { query, namespaces }));
       } catch (e) {
         return asError(e);
       }
@@ -107,7 +148,7 @@ export function createServer(deps: { store: MemoryStore; llm: LlmClient }): McpS
       title: 'Forget',
       description:
         "Retract facts matching a pattern, e.g. 'works_at(rahul, _)', or remove an exact rule by giving it in full.",
-      inputSchema: { pattern: z.string(), namespace: namespaceField },
+      inputSchema: { pattern: boundedText(), namespace: namespaceField },
     },
     async ({ pattern, namespace }) => {
       try {

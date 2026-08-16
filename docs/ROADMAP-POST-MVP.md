@@ -40,7 +40,9 @@ old fact. Fix by making time first-class:
    `works_at_until(mira, acme, <date>)` instead of deleting (config flag; default stays
    simple deletion).
 2. **Provenance-aware recall**: answers can cite when/why a fact was stored, pulled from
-   the journal.
+   the journal. The first deterministic slice is complete: raw and natural-language
+   queries can return recursive proof trees, durable source statements, and a
+   query-scoped personal knowledge graph. Temporal source history remains.
 3. **`rembero history <pattern>`**: the journal filtered to one predicate's life story.
 
 ## Phase 9 — Retrieval quality at scale  *(v0.5, ~2-3 days)*
@@ -79,3 +81,12 @@ evaluation, and `datalog_explain(program)` returns one nested derivation proof p
 The next evidence-driven step is source-aware, durable provenance and bi-temporal facts.
 Vector composition remains later; it should reuse existing SQLite vector infrastructure
 rather than consume originality budget in this project.
+
+## Explainable personal knowledge graph
+
+The portable `.dl` memory path now retains deterministic first-witness proofs, stable
+mutation/source IDs, and query-scoped hypergraphs across the library, CLI, and MCP. This
+is the foundation for conflict views, temporal history, and alternative proof inspection
+without replacing the readable personal knowledge base with a second graph store.
+
+The next reasoning milestone is stratified negation, followed by query-level aggregation.

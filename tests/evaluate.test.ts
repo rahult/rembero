@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   evaluate,
+  evaluateWithProof,
   parseProgram,
   parseQuery,
   serializeTerm,
   EngineLimitError,
   type Bindings,
+  materializeWithProof,
 } from '../src/engine/index.js';
 
 /** Render bindings as sorted "X=a Y=b" rows for order-independent assertions. */
@@ -22,6 +24,14 @@ function rows(bindings: Bindings[]): string[] {
 
 function run(program: string, query: string, options?: { maxFacts?: number }) {
   return evaluate(parseProgram(program), parseQuery(query), options);
+}
+
+function explain(
+  program: string,
+  query: string,
+  options?: { maxFacts?: number; maxProofDepth?: number; maxProofNodes?: number }
+) {
+  return evaluateWithProof(parseProgram(program), parseQuery(query), options);
 }
 
 describe('evaluate: facts and joins', () => {
@@ -132,11 +142,234 @@ describe('evaluate: comparison builtins', () => {
 });
 
 describe('evaluate: limits', () => {
+  it('throws EngineLimitError when base facts exceed maxFacts', () => {
+    const db = `
+      n(1). n(2). n(3).
+    `;
+    expect(() => run(db, 'n(X)', { maxFacts: 2 })).toThrow(EngineLimitError);
+  });
+
   it('throws EngineLimitError when derived facts exceed maxFacts', () => {
     const db = `
       n(1). n(2). n(3). n(4). n(5).
       pair(X, Y) :- n(X), n(Y).
     `;
     expect(() => run(db, 'pair(X, Y)', { maxFacts: 10 })).toThrow(EngineLimitError);
+  });
+});
+
+describe('evaluateWithProof', () => {
+  it('returns a leaf proof for a base fact query', () => {
+    expect(explain('works_at(rahul, acme).', 'works_at(rahul, acme)')).toEqual([
+      {
+        bindings: {},
+        proofs: [{ predicate: 'works_at', values: ['rahul', 'acme'] }],
+      },
+    ]);
+  });
+
+  it('returns ordered proofs for multi-goal queries', () => {
+    const db = `
+      works_at(rahul, acme).
+      lives_in(rahul, sydney).
+    `;
+
+    expect(explain(db, 'works_at(X, acme), lives_in(X, sydney)')).toEqual([
+      {
+        bindings: { X: { type: 'atom', value: 'rahul' } },
+        proofs: [
+          { predicate: 'works_at', values: ['rahul', 'acme'] },
+          { predicate: 'lives_in', values: ['rahul', 'sydney'] },
+        ],
+      },
+    ]);
+  });
+
+  it('returns a joined rule proof', () => {
+    const db = `
+      works_at(rahul, acme).
+      works_at(maya, acme).
+      colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
+    `;
+
+    expect(explain(db, 'colleague(rahul, maya)')).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'colleague',
+            values: ['rahul', 'maya'],
+            rule: 1,
+            because: [
+              { predicate: 'works_at', values: ['rahul', 'acme'] },
+              { predicate: 'works_at', values: ['maya', 'acme'] },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('returns a recursive proof tree that matches the SQLite structure', () => {
+    const db = `
+      edge(a, b).
+      edge(b, c).
+      edge(c, d).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+
+    expect(explain(db, 'path(a, d)')).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'path',
+            values: ['a', 'd'],
+            rule: 2,
+            because: [
+              { predicate: 'edge', values: ['a', 'b'] },
+              {
+                predicate: 'path',
+                values: ['b', 'd'],
+                rule: 2,
+                because: [
+                  { predicate: 'edge', values: ['b', 'c'] },
+                  {
+                    predicate: 'path',
+                    values: ['c', 'd'],
+                    rule: 1,
+                    because: [{ predicate: 'edge', values: ['c', 'd'] }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('keeps the deterministic first witness across repeated runs', () => {
+    const db = `
+      edge(a, b).
+      edge(b, d).
+      edge(a, c).
+      edge(c, d).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+
+    const runs = Array.from({ length: 5 }, () => explain(db, 'path(a, d)'));
+    expect(new Set(runs.map((run) => JSON.stringify(run))).size).toBe(1);
+    expect(runs[0]).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'path',
+            values: ['a', 'd'],
+            rule: 2,
+            because: [
+              { predicate: 'edge', values: ['a', 'b'] },
+              {
+                predicate: 'path',
+                values: ['b', 'd'],
+                rule: 1,
+                because: [{ predicate: 'edge', values: ['b', 'd'] }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('enforces the proof depth cap during serialization', () => {
+    const db = `
+      edge(a, b).
+      edge(b, c).
+      edge(c, d).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+
+    expect(() => explain(db, 'path(a, d)', { maxProofDepth: 2 })).toThrow(EngineLimitError);
+  });
+
+  it('enforces the proof node cap for a single joined proof', () => {
+    const db = `
+      works_at(rahul, acme).
+      works_at(maya, acme).
+      colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
+    `;
+
+    expect(() => explain(db, 'colleague(rahul, maya)', { maxProofNodes: 2 })).toThrow(
+      EngineLimitError
+    );
+  });
+
+  it('enforces the proof node cap across emitted rows', () => {
+    const db = `
+      works_at(rahul, acme).
+      works_at(maya, acme).
+    `;
+
+    expect(() => explain(db, 'works_at(X, acme)', { maxProofNodes: 1 })).toThrow(
+      EngineLimitError
+    );
+  });
+});
+
+describe('materializeWithProof', () => {
+  it('returns base and derived facts with proofs', () => {
+    const db = `
+      edge(a, b).
+      edge(b, c).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+
+    const facts = materializeWithProof(parseProgram(db));
+    const byKey = new Map(
+      facts.map((fact) => [`${fact.predicate}(${fact.values.join(',')})`, fact] as const)
+    );
+
+    expect(byKey.get('edge(a,b)')).toEqual({
+      predicate: 'edge',
+      values: ['a', 'b'],
+      derived: false,
+      proof: { predicate: 'edge', values: ['a', 'b'] },
+    });
+    expect(byKey.get('path(a,c)')).toEqual({
+      predicate: 'path',
+      values: ['a', 'c'],
+      derived: true,
+      proof: {
+        predicate: 'path',
+        values: ['a', 'c'],
+        rule: 2,
+        because: [
+          { predicate: 'edge', values: ['a', 'b'] },
+          {
+            predicate: 'path',
+            values: ['b', 'c'],
+            rule: 1,
+            because: [{ predicate: 'edge', values: ['b', 'c'] }],
+          },
+        ],
+      },
+    });
+  });
+
+  it('enforces the proof node cap across materialized facts', () => {
+    const db = `
+      edge(a, b).
+      edge(b, c).
+    `;
+
+    expect(() => materializeWithProof(parseProgram(db), { maxProofNodes: 1 })).toThrow(
+      EngineLimitError
+    );
   });
 });

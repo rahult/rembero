@@ -13,6 +13,8 @@ import {
   rememberText,
 } from '../llm/pipeline.js';
 import type { MemoryStore } from '../store/store.js';
+import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
+import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 
 export interface LlmToolDeps {
   store: MemoryStore;
@@ -25,13 +27,17 @@ export interface StoreToolDeps {
 
 type NamespacesArg = string[] | '*' | undefined;
 
-const namespacesOrDefault = (namespaces: NamespacesArg): string[] | '*' =>
-  namespaces ?? ['default'];
+const namespacesOrDefault = (namespaces: NamespacesArg): string[] | '*' => {
+  const resolved = namespaces ?? ['default'];
+  assertNamespaceCount(resolved);
+  return resolved;
+};
 
 export function rememberTool(
   deps: LlmToolDeps,
   args: { text: string; namespace?: string }
 ): Promise<RememberResult> {
+  assertBoundedInput(args.text, 'memory text');
   return rememberText(deps, args.text, args.namespace ?? 'default');
 }
 
@@ -39,21 +45,37 @@ export function recallTool(
   deps: LlmToolDeps,
   args: { question: string; namespaces?: string[] | '*' }
 ): Promise<RecallResult> {
+  assertBoundedInput(args.question, 'recall question');
   return recallQuestion(deps, args.question, namespacesOrDefault(args.namespaces));
+}
+
+export function recallExplainTool(
+  deps: LlmToolDeps,
+  args: { question: string; namespaces?: string[] | '*' }
+): Promise<RecallResult> {
+  assertBoundedInput(args.question, 'recall question');
+  return recallQuestion(deps, args.question, namespacesOrDefault(args.namespaces), {
+    explain: true,
+  });
 }
 
 export function assertFactsTool(
   deps: StoreToolDeps,
   args: { clauses: string; namespace?: string }
-): { added: string[]; duplicates: number } {
-  const { added, duplicates } = deps.store.assert(args.namespace ?? 'default', args.clauses);
-  return { added: added.map(serializeClause), duplicates };
+): { added: string[]; duplicates: number; opId: string } {
+  assertBoundedInput(args.clauses, 'clauses');
+  const { added, duplicates, opId } = deps.store.assert(
+    args.namespace ?? 'default',
+    args.clauses
+  );
+  return { added: added.map(serializeClause), duplicates, opId };
 }
 
 export function queryTool(
   deps: StoreToolDeps,
   args: { query: string; namespaces?: string[] | '*' }
 ): { bindings: Record<string, string>[] } {
+  assertBoundedInput(args.query, 'query');
   const clauses = deps.store.clausesFor(namespacesOrDefault(args.namespaces));
   const bindings = evaluate(clauses, parseQuery(args.query)).map((b) =>
     Object.fromEntries(Object.entries(b).map(([name, term]) => [name, serializeTerm(term)]))
@@ -61,10 +83,24 @@ export function queryTool(
   return { bindings };
 }
 
+export function explainQueryTool(
+  deps: StoreToolDeps,
+  args: { query: string; namespaces?: string[] | '*' }
+): ExplainKnowledgeResult {
+  assertBoundedInput(args.query, 'query');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  return explainKnowledge(
+    deps.store.clausesFor(namespaces),
+    args.query,
+    deps.store.sourcesFor(namespaces)
+  );
+}
+
 export function forgetTool(
   deps: StoreToolDeps,
   args: { pattern: string; namespace?: string }
-): { removed: number } {
+): { removed: number; opId: string } {
+  assertBoundedInput(args.pattern, 'forget pattern');
   return deps.store.retract(args.namespace ?? 'default', args.pattern);
 }
 

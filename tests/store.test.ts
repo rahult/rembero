@@ -113,12 +113,14 @@ describe('journal', () => {
   }
 
   it('records asserts with the clauses added', () => {
-    store.assert('default', 'f(a). f(a).');
+    const result = store.assert('default', 'f(a). f(a).');
     const [entry] = journalLines();
     expect(entry.op).toBe('assert');
     expect(entry.namespace).toBe('default');
     expect(entry.added).toEqual(['f(a).']);
     expect(entry.duplicates).toBe(1);
+    expect(entry.opId).toBe(result.opId);
+    expect(result.opId).toMatch(/^[0-9a-f-]{36}$/);
     expect(new Date(entry.ts).getTime()).not.toBeNaN();
   });
 
@@ -138,10 +140,68 @@ describe('journal', () => {
     });
   });
 
+  it('redacts credentials from source provenance before writing the journal', () => {
+    const secret = 'sk-supersecretvalue';
+    store.assert('default', 'uses(rahul, rembero).', {
+      opId: 'sensitive-source',
+      sourceText: `My API key is ${secret}`,
+    });
+
+    const journal = readFileSync(join(root, 'journal.log'), 'utf8');
+    expect(journal).not.toContain(secret);
+    expect(journal).toContain('[sensitive source omitted]');
+
+    const key = canonicalKey(parseProgram('uses(rahul, rembero).')[0]);
+    expect(store.sourcesFor(['default']).get(key)).toEqual([
+      expect.objectContaining({
+        opId: 'sensitive-source',
+        text: '[sensitive source omitted]',
+        redacted: true,
+      }),
+    ]);
+  });
+
   it('does not journal no-op asserts', () => {
     store.assert('default', 'f(a).');
     store.assert('default', 'f(a).');
     expect(journalLines()).toHaveLength(1);
+  });
+
+  it('links current clauses to their latest durable source', () => {
+    store.assert('default', 'works_at(rahul, acme).', {
+      opId: 'remember-1',
+      sourceText: 'Rahul works at Acme',
+    });
+    const key = canonicalKey(parseProgram('works_at(rahul, acme).')[0]);
+    expect(store.sourcesFor(['default']).get(key)).toEqual([
+      expect.objectContaining({
+        namespace: 'default',
+        opId: 'remember-1',
+        text: 'Rahul works at Acme',
+      }),
+    ]);
+
+    store.retract('default', 'works_at(rahul, _)');
+    expect(store.sourcesFor(['default']).has(key)).toBe(false);
+  });
+
+  it('keeps deterministic sources for the same fact across namespaces', () => {
+    store.assert('work', 'uses(rahul, rembero).', { opId: 'work-source' });
+    store.assert('personal', 'uses(rahul, rembero).', { opId: 'personal-source' });
+    const key = canonicalKey(parseProgram('uses(rahul, rembero).')[0]);
+    expect(store.sourcesFor('*').get(key)?.map((source) => source.namespace)).toEqual([
+      'personal',
+      'work',
+    ]);
+    expect(
+      store.sourcesFor(['work', 'personal']).get(key)?.map((source) => source.namespace)
+    ).toEqual(['work', 'personal']);
+  });
+
+  it('fails loudly when durable provenance is corrupt', () => {
+    store.assert('default', 'f(a).');
+    writeFileSync(join(root, 'journal.log'), '{broken\n', 'utf8');
+    expect(() => store.sourcesFor(['default'])).toThrow(/journal\.log line 1/);
   });
 });
 
@@ -176,7 +236,7 @@ describe('namespaces', () => {
   it('lists namespaces and merges clauses across them with *', () => {
     store.assert('work', 'works_at(rahul, acme).');
     store.assert('home', 'lives_in(rahul, sydney).');
-    expect(store.listNamespaces().sort()).toEqual(['home', 'work']);
+    expect(store.listNamespaces()).toEqual(['home', 'work']);
     const merged = store.clausesFor('*').map(serializeClause).sort();
     expect(merged).toEqual(['lives_in(rahul, sydney).', 'works_at(rahul, acme).']);
     expect(store.clausesFor(['work']).map(serializeClause)).toEqual(['works_at(rahul, acme).']);

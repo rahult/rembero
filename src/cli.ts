@@ -5,7 +5,7 @@ import { loadEnv } from './env.js';
 import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
 import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { serveStdio } from './mcp/server.js';
-import { forgetTool, listMemoriesTool, queryTool } from './mcp/tools.js';
+import { explainQueryTool, forgetTool, listMemoriesTool, queryTool } from './mcp/tools.js';
 import { MemoryStore } from './store/store.js';
 import { buildSqliteExtension, openDatalogDatabase } from './sqlite/extension.js';
 
@@ -15,7 +15,9 @@ Usage:
   rembero serve                          Start the MCP server on stdio
   rembero remember <text>                Extract facts from text and store them
   rembero recall <question>              Answer a question from memory
+  rembero recall-explain <question>      Recall with proofs, sources, and a graph
   rembero query <datalog>                Run a raw Datalog query
+  rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
   rembero forget <pattern>               Retract facts matching a pattern
   rembero list                           List stored memories
   rembero export                         Print all memories as portable Datalog
@@ -79,9 +81,24 @@ async function main(): Promise<void> {
       console.log(`  (query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length})`);
       return;
     }
+    case 'recall-explain': {
+      const result = await recallQuestion(
+        { store, llm: clientFromEnv() },
+        text,
+        namespaces,
+        { explain: true }
+      );
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
     case 'query': {
       const result = queryTool({ store }, { query: text, namespaces });
       console.log(JSON.stringify(result.bindings, null, 2));
+      return;
+    }
+    case 'explain': {
+      const result = explainQueryTool({ store }, { query: text, namespaces });
+      console.log(JSON.stringify(result, null, 2));
       return;
     }
     case 'forget': {

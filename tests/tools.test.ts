@@ -4,11 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
+import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT } from '../src/safety.js';
 import {
   assertFactsTool,
+  explainQueryTool,
   forgetTool,
   listMemoriesTool,
   queryTool,
+  recallExplainTool,
   rememberTool,
   recallTool,
 } from '../src/mcp/tools.js';
@@ -33,6 +36,7 @@ describe('MCP tool handlers', () => {
     const llm = new ScriptedLlm(['pet(rahul, luna_the_cat).']);
     const result = await rememberTool({ store, llm }, { text: 'My cat is called Luna' });
     expect(result.added).toEqual(['pet(rahul, luna_the_cat).']);
+    expect(result.opId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it('recall answers from memory', async () => {
@@ -47,12 +51,62 @@ describe('MCP tool handlers', () => {
     const result = assertFactsTool({ store }, { clauses: 'f(a). g(X) :- f(X).' });
     expect(result.added).toEqual(['f(a).', 'g(X) :- f(X).']);
     expect(result.duplicates).toBe(0);
+    expect(result.opId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it('query evaluates raw Datalog and returns bindings', () => {
     store.assert('default', 'f(a). f(b). g(X) :- f(X), X != a.');
     const result = queryTool({ store }, { query: 'g(X)' });
     expect(result.bindings).toEqual([{ X: 'b' }]);
+  });
+
+  it('rejects oversized inputs and namespace fan-out before evaluation', () => {
+    expect(() =>
+      queryTool({ store }, { query: 'x'.repeat(MAX_INPUT_BYTES + 1) })
+    ).toThrow(/query exceeds/i);
+    expect(() =>
+      listMemoriesTool(
+        { store },
+        { namespaces: Array.from({ length: MAX_NAMESPACE_COUNT + 1 }, (_, i) => `ns${i}`) }
+      )
+    ).toThrow(/namespace list exceeds/i);
+  });
+
+  it('explain_query returns proof sources and a query-scoped graph', () => {
+    store.assert(
+      'default',
+      'works_at(rahul, acme). works_at(mira, acme). colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+      { opId: 'source-1', sourceText: 'Rahul and Mira work at Acme.' }
+    );
+    const result = explainQueryTool({ store }, { query: 'colleague(rahul, Who)' });
+    expect(result.rows[0].bindings).toEqual({ Who: 'mira' });
+    expect(result.rows[0].proofs[0]).toMatchObject({
+      predicate: 'colleague',
+      rule: 1,
+      because: [
+        { predicate: 'works_at', sources: [{ opId: 'source-1' }] },
+        { predicate: 'works_at', sources: [{ opId: 'source-1' }] },
+      ],
+    });
+    expect(result.graph.nodes.some((node) => node.kind === 'result')).toBe(true);
+  });
+
+  it('recall_explain keeps the answer and adds deterministic evidence', async () => {
+    store.assert('default', 'pet(rahul, luna).', {
+      opId: 'pet-source',
+      sourceText: 'My cat is called Luna.',
+    });
+    const llm = new ScriptedLlm(['?- pet(rahul, Name).', 'Your cat is Luna.']);
+    const result = await recallExplainTool(
+      { store, llm },
+      { question: 'What is my cat called?' }
+    );
+    expect(result.answer).toBe('Your cat is Luna.');
+    expect(result.bindings).toEqual([{ Name: 'luna' }]);
+    expect(result.explanation?.rows[0].proofs[0]).toMatchObject({
+      predicate: 'pet',
+      sources: [{ opId: 'pet-source', text: 'My cat is called Luna.' }],
+    });
   });
 
   it('query can span all namespaces with *', () => {
@@ -69,6 +123,7 @@ describe('MCP tool handlers', () => {
     store.assert('default', 'f(a). f(b).');
     const result = forgetTool({ store }, { pattern: 'f(_)' });
     expect(result.removed).toBe(2);
+    expect(result.opId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it('list_memories groups clauses by predicate', () => {

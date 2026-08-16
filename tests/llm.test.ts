@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
@@ -110,7 +110,25 @@ describe('rememberText', () => {
     const llm = new ScriptedLlm(['works_at(rahul, acme).']);
     await rememberText({ store: s, llm }, 'Rahul works at Acme');
     const journal = readFileSync(join(root, 'journal.log'), 'utf8');
-    expect(journal).toContain('Rahul works at Acme');
+    const entries = journal.trim().split('\n').map((line) => JSON.parse(line));
+    const remember = entries.find((entry) => entry.op === 'remember');
+    const assertion = entries.find((entry) => entry.op === 'assert');
+    expect(remember.text).toBe('Rahul works at Acme');
+    expect(assertion.sourceText).toBe('Rahul works at Acme');
+    expect(assertion.opId).toBe(remember.opId);
+  });
+
+  it('refuses to send secrets to the external LLM or persist them', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-secret-journal-'));
+    const s = new MemoryStore(root);
+    const secret = 'ghp_supersecretvalue';
+    const llm = new ScriptedLlm(['uses(rahul, github).']);
+
+    await expect(
+      rememberText({ store: s, llm }, `My GitHub token is ${secret}`)
+    ).rejects.toThrow(/refusing to send sensitive memory text/i);
+    expect(llm.calls).toHaveLength(0);
+    expect(existsSync(join(root, 'journal.log'))).toBe(false);
   });
 
   it('treats "% nothing" as a no-op', async () => {
@@ -136,6 +154,17 @@ describe('recallQuestion', () => {
     const result = await recallQuestion({ store: empty, llm }, 'Where does Rahul work?');
     expect(result.query).toBeNull();
     expect(result.answer).toMatch(/no (relevant )?memor/i);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it('refuses to expose sensitive stored facts to the external LLM', async () => {
+    const sensitive = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-sensitive-')));
+    sensitive.assert('default', "password(rahul, 'do-not-send-this').");
+    const llm = new ScriptedLlm(['?- password(rahul, Value).']);
+
+    await expect(
+      recallQuestion({ store: sensitive, llm }, 'What credential is stored?')
+    ).rejects.toThrow(/refusing to send sensitive memory schema/i);
     expect(llm.calls).toHaveLength(0);
   });
 

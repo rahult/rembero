@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { evaluateWithProof, parseProgram, parseQuery, serializeTerm } from '../src/engine/index.js';
 import { openDatalogDatabase } from '../src/sqlite/extension.js';
 
 const projectRoot = resolve(import.meta.dirname, '..');
@@ -294,6 +295,31 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
           ],
         },
       });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('keeps TypeScript and SQLite first-witness recursive proofs structurally aligned', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    const rules = `
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+    try {
+      database.exec(`
+        CREATE TABLE edge(source TEXT, target TEXT);
+        INSERT INTO edge VALUES ('a', 'b'), ('b', 'c'), ('c', 'd');
+      `);
+      const sqliteProof = database
+        .datalogExplain(rules)
+        .find(({ row }) => row.X === 'a' && row.Y === 'd')?.proof;
+      const typescript = evaluateWithProof(
+        parseProgram(`edge(a, b). edge(b, c). edge(c, d). ${rules}`),
+        parseQuery('path(a, Y)')
+      ).find(({ bindings }) => serializeTerm(bindings.Y) === 'd');
+
+      expect(typescript?.proofs[0]).toEqual(sqliteProof);
     } finally {
       database.close();
     }

@@ -12,6 +12,8 @@ import {
 } from '../engine/index.js';
 import type { MemoryStore } from '../store/store.js';
 import type { ChatMessage, LlmClient } from './client.js';
+import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
+import { assertSafeForExternalLlm } from '../safety.js';
 import {
   NOTHING_SENTINEL,
   PHRASING_SYSTEM_PROMPT,
@@ -32,21 +34,25 @@ export interface RememberResult {
   added: string[];
   duplicates: number;
   retracted: number;
+  opId?: string;
 }
 
 export interface RecallResult {
   answer: string;
   query: string | null;
   bindings: Record<string, string>[];
+  explanation?: ExplainKnowledgeResult;
 }
 
 export interface RetrievalResult {
   query: string | null;
   bindings: Record<string, string>[];
+  explanation?: ExplainKnowledgeResult;
 }
 
 export interface RecallOptions {
   queryPromptVariant?: QueryPromptVariant;
+  explain?: boolean;
 }
 
 function stripFences(text: string): string {
@@ -85,7 +91,9 @@ export async function rememberText(
   text: string,
   namespace = 'default'
 ): Promise<RememberResult> {
+  assertSafeForExternalLlm(text, 'memory text');
   const schema = buildSchemaSummary(deps.store.load(namespace));
+  assertSafeForExternalLlm(schema, 'memory schema');
   const messages: ChatMessage[] = [
     { role: 'system', content: extractionSystemPrompt(schema) },
     { role: 'user', content: text },
@@ -111,16 +119,24 @@ export async function rememberText(
   );
   if (extraction === null) return { added: [], duplicates: 0, retracted: 0 };
 
+  const opId = deps.store.createOperationId();
+  const context = { opId, sourceText: text };
   let retracted = 0;
   for (const pattern of extraction.retractions) {
-    retracted += deps.store.retract(namespace, pattern.map(serializeGoal).join(', ')).removed;
+    retracted += deps.store.retract(
+      namespace,
+      pattern.map(serializeGoal).join(', '),
+      context
+    ).removed;
   }
   if (extraction.clauses.length > 0 || retracted > 0) {
-    deps.store.note(namespace, 'remember', { text });
+    deps.store.note(namespace, 'remember', { opId, text });
   }
-  if (extraction.clauses.length === 0) return { added: [], duplicates: 0, retracted };
-  const { added, duplicates } = deps.store.assert(namespace, extraction.clauses);
-  return { added: added.map(serializeClause), duplicates, retracted };
+  if (extraction.clauses.length === 0) {
+    return { added: [], duplicates: 0, retracted, ...(retracted > 0 ? { opId } : {}) };
+  }
+  const { added, duplicates } = deps.store.assert(namespace, extraction.clauses, context);
+  return { added: added.map(serializeClause), duplicates, retracted, opId };
 }
 
 function validateQueryPredicates(goals: Goal[], clauses: Clause[]): void {
@@ -144,11 +160,13 @@ export async function retrieveQuestion(
   namespaces: string[] | '*' = ['default'],
   options: RecallOptions = {}
 ): Promise<RetrievalResult> {
+  assertSafeForExternalLlm(question, 'recall question');
   const clauses = deps.store.clausesFor(namespaces);
   if (clauses.length === 0) {
     return { query: null, bindings: [] };
   }
   const schema = buildSchemaSummary(clauses);
+  assertSafeForExternalLlm(schema, 'memory schema');
   const messages: ChatMessage[] = [
     {
       role: 'system',
@@ -162,19 +180,37 @@ export async function retrieveQuestion(
     validateQueryPredicates(parsed, clauses);
     return parsed;
   };
-  const evalRows = (goals: Goal[]) =>
-    evaluate(clauses, goals).map((b: Bindings) =>
-      Object.fromEntries(Object.entries(b).map(([name, term]) => [name, serializeTerm(term)]))
-    );
+  const evaluateQuery = (goals: Goal[], queryText: string): RetrievalResult => {
+    if (options.explain) {
+      const explanation = explainKnowledge(
+        clauses,
+        queryText,
+        deps.store.sourcesFor(namespaces)
+      );
+      return {
+        query: queryText,
+        bindings: explanation.rows.map((row) => row.bindings),
+        explanation,
+      };
+    }
+    return {
+      query: queryText,
+      bindings: evaluate(clauses, goals).map((b: Bindings) =>
+        Object.fromEntries(
+          Object.entries(b).map(([name, term]) => [name, serializeTerm(term)])
+        )
+      ),
+    };
+  };
 
   let goals = await completeWithRetry(deps.llm, messages, validateResponse);
   if (goals === null) return { query: null, bindings: [] };
 
   let queryText = goals.map(serializeGoal).join(', ');
-  let rows = evalRows(goals);
+  let retrieval = evaluateQuery(goals, queryText);
 
   // one shot at an alternative query before giving up on an empty result
-  if (rows.length === 0) {
+  if (retrieval.bindings.length === 0) {
     const fallbackMessages: ChatMessage[] = [
       ...messages,
       { role: 'assistant', content: `?- ${queryText}.` },
@@ -186,10 +222,10 @@ export async function retrieveQuestion(
     goals = await completeWithRetry(deps.llm, fallbackMessages, validateResponse);
     if (goals === null) return { query: null, bindings: [] };
     queryText = goals.map(serializeGoal).join(', ');
-    rows = evalRows(goals);
+    retrieval = evaluateQuery(goals, queryText);
   }
 
-  return { query: queryText, bindings: rows };
+  return retrieval;
 }
 
 export async function recallQuestion(
@@ -207,11 +243,13 @@ export async function recallQuestion(
     };
   }
 
+  const phrasing = phrasingUserPrompt(question, retrieval.query, retrieval.bindings);
+  assertSafeForExternalLlm(phrasing, 'recall evidence');
   const answer = await deps.llm.complete([
     { role: 'system', content: PHRASING_SYSTEM_PROMPT },
     {
       role: 'user',
-      content: phrasingUserPrompt(question, retrieval.query, retrieval.bindings),
+      content: phrasing,
     },
   ]);
   return { answer: answer.trim(), ...retrieval };

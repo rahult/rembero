@@ -7,8 +7,10 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { redactSensitiveText } from '../safety.js';
 import {
   type Clause,
   type Literal,
@@ -23,10 +25,25 @@ import {
 
 const NAMESPACE_RE = /^[a-z0-9_-]+$/;
 const HEADER = '% rembero memory — one Datalog clause per line; edit by hand if you like.\n';
+const MAX_JOURNAL_BYTES = 16 * 1024 * 1024;
 
 export interface AssertResult {
   added: Clause[];
   duplicates: number;
+  opId: string;
+}
+
+export interface MutationContext {
+  opId?: string;
+  sourceText?: string;
+}
+
+export interface MemorySource {
+  namespace: string;
+  opId: string;
+  ts: string;
+  text?: string;
+  redacted?: boolean;
 }
 
 interface CachedNamespace {
@@ -45,6 +62,20 @@ function fileStamp(path: string): string {
   }
 }
 
+function sanitizeJournalDetails(details: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = { ...details };
+  let redacted = false;
+  for (const key of ['text', 'sourceText']) {
+    const value = sanitized[key];
+    if (typeof value === 'string') {
+      const result = redactSensitiveText(value);
+      sanitized[key] = result.text;
+      redacted ||= result.redacted;
+    }
+  }
+  return redacted ? { ...sanitized, sourceRedacted: true } : sanitized;
+}
+
 export function defaultRoot(): string {
   return join(process.env.REMBERO_HOME ?? join(homedir(), '.rembero'), 'memory');
 }
@@ -53,6 +84,10 @@ export class MemoryStore {
   private cache = new Map<string, CachedNamespace>();
 
   constructor(private root: string = defaultRoot()) {}
+
+  createOperationId(): string {
+    return randomUUID();
+  }
 
   private filePath(namespace: string): string {
     if (!NAMESPACE_RE.test(namespace)) {
@@ -108,11 +143,21 @@ export class MemoryStore {
   /** Append an entry to the append-only operation journal ("why does it think that?"). */
   note(namespace: string, op: string, details: Record<string, unknown> = {}): void {
     mkdirSync(this.root, { recursive: true });
-    const entry = { ts: new Date().toISOString(), op, namespace, ...details };
+    const entry = {
+      ts: new Date().toISOString(),
+      op,
+      namespace,
+      ...sanitizeJournalDetails(details),
+    };
     appendFileSync(join(this.root, 'journal.log'), `${JSON.stringify(entry)}\n`, 'utf8');
   }
 
-  assert(namespace: string, clauses: string | Clause[]): AssertResult {
+  assert(
+    namespace: string,
+    clauses: string | Clause[],
+    context: MutationContext = {}
+  ): AssertResult {
+    const opId = context.opId ?? this.createOperationId();
     const parsed = typeof clauses === 'string' ? parseProgram(clauses) : clauses;
     const entry = this.loadCached(namespace);
     const added: Clause[] = [];
@@ -129,12 +174,22 @@ export class MemoryStore {
     }
     if (added.length > 0) {
       this.save(namespace, entry);
-      this.note(namespace, 'assert', { added: added.map(serializeClause), duplicates });
+      this.note(namespace, 'assert', {
+        opId,
+        added: added.map(serializeClause),
+        duplicates,
+        ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
+      });
     }
-    return { added, duplicates };
+    return { added, duplicates, opId };
   }
 
-  retract(namespace: string, pattern: string): { removed: number } {
+  retract(
+    namespace: string,
+    pattern: string,
+    context: MutationContext = {}
+  ): { removed: number; opId: string } {
+    const opId = context.opId ?? this.createOperationId();
     const entry = this.loadCached(namespace);
     let keep: Clause[];
     if (pattern.includes(':-')) {
@@ -158,9 +213,14 @@ export class MemoryStore {
       entry.keys = new Set(keep.map(canonicalKey));
       this.cache.set(namespace, entry);
       this.save(namespace, entry);
-      this.note(namespace, 'retract', { pattern, removed });
+      this.note(namespace, 'retract', {
+        opId,
+        pattern,
+        removed,
+        ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
+      });
     }
-    return { removed };
+    return { removed, opId };
   }
 
   listNamespaces(): string[] {
@@ -170,11 +230,93 @@ export class MemoryStore {
     } catch {
       return [];
     }
-    return files.filter((f) => f.endsWith('.dl')).map((f) => f.slice(0, -3));
+    return files
+      .filter((f) => f.endsWith('.dl'))
+      .map((f) => f.slice(0, -3))
+      .sort();
   }
 
   clausesFor(namespaces: string[] | '*'): Clause[] {
     const names = namespaces === '*' ? this.listNamespaces() : namespaces;
     return names.flatMap((ns) => this.load(ns));
+  }
+
+  /** Latest durable assertion source for every currently stored clause. */
+  sourcesFor(namespaces: string[] | '*'): Map<string, MemorySource[]> {
+    const names = namespaces === '*' ? this.listNamespaces() : [...namespaces];
+    const namespaceOrder = new Map(names.map((name, index) => [name, index]));
+    const selected = new Set(names);
+    const current = new Set<string>();
+    for (const namespace of names) {
+      for (const clause of this.load(namespace)) {
+        current.add(`${namespace}\u0000${canonicalKey(clause)}`);
+      }
+    }
+
+    const journalPath = join(this.root, 'journal.log');
+    let text: string;
+    try {
+      const stat = statSync(journalPath);
+      if (stat.size > MAX_JOURNAL_BYTES) {
+        throw new Error(`journal.log exceeds ${MAX_JOURNAL_BYTES} bytes`);
+      }
+      text = readFileSync(journalPath, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Map();
+      throw error;
+    }
+
+    const latest = new Map<string, { key: string; source: MemorySource }>();
+    for (const [index, line] of text.split('\n').entries()) {
+      if (line.trim() === '') continue;
+      let entry: Record<string, unknown>;
+      try {
+        entry = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        throw new Error(`failed to read journal.log line ${index + 1}`);
+      }
+      if (
+        entry.op !== 'assert' ||
+        typeof entry.namespace !== 'string' ||
+        !selected.has(entry.namespace) ||
+        typeof entry.opId !== 'string' ||
+        typeof entry.ts !== 'string' ||
+        !Array.isArray(entry.added)
+      ) {
+        continue;
+      }
+      for (const serialized of entry.added) {
+        if (typeof serialized !== 'string') continue;
+        const [clause] = parseProgram(serialized);
+        const key = canonicalKey(clause);
+        const currentKey = `${entry.namespace}\u0000${key}`;
+        if (!current.has(currentKey)) continue;
+        latest.set(currentKey, {
+          key,
+          source: {
+            namespace: entry.namespace,
+            opId: entry.opId,
+            ts: entry.ts,
+            ...(typeof entry.sourceText === 'string' ? { text: entry.sourceText } : {}),
+            ...(entry.sourceRedacted === true ? { redacted: true } : {}),
+          },
+        });
+      }
+    }
+
+    const result = new Map<string, MemorySource[]>();
+    for (const { key, source } of latest.values()) {
+      const sources = result.get(key) ?? [];
+      sources.push(source);
+      result.set(key, sources);
+    }
+    for (const sources of result.values()) {
+      sources.sort((left, right) =>
+        (namespaceOrder.get(left.namespace) ?? Number.MAX_SAFE_INTEGER) -
+          (namespaceOrder.get(right.namespace) ?? Number.MAX_SAFE_INTEGER) ||
+        left.opId.localeCompare(right.opId)
+      );
+    }
+    return result;
   }
 }

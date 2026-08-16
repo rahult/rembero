@@ -1,5 +1,11 @@
 export * from './engine/index.js';
-export { MemoryStore, defaultRoot, type AssertResult } from './store/store.js';
+export {
+  MemoryStore,
+  defaultRoot,
+  type AssertResult,
+  type MemorySource,
+  type MutationContext,
+} from './store/store.js';
 export {
   DatalogDatabase,
   buildSqliteExtension,
@@ -31,3 +37,17 @@ export {
 } from './llm/pipeline.js';
 export { type QueryPromptVariant } from './llm/prompts.js';
 export { createServer, serveStdio } from './mcp/server.js';
+export {
+  buildExplanationGraph,
+  explainKnowledge,
+  type ClaimGraphNode,
+  type EntityGraphNode,
+  type ExplainKnowledgeResult,
+  type ExplainedKnowledgeRow,
+  type ExplanationGraph,
+  type ExplanationGraphEdge,
+  type ExplanationGraphNode,
+  type ExplanationRule,
+  type ResultGraphNode,
+  type SourcedDerivationProof,
+} from './knowledge/graph.js';

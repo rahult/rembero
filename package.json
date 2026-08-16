@@ -15,6 +15,7 @@
     "dist",
     "native",
     "docs/EVALS.md",
+    "docs/EXPLAINABLE-KNOWLEDGE-GRAPH.md",
     "README.md",
     "LICENSE"
   ],
