@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.13.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.14.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -306,6 +306,21 @@ describe('MCP explanation surfaces', () => {
             current: true,
           }),
         ],
+      });
+      const recorded = await client.callTool({
+        name: 'query',
+        arguments: {
+          query: 'works_at(mira, Company)',
+          recordedSequence: historyPayload.events[0].sequence,
+        },
+      });
+      const recordedText = recorded.content.find((item) => item.type === 'text');
+      const recordedPayload = JSON.parse(
+        recordedText?.type === 'text' ? recordedText.text : ''
+      );
+      expect(recordedPayload).toMatchObject({
+        bindings: [{ Company: 'acme' }],
+        recordedSnapshot: { sequence: historyPayload.events[0].sequence },
       });
     } finally {
       await client.close();

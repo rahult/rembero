@@ -139,6 +139,7 @@ node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
 node dist/cli.js forget   'dentist(rahul, _)'
 node dist/cli.js forget   'dentist(rahul, _)' --op-id forget-123 # retry-safe
 node dist/cli.js history  'works_at(mira, _)' --json
+node dist/cli.js query    'works_at(mira, X)' --as-of-sequence 17 # exact recorded past
 node dist/cli.js list
 node dist/cli.js review --namespace personal           # inspect ambient captures
 node dist/cli.js review --namespace personal --forget 2 # explicit prune by number
@@ -207,6 +208,14 @@ Version 0.13 makes raw assertions, retractions, and imports retry-safe. Supply a
 retries return the first durable result even when it included duplicates or removed
 facts; conflicting reuse fails with `OperationConflictError` (`operation_conflict`, CLI
 exit `4`). See [the retry-safe write contract](docs/RETRY-SAFE-WRITES.md).
+
+Version 0.14 adds exact recorded-time snapshots across recall, query, explanation,
+integrity audit, and listing. `--as-of-sequence 0` means before the journal; higher values
+mean after that global journal entry. Rules, explicit identity, provenance, and graphs are
+evaluated from the selected past view. Snapshot reads first reconcile the complete journal
+with current files and fail closed if hand edits or legacy writes make history incomplete.
+This is separate from descriptive valid-time timestamps and does not claim full bitemporal
+interval algebra. See [the recorded-time snapshot contract](docs/RECORDED-TIME-SNAPSHOTS.md).
 
 `-n <ns>` / `--namespace <ns>` selects the namespace to write to; `--namespaces a,b` or
 `--namespaces '*'` selects which namespaces recall, query, check, list, and history read
@@ -390,5 +399,6 @@ contract](docs/QUERY-AGGREGATION.md) for exact reduction and explanation semanti
 precedence, safety, and portability details. TypeScript consumers should read the
 [0.2](docs/MIGRATING-0.2.md), [0.3](docs/MIGRATING-0.3.md),
 [0.4](docs/MIGRATING-0.4.md), [0.5](docs/MIGRATING-0.5.md),
-[0.8](docs/MIGRATING-0.8.md), and [0.9](docs/MIGRATING-0.9.md) migration notes as
+[0.8](docs/MIGRATING-0.8.md), [0.9](docs/MIGRATING-0.9.md), and
+[0.14](docs/MIGRATING-0.14.md) migration notes as
 applicable.

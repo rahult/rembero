@@ -109,6 +109,9 @@ Sources attached to an archived fact include additive temporal metadata:
 - Raw `assert_facts` remains literal: callers explicitly choose every clause.
 - `_until` predicates are system-managed in extraction prompts.
 - This is valid-time supersession, not a full bi-temporal interval model.
+- Version 0.14 adds a separate recorded-time read axis based on authoritative journal
+  sequence, never these descriptive timestamps. See
+  [recorded-time snapshots](RECORDED-TIME-SNAPSHOTS.md).
 - The experimental SQLite extension does not add a separate temporal API in
   this release; ordinary archive-shaped table rows can still be modeled by the
   application.

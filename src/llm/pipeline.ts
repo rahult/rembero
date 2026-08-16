@@ -15,7 +15,11 @@ import {
   serializeQuerySpec,
   serializeTerm,
 } from '../engine/index.js';
-import type { MemoryStore, ValidTimeMode } from '../store/store.js';
+import type {
+  MemoryStore,
+  RecordedSnapshotMetadata,
+  ValidTimeMode,
+} from '../store/store.js';
 import type { ChatMessage, LlmClient } from './client.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
@@ -98,6 +102,7 @@ export interface RecallResult {
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
   pruning?: RecallPruningReport;
+  recordedSnapshot?: RecordedSnapshotMetadata;
 }
 
 export interface RetrievalResult {
@@ -106,6 +111,7 @@ export interface RetrievalResult {
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
   pruning?: RecallPruningReport;
+  recordedSnapshot?: RecordedSnapshotMetadata;
 }
 
 export type RecallSchemaAttemptOutcome = 'answered' | 'empty' | 'unanswerable';
@@ -139,6 +145,8 @@ export interface RecallOptions {
   schemaByteLimit?: number;
   entityIdentity?: EntityIdentityMode | false;
   graphSelector?: ExplanationGraphSelector;
+  /** Read from the deterministic global journal position instead of current files. */
+  recordedSequence?: number;
 }
 
 function stripFences(text: string): string {
@@ -466,8 +474,18 @@ export async function retrieveQuestion(
 ): Promise<RetrievalResult> {
   assertLlmNamespacesAllowed(deps, namespaces);
   assertSafeForExternalLlm(question, 'recall question');
-  const literalClauses = deps.store.clausesFor(namespaces);
-  const literalSources = deps.store.sourcesFor(namespaces);
+  const recorded = options.recordedSequence === undefined
+    ? undefined
+    : deps.store.recordedSnapshot(namespaces, options.recordedSequence);
+  const literalClauses = recorded?.clauses ?? deps.store.clausesFor(namespaces);
+  const literalSources = recorded?.sources ?? deps.store.sourcesFor(namespaces);
+  const recordedSnapshot = recorded === undefined
+    ? undefined
+    : {
+        sequence: recorded.sequence,
+        journalEntries: recorded.journalEntries,
+        namespaces: recorded.namespaces,
+      };
   const configuredIdentity = options.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
   const view = entityIdentity === 'canonical'
@@ -475,7 +493,12 @@ export async function retrieveQuestion(
     : literalKnowledge(literalClauses, literalSources);
   const clauses = view.clauses;
   if (clauses.length === 0) {
-    return { status: 'unanswerable', query: null, bindings: [] };
+    return {
+      status: 'unanswerable',
+      query: null,
+      bindings: [],
+      ...(recordedSnapshot === undefined ? {} : { recordedSnapshot }),
+    };
   }
   const schemaPredicateLimit =
     options.schemaPredicateLimit ?? deps.recallSchemaPredicateLimit;
@@ -497,7 +520,12 @@ export async function retrieveQuestion(
       });
     } catch (widenError) {
       if (widenError instanceof RecallSchemaBudgetError) {
-        return { status: 'schema_budget_exhausted', query: null, bindings: [] };
+        return {
+          status: 'schema_budget_exhausted',
+          query: null,
+          bindings: [],
+          ...(recordedSnapshot === undefined ? {} : { recordedSnapshot }),
+        };
       }
       throw widenError;
     }
@@ -636,16 +664,23 @@ export async function retrieveQuestion(
       }
     : {};
   const { outcome, ...retrieval } = pass;
+  const snapshotResult = recordedSnapshot === undefined ? {} : { recordedSnapshot };
   if (pass.outcome === 'answered') {
-    return { status: 'answered', ...retrieval, ...pruning };
+    return { status: 'answered', ...retrieval, ...pruning, ...snapshotResult };
   }
   if (!finalSelection.schemaComplete) {
-    return { status: 'schema_budget_exhausted', ...retrieval, ...pruning };
+    return {
+      status: 'schema_budget_exhausted',
+      ...retrieval,
+      ...pruning,
+      ...snapshotResult,
+    };
   }
   return {
     status: outcome === 'empty' ? 'no_match' : 'unanswerable',
     ...retrieval,
     ...pruning,
+    ...snapshotResult,
   };
 }
 

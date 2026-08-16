@@ -47,6 +47,7 @@ import {
   MAX_HISTORY_EVENTS,
   MAX_OPERATION_ID_BYTES,
   MemoryStore,
+  IncompleteHistoryError,
   OperationConflictError,
   type ValidTimeMode,
 } from './store/store.js';
@@ -94,6 +95,7 @@ Options:
       --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
       --entity-identity <mode>  Read projection: off (default) or canonical
       --op-id <id>        Stable idempotency key for assert, forget, or import retries
+      --as-of-sequence <n> Read the knowledge view after global journal entry n (0 = empty)
       --graph-result <n>  Export the complete support graph for result row n
       --graph-support <node-id>  Export the support closure for one graph node
       --graph-neighbors <node-id>  Export a bounded undirected neighborhood
@@ -135,6 +137,7 @@ interface ParsedArgs {
   graphNeighbors?: string;
   graphDepth?: string;
   limit?: string;
+  asOfSequence?: string;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -207,6 +210,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--limit') {
       parsed.limit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--as-of-sequence') {
+      parsed.asOfSequence = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--days') {
       parsed.days = valueAfter(i, arg);
@@ -427,6 +433,9 @@ async function main(): Promise<void> {
   const store = new MemoryStore();
   const graphSelector = graphSelectorOption(args);
   const operationId = operationIdOption(args.opId);
+  const recordedSequence = args.asOfSequence === undefined
+    ? undefined
+    : integerOption(args.asOfSequence, 0, 'recorded snapshot sequence');
   const entityIdentitySetting = entityIdentityOption(args.entityIdentity);
   const entityIdentity = entityIdentitySetting === false
     ? undefined
@@ -445,6 +454,14 @@ async function main(): Promise<void> {
     !['assert', 'forget', 'import'].includes(command ?? '')
   ) {
     throw new Error('--op-id is available for assert, forget, and import');
+  }
+  if (
+    recordedSequence !== undefined &&
+    !['recall', 'recall-explain', 'query', 'explain', 'check', 'list'].includes(command ?? '')
+  ) {
+    throw new Error(
+      '--as-of-sequence is available for recall, recall-explain, query, explain, check, and list'
+    );
   }
   const rawIntegritySetting = integrityEnforcementOption(
     args.integrityMode,
@@ -544,12 +561,16 @@ async function main(): Promise<void> {
           entityIdentity: entityIdentitySetting,
         },
         text,
-        namespaces
+        namespaces,
+        recordedSequence === undefined ? {} : { recordedSequence }
       );
       assertBoundedOutput(result.answer, 'CLI recall answer');
       console.log(result.answer);
+      const recorded = result.recordedSnapshot === undefined
+        ? ''
+        : `, recorded: ${result.recordedSnapshot.sequence}/${result.recordedSnapshot.journalEntries}`;
       console.log(
-        `  (status: ${result.status}, query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length})`
+        `  (status: ${result.status}, query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length}${recorded})`
       );
       return;
     }
@@ -571,6 +592,7 @@ async function main(): Promise<void> {
           explain: true,
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(graphSelector === undefined ? {} : { graphSelector }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -579,9 +601,18 @@ async function main(): Promise<void> {
     case 'query': {
       const result = queryTool(
         { store, entityIdentity: entityIdentitySetting },
-        { query: text, namespaces }
+        {
+          query: text,
+          namespaces,
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
       );
-      console.log(stringifyBoundedResult(result.bindings, 'CLI result'));
+      console.log(
+        stringifyBoundedResult(
+          recordedSequence === undefined ? result.bindings : result,
+          'CLI result'
+        )
+      );
       return;
     }
     case 'assert': {
@@ -601,6 +632,7 @@ async function main(): Promise<void> {
           namespaces,
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(graphSelector === undefined ? {} : { graphSelector }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -616,6 +648,7 @@ async function main(): Promise<void> {
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(maxViolations === undefined ? {} : { maxViolations }),
           ...(graphSelector === undefined ? {} : { graphSelector }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -719,7 +752,13 @@ async function main(): Promise<void> {
       return;
     }
     case 'list': {
-      const result = listMemoriesTool({ store }, { namespaces });
+      const result = listMemoriesTool(
+        { store },
+        {
+          namespaces,
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }
@@ -803,6 +842,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((e: unknown) => {
+  if (e instanceof IncompleteHistoryError) {
+    console.error(stringifyBoundedResult(e.toJSON(), 'CLI recorded history error'));
+    process.exitCode = 5;
+    return;
+  }
   if (e instanceof OperationConflictError) {
     console.error(stringifyBoundedResult(e.toJSON(), 'CLI operation conflict'));
     process.exitCode = 4;

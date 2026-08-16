@@ -50,6 +50,23 @@ describe('MCP tool handlers', () => {
     expect(result.bindings).toEqual([{ X: 'luna' }]);
   });
 
+  it('recall answers from an explicit recorded snapshot', async () => {
+    store.assert('default', 'status(mira, active).', { opId: 'past' });
+    store.replace('default', ['status(mira, _)'], 'status(mira, paused).', {
+      opId: 'current',
+    });
+    const llm = new ScriptedLlm(['?- status(mira, State).', 'Mira was active.']);
+
+    const result = await recallTool(
+      { store, llm },
+      { question: 'What was Mira status?', recordedSequence: 1 }
+    );
+
+    expect(result.answer).toBe('Mira was active.');
+    expect(result.bindings).toEqual([{ State: 'active' }]);
+    expect(result.recordedSnapshot).toMatchObject({ sequence: 1, journalEntries: 2 });
+  });
+
   it('assert_facts takes raw Datalog without any LLM', async () => {
     const result = assertFactsTool({ store }, { clauses: 'f(a). g(X) :- f(X).' });
     expect(result.added).toEqual(['f(a).', 'g(X) :- f(X).']);
@@ -112,6 +129,71 @@ describe('MCP tool handlers', () => {
     store.assert('default', 'f(a). f(b). g(X) :- f(X), X != a.');
     const result = queryTool({ store }, { query: 'g(X)' });
     expect(result.bindings).toEqual([{ X: 'b' }]);
+  });
+
+  it('query and explain read deterministic recorded snapshots with past sources', () => {
+    store.assert(
+      'default',
+      'works_at(mira, acme). coworker(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+      { opId: 'past-source', sourceText: 'Mira worked at Acme.' }
+    );
+    store.assert('default', 'works_at(rahul, acme).', { opId: 'second-source' });
+    store.replace('default', ['works_at(mira, _)'], 'works_at(mira, initech).', {
+      opId: 'current-source',
+    });
+
+    expect(queryTool({ store }, { query: 'works_at(mira, C)' })).toEqual({
+      bindings: [{ C: 'initech' }],
+    });
+    const past = queryTool(
+      { store },
+      { query: 'coworker(mira, Who)', recordedSequence: 2 }
+    );
+    expect(past).toEqual({
+      bindings: [{ Who: 'rahul' }],
+      recordedSnapshot: {
+        sequence: 2,
+        journalEntries: 3,
+        namespaces: ['default'],
+      },
+    });
+    const explained = explainQueryTool(
+      { store },
+      { query: 'works_at(mira, Company)', recordedSequence: 1 }
+    );
+    expect(explained.rows[0]).toMatchObject({
+      bindings: { Company: 'acme' },
+      proofs: [{ sources: [{ opId: 'past-source', text: 'Mira worked at Acme.' }] }],
+    });
+    expect(explained.recordedSnapshot?.sequence).toBe(1);
+  });
+
+  it('applies integrity, listing, and explicit identity to the selected snapshot', () => {
+    store.assert(
+      'default',
+      "rembero_alias('Mira Patel', mira). rembero_entity_position(active, 1, 0). active('Mira Patel'). :- active(Person), suspended(Person).",
+      { opId: 'baseline' }
+    );
+    store.assert('default', 'suspended(mira).', { opId: 'later' });
+
+    expect(
+      checkIntegrityTool({ store }, { recordedSequence: 1, entityIdentity: 'canonical' })
+    ).toMatchObject({
+      status: 'consistent',
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+    expect(checkIntegrityTool({ store }, { entityIdentity: 'canonical' }).status).toBe(
+      'violations'
+    );
+    const listed = listMemoriesTool({ store }, { recordedSequence: 1 });
+    expect(listed.predicates.some((group) => group.predicate === 'suspended/1')).toBe(false);
+    expect(listed.recordedSnapshot?.sequence).toBe(1);
+    expect(
+      queryTool(
+        { store },
+        { query: 'active(mira)', recordedSequence: 1, entityIdentity: 'canonical' }
+      ).bindings
+    ).toEqual([{}]);
   });
 
   it('query and explain_query accept arithmetic comparison filters', () => {

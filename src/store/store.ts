@@ -50,6 +50,11 @@ const LOCK_WAIT_MS = 2_000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 10;
 const MAX_REVIEW_DAYS = 3_650;
+const RECORDED_AUDIT_OPERATIONS = new Set([
+  'remember',
+  'auto_capture',
+  'auto_capture_pruned',
+]);
 const sleepCell = new Int32Array(new SharedArrayBuffer(4));
 
 export interface AssertResult {
@@ -134,6 +139,38 @@ export interface MemoryHistory {
 export interface MemoryHistoryOptions {
   namespaces?: string[] | '*';
   limit?: number;
+}
+
+export interface RecordedSnapshotMetadata {
+  /** Global journal position. Zero means before the first journal entry. */
+  sequence: number;
+  /** Number of entries in the journal when the snapshot was read. */
+  journalEntries: number;
+  namespaces: string[];
+}
+
+export interface RecordedKnowledgeSnapshot extends RecordedSnapshotMetadata {
+  clauses: Clause[];
+  sources: Map<string, MemorySource[]>;
+}
+
+export class IncompleteHistoryError extends Error {
+  readonly code = 'incomplete_recorded_history';
+
+  constructor(readonly namespaces: string[]) {
+    super(
+      `recorded history does not reconcile with current knowledge in: ${namespaces.join(', ')}`
+    );
+    this.name = 'IncompleteHistoryError';
+  }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      error: this.code,
+      message: this.message,
+      namespaces: this.namespaces,
+    };
+  }
 }
 
 export interface TemporalMemorySource {
@@ -376,6 +413,21 @@ function historySourceFields(entry: JournalEntry): Pick<
   }
   if (entry.origin === 'manual' || entry.origin === 'claude-stop') fields.origin = entry.origin;
   return fields;
+}
+
+function journalMemorySource(
+  entry: JournalEntry,
+  temporal?: TemporalMemorySource
+): MemorySource {
+  if (typeof entry.opId !== 'string') throw new Error('journal source has no opId');
+  return {
+    namespace: entry.namespace,
+    opId: entry.opId,
+    ts: entry.ts,
+    ...(typeof entry.sourceText === 'string' ? { text: entry.sourceText } : {}),
+    ...(entry.sourceRedacted === true ? { redacted: true } : {}),
+    ...(temporal === undefined ? {} : { temporal }),
+  };
 }
 
 function utcDay(value: Date): string {
@@ -2383,6 +2435,293 @@ export class MemoryStore {
         pattern: serializeGoal(selector),
         namespaces: names,
         events,
+      };
+    });
+  }
+
+  /**
+   * Reconstruct a deterministic read-only knowledge view at a global journal position.
+   * The current files must exactly reconcile with the complete journal before any
+   * historical view is returned; otherwise the journal cannot prove completeness.
+   */
+  recordedSnapshot(
+    namespaces: string[] | '*',
+    sequence: number
+  ): RecordedKnowledgeSnapshot {
+    if (!Number.isSafeInteger(sequence) || sequence < 0) {
+      throw new Error('recorded snapshot sequence must be a non-negative safe integer');
+    }
+
+    return this.withLock('journal', () => {
+      const journal = this.readJournalUnlocked();
+      if (sequence > journal.length) {
+        throw new Error(
+          `recorded snapshot sequence ${sequence} exceeds journal length ${journal.length}`
+        );
+      }
+      const names = namespaces === '*'
+        ? [...new Set([
+            ...this.listNamespaces(),
+            ...journal.map((entry) => entry.namespace),
+          ])].sort()
+        : [...new Set(namespaces)];
+      if (names.length > 32) throw new Error('recorded snapshot namespace list exceeds 32 entries');
+      for (const namespace of names) this.filePath(namespace);
+      const selected = new Set(names);
+      const namespaceOrder = new Map(names.map((name, index) => [name, index]));
+      const state = new Map<
+        string,
+        { namespace: string; clause: Clause; source: MemorySource }
+      >();
+      let captured: typeof state | undefined;
+      const stateKey = (namespace: string, clause: Clause) =>
+        `${namespace}\u0000${canonicalKey(clause)}`;
+      const capture = () => {
+        captured = new Map(
+          [...state].map(([key, value]) => [
+            key,
+            { ...value, source: { ...value.source } },
+          ])
+        );
+      };
+      if (sequence === 0) capture();
+
+      for (const [lineIndex, entry] of journal.entries()) {
+        const currentSequence = lineIndex + 1;
+        const label = `journal.log line ${currentSequence}`;
+        assertIsoTimestamp(entry.ts, `${label} timestamp`);
+        if (!NAMESPACE_RE.test(entry.namespace)) {
+          throw new Error(`${label} has an invalid namespace`);
+        }
+        const isMutation =
+          entry.op === 'assert' || entry.op === 'retract' || entry.op === 'supersede';
+        if (isMutation) {
+          if (typeof entry.opId !== 'string' || entry.opId.length === 0) {
+            throw new Error(`${label} has no opId`);
+          }
+        }
+        if (
+          selected.has(entry.namespace) &&
+          !isMutation &&
+          !RECORDED_AUDIT_OPERATIONS.has(entry.op)
+        ) {
+          throw new Error(`${label} has unsupported operation '${entry.op}'`);
+        }
+        if (!selected.has(entry.namespace)) {
+          if (currentSequence === sequence) capture();
+          continue;
+        }
+
+        if (entry.op === 'assert') {
+          for (const clause of parseJournalClauseList(entry.added, `${label} added`)) {
+            state.set(stateKey(entry.namespace, clause), {
+              namespace: entry.namespace,
+              clause,
+              source: journalMemorySource(entry),
+            });
+          }
+        } else if (entry.op === 'retract') {
+          if (typeof entry.pattern !== 'string') throw new Error(`${label} has no pattern`);
+          if (
+            typeof entry.removed !== 'number' ||
+            !Number.isSafeInteger(entry.removed) ||
+            entry.removed < 0
+          ) {
+            throw new Error(`${label} has an invalid removed count`);
+          }
+          const target = parseRetractionTarget(entry.pattern, `${label} pattern`);
+          let removed: Clause[];
+          if (Array.isArray(entry.removedClauses)) {
+            removed = parseJournalClauseList(entry.removedClauses, `${label} removedClauses`);
+            if (removed.length !== entry.removed) {
+              throw new Error(`${label} removedClauses does not match removed count`);
+            }
+            if (
+              removed.some((clause) =>
+                'clauseKey' in target
+                  ? canonicalKey(clause) !== target.clauseKey
+                  : clause.body.length !== 0 || !literalMatches(target.literal, clause.head)
+              )
+            ) {
+              throw new Error(`${label} removedClauses do not match the retraction pattern`);
+            }
+          } else {
+            removed = [...state.values()]
+              .filter(({ namespace, clause }) => {
+                if (namespace !== entry.namespace) return false;
+                return 'clauseKey' in target
+                  ? canonicalKey(clause) === target.clauseKey
+                  : clause.body.length === 0 && literalMatches(target.literal, clause.head);
+              })
+              .map(({ clause }) => clause);
+          }
+          for (const clause of removed) state.delete(stateKey(entry.namespace, clause));
+        } else if (entry.op === 'supersede') {
+          if (
+            !Array.isArray(entry.patterns) ||
+            entry.patterns.length === 0 ||
+            entry.patterns.length > 64 ||
+            !entry.patterns.every((value) => typeof value === 'string')
+          ) {
+            throw new Error(`${label} patterns must be a non-empty string array`);
+          }
+          const patterns = entry.patterns.map((value, index) =>
+            parseFactPattern(value as string, `${label} patterns[${index}]`)
+          );
+          const validTimeMode = entry.validTimeMode ?? 'archive_until';
+          if (validTimeMode !== 'delete' && validTimeMode !== 'archive_until') {
+            throw new Error(`${label} has an invalid valid-time mode`);
+          }
+          if (!Array.isArray(entry.ended)) throw new Error(`${label} ended must be an array`);
+          const temporalByKey = new Map<string, TemporalMemorySource>();
+          if (!Array.isArray(entry.archived)) throw new Error(`${label} archived must be an array`);
+          if (validTimeMode === 'delete' && entry.archived.length !== 0) {
+            throw new Error(`${label} delete replacement cannot contain archives`);
+          }
+          const archivedFrom = new Set<string>();
+          for (const [archiveIndex, archived] of entry.archived.entries()) {
+            if (typeof archived !== 'object' || archived === null || Array.isArray(archived)) {
+              throw new Error(`${label} archived[${archiveIndex}] must be an object`);
+            }
+            const record = archived as Record<string, unknown>;
+            const previous = parseJournalClause(
+              record.from,
+              `${label} archived[${archiveIndex}].from`
+            );
+            const archivedClause = parseJournalClause(
+              record.to,
+              `${label} archived[${archiveIndex}].to`
+            );
+            assertIsoTimestamp(
+              record.validUntil,
+              `${label} archived[${archiveIndex}].validUntil`
+            );
+            if (record.validUntil !== entry.ts) {
+              throw new Error(`${label} archived validUntil must match the event timestamp`);
+            }
+            if (
+              canonicalKey(archiveUntilClause(previous, record.validUntil)) !==
+              canonicalKey(archivedClause)
+            ) {
+              throw new Error(`${label} has an inconsistent archived clause`);
+            }
+            temporalByKey.set(canonicalKey(archivedClause), {
+              kind: 'superseded',
+              previousClause: serializeClause(previous),
+              validUntil: record.validUntil,
+            });
+            archivedFrom.add(canonicalKey(previous));
+          }
+          if (validTimeMode === 'archive_until' && archivedFrom.size !== entry.ended.length) {
+            throw new Error(`${label} archived facts do not match ended facts`);
+          }
+          for (const [endedIndex, ended] of entry.ended.entries()) {
+            if (typeof ended !== 'object' || ended === null || Array.isArray(ended)) {
+              throw new Error(`${label} ended[${endedIndex}] must be an object`);
+            }
+            const record = ended as Record<string, unknown>;
+            const clause = parseJournalClause(
+              record.clause,
+              `${label} ended[${endedIndex}].clause`
+            );
+            if (
+              clause.body.length !== 0 ||
+              !patterns.some((pattern) => literalMatches(pattern, clause.head))
+            ) {
+              throw new Error(`${label} ended fact does not match a supersede pattern`);
+            }
+            if (validTimeMode === 'archive_until' && !archivedFrom.has(canonicalKey(clause))) {
+              throw new Error(`${label} ended fact has no archived counterpart`);
+            }
+            if (record.sourceOpId !== undefined && typeof record.sourceOpId !== 'string') {
+              throw new Error(`${label} ended[${endedIndex}].sourceOpId must be a string`);
+            }
+            const active = state.get(stateKey(entry.namespace, clause));
+            if (
+              typeof record.sourceOpId === 'string' &&
+              active !== undefined &&
+              active.source.opId !== record.sourceOpId
+            ) {
+              throw new Error(`${label} ended fact has inconsistent source lineage`);
+            }
+            state.delete(stateKey(entry.namespace, clause));
+          }
+          const added = parseJournalClauseList(entry.added, `${label} added`);
+          const requested = parseJournalClauseList(
+            entry.replacementRequested,
+            `${label} replacementRequested`
+          );
+          const replacementAdded = parseJournalClauseList(
+            entry.replacementAdded,
+            `${label} replacementAdded`
+          );
+          if (
+            typeof entry.duplicates !== 'number' ||
+            !Number.isSafeInteger(entry.duplicates) ||
+            entry.duplicates < 0 ||
+            replacementAdded.length + entry.duplicates !== requested.length
+          ) {
+            throw new Error(`${label} has inconsistent replacement counts`);
+          }
+          const allowedAdded = new Set([
+            ...replacementAdded.map(canonicalKey),
+            ...temporalByKey.keys(),
+          ]);
+          const addedKeys = new Set(added.map(canonicalKey));
+          if (
+            added.some((clause) => !allowedAdded.has(canonicalKey(clause))) ||
+            replacementAdded.some((clause) => !addedKeys.has(canonicalKey(clause)))
+          ) {
+            throw new Error(`${label} has inconsistent added facts`);
+          }
+          for (const clause of added) {
+            state.set(stateKey(entry.namespace, clause), {
+              namespace: entry.namespace,
+              clause,
+              source: journalMemorySource(entry, temporalByKey.get(canonicalKey(clause))),
+            });
+          }
+        }
+        if (currentSequence === sequence) capture();
+      }
+
+      const drifted: string[] = [];
+      for (const namespace of names) {
+        const journalKeys = new Set(
+          [...state.values()]
+            .filter((value) => value.namespace === namespace)
+            .map((value) => canonicalKey(value.clause))
+        );
+        const fileKeys = new Set(this.load(namespace).map(canonicalKey));
+        if (
+          journalKeys.size !== fileKeys.size ||
+          [...journalKeys].some((key) => !fileKeys.has(key))
+        ) {
+          drifted.push(namespace);
+        }
+      }
+      if (drifted.length > 0) throw new IncompleteHistoryError(drifted);
+
+      const snapshot = captured ?? new Map();
+      const values = [...snapshot.values()].sort(
+        (left, right) =>
+          (namespaceOrder.get(left.namespace) ?? Number.MAX_SAFE_INTEGER) -
+            (namespaceOrder.get(right.namespace) ?? Number.MAX_SAFE_INTEGER) ||
+          serializeClause(left.clause).localeCompare(serializeClause(right.clause))
+      );
+      const sources = new Map<string, MemorySource[]>();
+      for (const value of values) {
+        const key = canonicalKey(value.clause);
+        const grouped = sources.get(key) ?? [];
+        grouped.push(value.source);
+        sources.set(key, grouped);
+      }
+      return {
+        sequence,
+        journalEntries: journal.length,
+        namespaces: names,
+        clauses: values.map((value) => value.clause),
+        sources,
       };
     });
   }

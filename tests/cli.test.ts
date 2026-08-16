@@ -205,6 +205,39 @@ describe('CLI ingress limits', () => {
     expect(result.stderr).toMatch(/--op-id is available for assert, forget, and import/i);
   });
 
+  it('queries an exact recorded snapshot without changing current knowledge', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-recorded-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('default', 'status(mira, active).', { opId: 'before' });
+    store.replace('default', ['status(mira, _)'], 'status(mira, paused).', {
+      opId: 'after',
+    });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'query',
+        'status(mira, State)',
+        '--as-of-sequence',
+        '1',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      bindings: [{ State: 'active' }],
+      recordedSnapshot: {
+        sequence: 1,
+        journalEntries: 2,
+        namespaces: ['default'],
+      },
+    });
+    expect(store.load('default').map(serializeClause)).toEqual(['status(mira, paused).']);
+  });
+
   it('exports one complete result support graph without changing query rows', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-graph-select-'));
     const home = join(root, 'home');

@@ -23,7 +23,7 @@ import {
   recallTool,
   rememberTool,
 } from './tools.js';
-import { MAX_HISTORY_EVENTS } from '../store/store.js';
+import { IncompleteHistoryError, MAX_HISTORY_EVENTS } from '../store/store.js';
 import { MAX_INTEGRITY_VIOLATIONS } from '../knowledge/integrity.js';
 import {
   IntegrityViolationError,
@@ -111,6 +111,12 @@ const operationIdField = z
   .max(MAX_OPERATION_ID_BYTES)
   .optional()
   .describe('Caller-stable idempotency key for safe retries');
+const recordedSequenceField = z
+  .number()
+  .int()
+  .min(0)
+  .optional()
+  .describe('Read the deterministic knowledge snapshot after global journal entry n; 0 is empty');
 
 function asContent(result: unknown) {
   return { content: [{ type: 'text' as const, text: stringifyBoundedResult(result, 'MCP result') }] };
@@ -118,8 +124,8 @@ function asContent(result: unknown) {
 
 function asError(e: unknown) {
   let text: string;
-  if (e instanceof OperationConflictError) {
-    text = stringifyBoundedResult(e.toJSON(), 'MCP operation conflict');
+  if (e instanceof OperationConflictError || e instanceof IncompleteHistoryError) {
+    text = stringifyBoundedResult(e.toJSON(), 'MCP structured error');
   } else if (e instanceof IntegrityViolationError) {
     try {
       text = stringifyBoundedResult(e.toJSON(), 'MCP integrity rejection');
@@ -205,7 +211,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.13.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.14.0' });
 
   server.registerTool(
     'remember',
@@ -262,15 +268,22 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Recall',
       description:
-        "Answer a question from long-term memory using logical inference over stored facts and rules. Use when the user asks about anything previously discussed or personal ('who is my dentist?', 'what did we decide about the database?'), and at the start of tasks where remembered context would help. Returns an explicit recall status plus the query, bindings, and bounded schema diagnostics when pruning activates.",
+        "Answer a question from current or explicitly selected recorded long-term memory using logical inference over stored facts and rules. Use when the user asks about anything previously discussed or personal ('who is my dentist?', 'what did we decide about the database?'), and at the start of tasks where remembered context would help. Returns an explicit recall status plus the query, bindings, and bounded schema diagnostics when pruning activates.",
       inputSchema: {
         question: boundedText(),
         namespaces: namespacesField,
         schemaPredicateLimit: schemaPredicateLimitField,
         entityIdentity: entityIdentityField,
+        recordedSequence: recordedSequenceField,
       },
     },
-    async ({ question, namespaces, schemaPredicateLimit, entityIdentity }) => {
+    async ({
+      question,
+      namespaces,
+      schemaPredicateLimit,
+      entityIdentity,
+      recordedSequence,
+    }) => {
       try {
         return asContent(
           await recallTool(resolvedDeps, {
@@ -278,6 +291,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             namespaces,
             schemaPredicateLimit,
             entityIdentity,
+            recordedSequence,
           })
         );
       } catch (e) {
@@ -299,9 +313,18 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         entityIdentity: entityIdentityField,
         graphSelector: graphSelectorField,
+        recordedSequence: recordedSequenceField,
       },
     },
-    async ({ question, namespaces, schemaPredicateLimit, proofLimit, entityIdentity, graphSelector }) => {
+    async ({
+      question,
+      namespaces,
+      schemaPredicateLimit,
+      proofLimit,
+      entityIdentity,
+      graphSelector,
+      recordedSequence,
+    }) => {
       try {
         return asContent(
           await recallExplainTool(resolvedDeps, {
@@ -311,6 +334,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             proofLimit,
             entityIdentity,
             graphSelector,
+            recordedSequence,
           })
         );
       } catch (e) {
@@ -381,11 +405,14 @@ export function createServer(deps: PipelineDeps): McpServer {
         query: boundedText(),
         namespaces: namespacesField,
         entityIdentity: entityIdentityField,
+        recordedSequence: recordedSequenceField,
       },
     },
-    async ({ query, namespaces, entityIdentity }) => {
+    async ({ query, namespaces, entityIdentity, recordedSequence }) => {
       try {
-        return asContent(queryTool(resolvedDeps, { query, namespaces, entityIdentity }));
+        return asContent(
+          queryTool(resolvedDeps, { query, namespaces, entityIdentity, recordedSequence })
+        );
       } catch (e) {
         return asError(e);
       }
@@ -404,9 +431,17 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         entityIdentity: entityIdentityField,
         graphSelector: graphSelectorField,
+        recordedSequence: recordedSequenceField,
       },
     },
-    async ({ query, namespaces, proofLimit, entityIdentity, graphSelector }) => {
+    async ({
+      query,
+      namespaces,
+      proofLimit,
+      entityIdentity,
+      graphSelector,
+      recordedSequence,
+    }) => {
       try {
         return asContent(
           explainQueryTool(resolvedDeps, {
@@ -415,6 +450,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             proofLimit,
             entityIdentity,
             graphSelector,
+            recordedSequence,
           })
         );
       } catch (e) {
@@ -428,16 +464,24 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Check knowledge integrity',
       description:
-        'Evaluate every explicit headless Datalog constraint over the selected current knowledge view. Returns one policy check each; violating rows include deterministic proofs, durable sources, and query-scoped graphs. No LLM is used and no memory is changed.',
+        'Evaluate every explicit headless Datalog constraint over the selected current or recorded knowledge view. Returns one policy check each; violating rows include deterministic proofs, durable sources, and query-scoped graphs. No LLM is used and no memory is changed.',
       inputSchema: {
         namespaces: namespacesField,
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
         graphSelector: graphSelectorField,
+        recordedSequence: recordedSequenceField,
       },
     },
-    async ({ namespaces, proofLimit, maxViolations, entityIdentity, graphSelector }) => {
+    async ({
+      namespaces,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      graphSelector,
+      recordedSequence,
+    }) => {
       try {
         return asContent(
           checkIntegrityTool(resolvedDeps, {
@@ -446,6 +490,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             maxViolations,
             entityIdentity,
             graphSelector,
+            recordedSequence,
           })
         );
       } catch (e) {
@@ -536,11 +581,14 @@ export function createServer(deps: PipelineDeps): McpServer {
       inputSchema: {
         namespaces: namespacesField,
         predicate: z.string().optional().describe("Filter: 'name' or 'name/arity'"),
+        recordedSequence: recordedSequenceField,
       },
     },
-    async ({ namespaces, predicate }) => {
+    async ({ namespaces, predicate, recordedSequence }) => {
       try {
-        return asContent(listMemoriesTool(resolvedDeps, { namespaces, predicate }));
+        return asContent(
+          listMemoriesTool(resolvedDeps, { namespaces, predicate, recordedSequence })
+        );
       } catch (e) {
         return asError(e);
       }

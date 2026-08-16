@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuerySpec, selectExplanationGraph, selectRecallSchema } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuerySpec, selectExplanationGraph, selectRecallSchema } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -52,7 +52,7 @@ try {
         "const fullGraph = explainKnowledge(parseProgram('edge(a, b). edge(b, c).'), 'edge(X, Y)'); " +
         "const selectedGraph = selectExplanationGraph(fullGraph, { kind: 'result', row: 1 }); " +
         "if (selectedGraph.rows.length !== 2 || selectedGraph.graphSelection?.selector?.row !== 1 || selectedGraph.graph.nodes.length >= fullGraph.graph.nodes.length) throw new Error('public graph navigation API failed'); " +
-        "if (typeof OperationConflictError !== 'function') throw new Error('public operation conflict API failed');",
+        "if (typeof OperationConflictError !== 'function' || typeof IncompleteHistoryError !== 'function') throw new Error('public history or operation error API failed');",
     ],
     { cwd: directory }
   );
@@ -193,6 +193,19 @@ try {
   ) {
     throw new Error(`unexpected packaged temporal history: ${temporalOutput}`);
   }
+  const recordedOutput = run(
+    process.execPath,
+    [installedCli, 'query', 'works_at(mira, Company)', '--as-of-sequence', '1'],
+    { cwd: directory, env: temporalEnv }
+  );
+  const recorded = JSON.parse(recordedOutput);
+  if (
+    recorded.bindings[0]?.Company !== 'acme' ||
+    recorded.recordedSnapshot?.sequence !== 1 ||
+    recorded.recordedSnapshot?.journalEntries !== 2
+  ) {
+    throw new Error(`unexpected packaged recorded snapshot: ${recordedOutput}`);
+  }
   const importOutput = run(
     process.execPath,
     [installedCli, 'import', 'default', memoryFile, '--op-id', 'package-import'],
@@ -297,7 +310,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

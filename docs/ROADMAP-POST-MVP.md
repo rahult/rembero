@@ -156,6 +156,19 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    and MCP assert/forget accept bounded IDs. Concurrent process retries collapse to one
    durable operation, and CLI/MCP expose stable machine-readable conflicts.
 
+## Phase 17 — Recorded-time knowledge views  *(v0.14)*
+
+1. **Complete — exact journal-position snapshots**: sequence zero represents the state
+   before the journal and every later global append position reconstructs facts, rules,
+   constraints, identity declarations, and durable sources without timestamp ordering.
+2. **Complete — proof and interface parity**: recall, raw query, explanation, integrity
+   audit, and listing consume the same read-only snapshot across library, CLI, and MCP;
+   graph and identity projection remain derived from that selected view.
+3. **Complete — fail-closed completeness**: a full journal replay must reconcile with
+   every selected current namespace before past knowledge is returned. Direct edits,
+   legacy unjournaled writes, corrupt records, and invalid positions cannot masquerade as
+   authoritative history.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
@@ -170,8 +183,9 @@ V0 established a loadable C extension with `datalog_sql(rule)` and
 complete: multi-rule programs over ordinary SQLite tables use bounded semi-naive fixpoint
 evaluation, and `datalog_explain(program)` returns one nested derivation proof per result.
 
-The portable store now supplies source-aware valid-time history. A full bi-temporal model
-remains a later, evidence-driven expansion. Vector composition should reuse existing
+The portable store now supplies source-aware valid-time history plus exact recorded-time
+journal snapshots. Full interval algebra remains a later, evidence-driven expansion.
+Vector composition should reuse existing
 SQLite vector infrastructure rather than consume originality budget in this project.
 
 ## Explainable personal knowledge graph

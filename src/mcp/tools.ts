@@ -15,7 +15,13 @@ import {
   recallQuestion,
   rememberText,
 } from '../llm/pipeline.js';
-import type { MemoryHistory, MemoryStore } from '../store/store.js';
+import type {
+  MemoryHistory,
+  MemorySource,
+  MemoryStore,
+  RecordedSnapshotMetadata,
+} from '../store/store.js';
+import type { Clause } from '../engine/index.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
 import {
   checkIntegrity,
@@ -51,6 +57,30 @@ const namespacesOrDefault = (namespaces: NamespacesArg): string[] | '*' => {
   return resolved;
 };
 
+function recordedView(
+  store: MemoryStore,
+  namespaces: string[] | '*',
+  sequence?: number
+): {
+  clauses: Clause[];
+  sources: Map<string, MemorySource[]>;
+  recordedSnapshot?: RecordedSnapshotMetadata;
+} {
+  if (sequence === undefined) {
+    return { clauses: store.clausesFor(namespaces), sources: store.sourcesFor(namespaces) };
+  }
+  const snapshot = store.recordedSnapshot(namespaces, sequence);
+  return {
+    clauses: snapshot.clauses,
+    sources: snapshot.sources,
+    recordedSnapshot: {
+      sequence: snapshot.sequence,
+      journalEntries: snapshot.journalEntries,
+      namespaces: snapshot.namespaces,
+    },
+  };
+}
+
 export function rememberTool(
   deps: LlmToolDeps,
   args: {
@@ -78,6 +108,7 @@ export function recallTool(
     namespaces?: string[] | '*';
     schemaPredicateLimit?: number;
     entityIdentity?: EntityIdentityMode;
+    recordedSequence?: number;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -88,6 +119,9 @@ export function recallTool(
     ...(args.entityIdentity === undefined
       ? {}
       : { entityIdentity: args.entityIdentity }),
+    ...(args.recordedSequence === undefined
+      ? {}
+      : { recordedSequence: args.recordedSequence }),
   });
 }
 
@@ -100,6 +134,7 @@ export function recallExplainTool(
     proofLimit?: number;
     entityIdentity?: EntityIdentityMode;
     graphSelector?: ExplanationGraphSelector;
+    recordedSequence?: number;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -113,6 +148,9 @@ export function recallExplainTool(
       ? {}
       : { entityIdentity: args.entityIdentity }),
     ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
+    ...(args.recordedSequence === undefined
+      ? {}
+      : { recordedSequence: args.recordedSequence }),
   });
 }
 
@@ -145,12 +183,13 @@ export function queryTool(
     query: string;
     namespaces?: string[] | '*';
     entityIdentity?: EntityIdentityMode;
+    recordedSequence?: number;
   }
-): { bindings: Record<string, string>[] } {
+): { bindings: Record<string, string>[]; recordedSnapshot?: RecordedSnapshotMetadata } {
   assertBoundedInput(args.query, 'query');
   const namespaces = namespacesOrDefault(args.namespaces);
-  const clauses = deps.store.clausesFor(namespaces);
-  const sources = deps.store.sourcesFor(namespaces);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const { clauses, sources } = recorded;
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
   const view = entityIdentity === 'canonical'
@@ -163,7 +202,12 @@ export function queryTool(
   const bindings = evaluateQuerySpec(view.clauses, query).map((b) =>
     Object.fromEntries(Object.entries(b).map(([name, term]) => [name, serializeTerm(term)]))
   );
-  return { bindings };
+  return {
+    bindings,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
 }
 
 export function explainQueryTool(
@@ -174,22 +218,30 @@ export function explainQueryTool(
     proofLimit?: number;
     entityIdentity?: EntityIdentityMode;
     graphSelector?: ExplanationGraphSelector;
+    recordedSequence?: number;
   }
-): ExplainKnowledgeResult {
+): ExplainKnowledgeResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
   assertBoundedInput(args.query, 'query');
   const namespaces = namespacesOrDefault(args.namespaces);
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
-  return explainKnowledge(
-    deps.store.clausesFor(namespaces),
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = explainKnowledge(
+    recorded.clauses,
     args.query,
-    deps.store.sourcesFor(namespaces),
+    recorded.sources,
     {
       ...(args.proofLimit === undefined ? {} : { maxProofsPerRow: args.proofLimit }),
       ...(entityIdentity === undefined ? {} : { entityIdentity }),
       ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
     }
   );
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
 }
 
 export function checkIntegrityTool(
@@ -200,14 +252,16 @@ export function checkIntegrityTool(
     maxViolations?: number;
     entityIdentity?: EntityIdentityMode;
     graphSelector?: ExplanationGraphSelector;
+    recordedSequence?: number;
   }
-): IntegrityCheckResult {
+): IntegrityCheckResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
   const namespaces = namespacesOrDefault(args.namespaces);
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
-  return checkIntegrity(
-    deps.store.clausesFor(namespaces),
-    deps.store.sourcesFor(namespaces),
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = checkIntegrity(
+    recorded.clauses,
+    recorded.sources,
     {
       ...(args.proofLimit === undefined
         ? {}
@@ -219,6 +273,12 @@ export function checkIntegrityTool(
       ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
     }
   );
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
 }
 
 export function forgetTool(
@@ -263,17 +323,19 @@ export interface PredicateGroup {
 
 export function listMemoriesTool(
   deps: StoreToolDeps,
-  args: { namespaces?: string[] | '*'; predicate?: string }
+  args: { namespaces?: string[] | '*'; predicate?: string; recordedSequence?: number }
 ): {
   predicates: PredicateGroup[];
   constraints?: string[];
   aliases?: EntityAlias[];
   entityPositions?: EntityPosition[];
   identityError?: { code: 'entity_identity_error'; message: string };
+  recordedSnapshot?: RecordedSnapshotMetadata;
 } {
   const namespaces = namespacesOrDefault(args.namespaces);
-  const storedClauses = deps.store.clausesFor(namespaces);
-  const storedSources = deps.store.sourcesFor(namespaces);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const storedClauses = recorded.clauses;
+  const storedSources = recorded.sources;
   const view = literalKnowledge(storedClauses, storedSources);
   let resolver: EntityResolver | undefined;
   let identityError: { code: 'entity_identity_error'; message: string } | undefined;
@@ -324,5 +386,8 @@ export function listMemoriesTool(
     ...(aliases.length === 0 ? {} : { aliases }),
     ...(entityPositions.length === 0 ? {} : { entityPositions }),
     ...(identityError === undefined ? {} : { identityError }),
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
   };
 }
