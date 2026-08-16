@@ -60,11 +60,13 @@ export function recallExplainTool(
     question: string;
     namespaces?: string[] | '*';
     schemaPredicateLimit?: number;
+    proofLimit?: number;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
   return recallQuestion(deps, args.question, namespacesOrDefault(args.namespaces), {
     explain: true,
+    ...(args.proofLimit === undefined ? {} : { proofLimit: args.proofLimit }),
     ...(args.schemaPredicateLimit === undefined
       ? {}
       : { schemaPredicateLimit: args.schemaPredicateLimit }),
@@ -97,14 +99,15 @@ export function queryTool(
 
 export function explainQueryTool(
   deps: StoreToolDeps,
-  args: { query: string; namespaces?: string[] | '*' }
+  args: { query: string; namespaces?: string[] | '*'; proofLimit?: number }
 ): ExplainKnowledgeResult {
   assertBoundedInput(args.query, 'query');
   const namespaces = namespacesOrDefault(args.namespaces);
   return explainKnowledge(
     deps.store.clausesFor(namespaces),
     args.query,
-    deps.store.sourcesFor(namespaces)
+    deps.store.sourcesFor(namespaces),
+    args.proofLimit === undefined ? {} : { maxProofsPerRow: args.proofLimit }
   );
 }
 

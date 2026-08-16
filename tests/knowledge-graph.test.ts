@@ -129,6 +129,63 @@ describe('explainable personal knowledge graph', () => {
     ]);
   });
 
+  it('exposes ordered source alternatives only when proof inspection is requested', () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-source-alternatives-')));
+    store.assert('work', 'uses(rahul, rembero).', { opId: 'work-source' });
+    store.assert('personal', 'uses(rahul, rembero).', { opId: 'personal-source' });
+    const namespaces = ['work', 'personal'];
+
+    const result = explainKnowledge(
+      store.clausesFor(namespaces),
+      'uses(rahul, Tool)',
+      store.sourcesFor(namespaces),
+      { maxProofsPerRow: 2 }
+    );
+
+    expect(result.rows[0].proofs[0]).toMatchObject({
+      sources: [expect.objectContaining({ namespace: 'work', opId: 'work-source' })],
+      sourceAlternatives: [
+        expect.objectContaining({ namespace: 'personal', opId: 'personal-source' }),
+      ],
+    });
+    expect(
+      result.graph.nodes.find(
+        (node) => node.kind === 'claim' && node.predicate === 'uses'
+      )
+    ).toMatchObject({
+      sourceAlternatives: [expect.objectContaining({ namespace: 'personal' })],
+    });
+  });
+
+  it('projects each alternative derivation as a distinct proof instance in one graph', () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-proof-alternatives-')));
+    store.assert(
+      'default',
+      `left(a). right(a).
+       answer(X) :- left(X).
+       answer(X) :- right(X).`
+    );
+
+    const result = explainKnowledge(
+      store.load('default'),
+      'answer(a)',
+      new Map(),
+      { maxProofsPerRow: 2 }
+    );
+
+    expect(result.rows[0].proofs[0]).toMatchObject({ predicate: 'answer', rule: 1 });
+    expect(result.rows[0].alternativeProofs).toEqual([
+      [expect.objectContaining({ predicate: 'answer', rule: 2 })],
+    ]);
+    expect(result.graph.nodes.filter((node) => node.kind === 'proof')).toHaveLength(4);
+    expect(result.graph.edges.filter((edge) => edge.kind === 'proves')).toHaveLength(4);
+    expect(
+      result.graph.edges.filter(
+        (edge) => edge.kind === 'answers' && edge.alternative === 1
+      )
+    ).toHaveLength(1);
+  });
+
   it('represents successful negation as an absence node without fake sources', () => {
     const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-absence-')));
     store.assert(

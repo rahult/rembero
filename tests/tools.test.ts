@@ -131,6 +131,26 @@ describe('MCP tool handlers', () => {
     expect(result.graph.nodes.some((node) => node.kind === 'result')).toBe(true);
   });
 
+  it('explain_query returns bounded alternative proofs only when requested', () => {
+    store.assert(
+      'default',
+      'left(a). right(a). answer(X) :- left(X). answer(X) :- right(X).'
+    );
+
+    const primary = explainQueryTool({ store }, { query: 'answer(a)' });
+    const expanded = explainQueryTool(
+      { store },
+      { query: 'answer(a)', proofLimit: 2 }
+    );
+
+    expect(primary.rows[0]).not.toHaveProperty('alternativeProofs');
+    expect(expanded.rows[0].proofs[0]).toMatchObject({ rule: 1 });
+    expect(expanded.rows[0].alternativeProofs).toEqual([
+      [expect.objectContaining({ rule: 2 })],
+    ]);
+    expect(expanded.graph.nodes.some((node) => node.kind === 'proof')).toBe(true);
+  });
+
   it('recall_explain keeps the answer and adds deterministic evidence', async () => {
     store.assert('default', 'pet(rahul, luna).', {
       opId: 'pet-source',
@@ -147,6 +167,24 @@ describe('MCP tool handlers', () => {
       predicate: 'pet',
       sources: [{ opId: 'pet-source', text: 'My cat is called Luna.' }],
     });
+  });
+
+  it('recall_explain threads the proof limit through generated-query evaluation', async () => {
+    store.assert(
+      'default',
+      'left(a). right(a). answer(X) :- left(X). answer(X) :- right(X).'
+    );
+    const llm = new ScriptedLlm(['?- answer(a).', 'The answer is supported twice.']);
+
+    const result = await recallExplainTool(
+      { store, llm },
+      { question: 'Is a an answer?', proofLimit: 2 }
+    );
+
+    expect(result.explanation?.rows[0].proofs[0]).toMatchObject({ rule: 1 });
+    expect(result.explanation?.rows[0].alternativeProofs).toEqual([
+      [expect.objectContaining({ rule: 2 })],
+    ]);
   });
 
   it('query can span all namespaces with *', () => {

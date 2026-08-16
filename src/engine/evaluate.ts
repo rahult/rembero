@@ -14,8 +14,10 @@ import {
   isArithmeticExpression,
   isComparison,
   isNegation,
+  canonicalKey,
+  predKey,
 } from './ast.js';
-import { stratifyProgram } from './stratify.js';
+import { stratifyProgram, type StratifiedRule } from './stratify.js';
 
 export type Bindings = Record<string, Term>;
 
@@ -57,11 +59,13 @@ export type QueryProof = ProofStep | AggregateProof;
 export interface ExplainedBindings {
   bindings: Bindings;
   proofs: ProofStep[];
+  alternativeProofs?: ProofStep[][];
 }
 
 export interface ExplainedQueryBindings {
   bindings: Bindings;
   proofs: QueryProof[];
+  alternativeProofs?: ProofStep[][];
 }
 
 export interface MaterializedFactWithProof {
@@ -95,7 +99,14 @@ export interface EvaluateOptions {
   maxAggregateProofRows?: number;
   maxProofDepth?: number;
   maxProofNodes?: number;
+  maxProofsPerRow?: number;
+  maxProofEnumerationSteps?: number;
 }
+
+export const DEFAULT_MAX_PROOFS_PER_ROW = 1;
+export const MAX_PROOFS_PER_ROW = 16;
+export const DEFAULT_MAX_PROOF_ENUMERATION_STEPS = 100_000;
+export const MAX_PROOF_ENUMERATION_STEPS = 1_000_000;
 
 interface FactEntry {
   predicate: string;
@@ -117,11 +128,47 @@ interface QueryRowRef {
   proofs: ProofRef[];
 }
 
+interface AlternativeProofOptions {
+  maxProofsPerRow: number;
+  maxProofEnumerationSteps: number;
+}
+
 /** Ground tuples per predicate, keyed for O(1) dedup while preserving insertion order. */
 type Relation = Map<string, FactEntry>;
 type Database = Map<string, Relation>;
 
 const litKey = (predicate: string, arity: number) => `${predicate}/${arity}`;
+
+function resolveAlternativeProofOptions(
+  options: EvaluateOptions
+): AlternativeProofOptions {
+  const {
+    maxProofsPerRow = DEFAULT_MAX_PROOFS_PER_ROW,
+    maxProofEnumerationSteps = DEFAULT_MAX_PROOF_ENUMERATION_STEPS,
+  } = options;
+  if (!Number.isSafeInteger(maxProofsPerRow) || maxProofsPerRow < 1) {
+    throw new EngineSafetyError('maxProofsPerRow must be a positive safe integer');
+  }
+  if (maxProofsPerRow > MAX_PROOFS_PER_ROW) {
+    throw new EngineSafetyError(
+      `maxProofsPerRow must be at most ${MAX_PROOFS_PER_ROW}`
+    );
+  }
+  if (
+    !Number.isSafeInteger(maxProofEnumerationSteps) ||
+    maxProofEnumerationSteps < 1
+  ) {
+    throw new EngineSafetyError(
+      'maxProofEnumerationSteps must be a positive safe integer'
+    );
+  }
+  if (maxProofEnumerationSteps > MAX_PROOF_ENUMERATION_STEPS) {
+    throw new EngineSafetyError(
+      `maxProofEnumerationSteps must be at most ${MAX_PROOF_ENUMERATION_STEPS}`
+    );
+  }
+  return { maxProofsPerRow, maxProofEnumerationSteps };
+}
 
 function keyPart(term: Term): readonly [string, string | number] {
   switch (term.type) {
@@ -522,6 +569,33 @@ function serializeProof(
   return proof;
 }
 
+function cloneProofStep(
+  proof: ProofStep,
+  maxProofDepth: number,
+  budget: ProofBudget,
+  depth = 1
+): ProofStep {
+  if (depth > maxProofDepth) {
+    throw new EngineLimitError(`proof exceeded max depth ${maxProofDepth}`);
+  }
+  if (++budget.emittedNodes > budget.maxNodes) {
+    throw new EngineLimitError(`proof exceeded max nodes ${budget.maxNodes}`);
+  }
+  if ('negated' in proof) return { ...proof, pattern: [...proof.pattern] };
+  return {
+    predicate: proof.predicate,
+    values: [...proof.values],
+    ...(proof.rule === undefined ? {} : { rule: proof.rule }),
+    ...(proof.because === undefined
+      ? {}
+      : {
+          because: proof.because.map((child) =>
+            cloneProofStep(child, maxProofDepth, budget, depth + 1)
+          ),
+        }),
+  };
+}
+
 function rowKey(bindings: Bindings): string {
   return JSON.stringify(
     Object.entries(bindings)
@@ -533,9 +607,76 @@ function rowKey(bindings: Bindings): string {
 interface DerivedDatabase {
   db: Database;
   predicateStrata: Map<string, number>;
+  rulesByPredicate: Map<string, StratifiedRule[]>;
+  ruleIdentity: Map<number, string>;
 }
 
-function deriveDatabase(clauses: Clause[], options: EvaluateOptions): DerivedDatabase {
+interface EnumerationBudget {
+  maxSteps: number;
+  steps: number;
+}
+
+interface EnumerationContext {
+  db: Database;
+  predicateStrata: Map<string, number>;
+  rulesByPredicate: Map<string, StratifiedRule[]>;
+  ruleIdentity: Map<number, string>;
+  budget: EnumerationBudget;
+  maxProofDepth: number;
+  maxProofNodes: number;
+}
+
+interface ProofRowAccumulator {
+  bindings: Bindings;
+  proofs: ProofStep[][];
+  proofKeys: Set<string>;
+}
+
+function consumeEnumerationStep(budget: EnumerationBudget): void {
+  if (++budget.steps > budget.maxSteps) {
+    throw new EngineLimitError(`proof enumeration exceeded ${budget.maxSteps} steps`);
+  }
+}
+
+function factRefKey(entry: FactEntry): string {
+  return `${entry.predicate}:${tupleKey(entry.tuple)}`;
+}
+
+function structuralProofKey(
+  proof: ProofStep,
+  ruleIdentity: ReadonlyMap<number, string>
+): string {
+  if ('negated' in proof) {
+    return JSON.stringify({
+      negated: true,
+      predicate: proof.predicate,
+      pattern: proof.pattern,
+      stratum: proof.stratum,
+    });
+  }
+  return JSON.stringify({
+    predicate: proof.predicate,
+    values: proof.values,
+    rule:
+      proof.rule === undefined
+        ? undefined
+        : (ruleIdentity.get(proof.rule) ?? `rule:${proof.rule}`),
+    because: proof.because?.map((child) => structuralProofKey(child, ruleIdentity)),
+  });
+}
+
+function proofVectorKey(
+  proofs: ProofStep[],
+  ruleIdentity: ReadonlyMap<number, string>
+): string {
+  return JSON.stringify(proofs.map((proof) => structuralProofKey(proof, ruleIdentity)));
+}
+
+function deriveDatabase(
+  clauses: Clause[],
+  options: EvaluateOptions,
+  collectAlternativeRules = false
+): DerivedDatabase {
   const { maxFacts = 100_000, maxIterations = 10_000 } = options;
   for (const clause of clauses) {
     for (const term of clause.head.args) assertFiniteNumericTerm(term);
@@ -543,6 +684,22 @@ function deriveDatabase(clauses: Clause[], options: EvaluateOptions): DerivedDat
   }
   const facts = clauses.filter((c) => c.body.length === 0);
   const stratified = stratifyProgram(clauses);
+  const rulesByPredicate = new Map<string, StratifiedRule[]>();
+  const ruleIdentity = new Map<number, string>();
+  if (collectAlternativeRules) {
+    for (const rules of stratified.strata) {
+      for (const rule of rules) {
+        const key = predKey(rule.clause.head);
+        const ordered = rulesByPredicate.get(key);
+        if (ordered) {
+          ordered.push(rule);
+        } else {
+          rulesByPredicate.set(key, [rule]);
+        }
+        ruleIdentity.set(rule.ruleNumber, canonicalKey(rule.clause));
+      }
+    }
+  }
 
   const db: Database = new Map();
   let totalFacts = 0;
@@ -612,7 +769,12 @@ function deriveDatabase(clauses: Clause[], options: EvaluateOptions): DerivedDat
     }
   }
 
-  return { db, predicateStrata: stratified.predicateStrata };
+  return {
+    db,
+    predicateStrata: stratified.predicateStrata,
+    rulesByPredicate,
+    ruleIdentity,
+  };
 }
 
 function queryBindingsWithProofRefs(
@@ -755,6 +917,180 @@ function serializeAggregateProof(
   };
 }
 
+function serializeProofForEnumeration(
+  entry: ProofRef,
+  context: EnumerationContext
+): ProofStep {
+  return serializeProof(
+    entry,
+    context.maxProofDepth,
+    { maxNodes: context.maxProofNodes, emittedNodes: 0 }
+  );
+}
+
+function addProofVector(
+  row: ProofRowAccumulator,
+  proofs: ProofStep[],
+  maxProofsPerRow: number,
+  ruleIdentity: ReadonlyMap<number, string>
+): void {
+  const key = proofVectorKey(proofs, ruleIdentity);
+  if (row.proofKeys.has(key)) return;
+  if (row.proofs.length >= maxProofsPerRow) {
+    throw new EngineLimitError(
+      `proof alternatives exceeded maxProofsPerRow ${maxProofsPerRow}`
+    );
+  }
+  row.proofKeys.add(key);
+  row.proofs.push(proofs);
+}
+
+function enumerateProofVectors(
+  proofs: ProofRef[],
+  context: EnumerationContext,
+  trail: ReadonlySet<string>,
+  depth: number,
+  onProofs: (proofs: ProofStep[]) => boolean | void
+): boolean {
+  const current: ProofStep[] = [];
+
+  const visit = (index: number): boolean => {
+    if (index >= proofs.length) {
+      consumeEnumerationStep(context.budget);
+      return onProofs([...current]) === true;
+    }
+    return enumerateProofChoices(proofs[index], context, trail, depth, (proof) => {
+      current.push(proof);
+      try {
+        return visit(index + 1);
+      } finally {
+        current.pop();
+      }
+    });
+  };
+
+  return visit(0);
+}
+
+function enumerateProofChoices(
+  proof: ProofRef,
+  context: EnumerationContext,
+  trail: ReadonlySet<string>,
+  depth: number,
+  onProof: (proof: ProofStep) => boolean | void
+): boolean {
+  if (depth > context.maxProofDepth) {
+    throw new EngineLimitError(`proof exceeded max depth ${context.maxProofDepth}`);
+  }
+  consumeEnumerationStep(context.budget);
+  if (isAbsenceProof(proof)) {
+    return onProof({ ...proof, pattern: [...proof.pattern] }) === true;
+  }
+
+  const currentKey = factRefKey(proof);
+  if (trail.has(currentKey)) return false;
+  const nextTrail = new Set(trail);
+  nextTrail.add(currentKey);
+  const seen = new Set<string>();
+
+  const primary = serializeProofForEnumeration(proof, context);
+  seen.add(structuralProofKey(primary, context.ruleIdentity));
+  if (onProof(primary) === true) return true;
+
+  const rules =
+    context.rulesByPredicate.get(litKey(proof.predicate, proof.tuple.length)) ?? [];
+  if (rules.length === 0) return false;
+
+  const tupleValues = proof.tuple.map(groundValue);
+  const fromDb = (_: number, key: string) => context.db.get(key);
+  const stratumOf = (key: string) => context.predicateStrata.get(key) ?? 0;
+
+  for (const { clause, ruleNumber } of rules) {
+    consumeEnumerationStep(context.budget);
+    const seeded = matchArgs(clause.head.args, proof.tuple, {});
+    if (seeded === null) continue;
+    for (const solution of solveGoals(clause.body, 0, seeded, [], fromDb, stratumOf)) {
+      consumeEnumerationStep(context.budget);
+      const stopped = enumerateProofVectors(
+        solution.proofs,
+        context,
+        nextTrail,
+        depth + 1,
+        (because) => {
+          const derived: DerivationProof = {
+            predicate: proof.predicate,
+            values: tupleValues,
+            rule: ruleNumber,
+            ...(because.length === 0 ? {} : { because }),
+          };
+          const key = structuralProofKey(derived, context.ruleIdentity);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return onProof(derived);
+        }
+      );
+      if (stopped) return true;
+    }
+  }
+
+  return false;
+}
+
+function queryBindingsWithAlternativeProofs(
+  db: Database,
+  query: Goal[],
+  maxRows: number,
+  predicateStrata: Map<string, number>,
+  rulesByPredicate: Map<string, StratifiedRule[]>,
+  ruleIdentity: Map<number, string>,
+  alternativeOptions: AlternativeProofOptions,
+  maxProofDepth: number,
+  maxProofNodes: number
+): ProofRowAccumulator[] {
+  if (maxRows <= 0) return [];
+  const rows: ProofRowAccumulator[] = [];
+  const rowByKey = new Map<string, ProofRowAccumulator>();
+  const fromDb = (_: number, key: string) => db.get(key);
+  const stratumOf = (key: string) => predicateStrata.get(key) ?? 0;
+  const context: EnumerationContext = {
+    db,
+    predicateStrata,
+    rulesByPredicate,
+    ruleIdentity,
+    budget: {
+      maxSteps: alternativeOptions.maxProofEnumerationSteps,
+      steps: 0,
+    },
+    maxProofDepth,
+    maxProofNodes,
+  };
+
+  for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf)) {
+    consumeEnumerationStep(context.budget);
+    const bindings: Bindings = {};
+    for (const [name, term] of Object.entries(solution.env)) bindings[name] = term;
+    const key = rowKey(bindings);
+    let row = rowByKey.get(key);
+    if (!row) {
+      if (rows.length >= maxRows) continue;
+      row = { bindings, proofs: [], proofKeys: new Set() };
+      rowByKey.set(key, row);
+      rows.push(row);
+    }
+    enumerateProofVectors(solution.proofs, context, new Set(), 1, (proofs) => {
+      addProofVector(
+        row,
+        proofs,
+        alternativeOptions.maxProofsPerRow,
+        context.ruleIdentity
+      );
+      return false;
+    });
+  }
+
+  return rows;
+}
+
 /**
  * Semi-naive bottom-up evaluation: derive the fixpoint of all rules over the
  * facts, then answer the query conjunction against the resulting database.
@@ -777,16 +1113,46 @@ export function evaluateWithProof(
   query: Goal[],
   options: EvaluateOptions = {}
 ): ExplainedBindings[] {
+  const alternativeOptions = resolveAlternativeProofOptions(options);
   const { maxRows = 1000, maxProofDepth = 128, maxProofNodes = 100_000 } = options;
   assertGoalsNumericSafety(query);
-  const { db, predicateStrata } = deriveDatabase(clauses, options);
-  const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
-  return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata).map(
-    ({ bindings, proofs }) => ({
-      bindings,
-      proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, proofBudget)),
-    })
+  const { db, predicateStrata, rulesByPredicate, ruleIdentity } = deriveDatabase(
+    clauses,
+    options,
+    alternativeOptions.maxProofsPerRow > DEFAULT_MAX_PROOFS_PER_ROW
   );
+  const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
+  if (alternativeOptions.maxProofsPerRow === DEFAULT_MAX_PROOFS_PER_ROW) {
+    return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata).map(
+      ({ bindings, proofs }) => ({
+        bindings,
+        proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, proofBudget)),
+      })
+    );
+  }
+  return queryBindingsWithAlternativeProofs(
+    db,
+    query,
+    maxRows,
+    predicateStrata,
+    rulesByPredicate,
+    ruleIdentity,
+    alternativeOptions,
+    maxProofDepth,
+    maxProofNodes
+  ).map(({ bindings, proofs }) => ({
+    bindings,
+    proofs: proofs[0].map((proof) => cloneProofStep(proof, maxProofDepth, proofBudget)),
+    ...(proofs.length > 1
+      ? {
+          alternativeProofs: proofs
+            .slice(1)
+            .map((proofVector) =>
+              proofVector.map((proof) => cloneProofStep(proof, maxProofDepth, proofBudget))
+            ),
+        }
+      : {}),
+  }));
 }
 
 /** Evaluate either a relational query or one exact scalar reduction over its full result. */
@@ -811,7 +1177,11 @@ export function evaluateQuerySpecWithProof(
   query: QuerySpec,
   options: EvaluateOptions = {}
 ): ExplainedQueryBindings[] {
+  const alternativeOptions = resolveAlternativeProofOptions(options);
   if (query.kind === 'relational') return evaluateWithProof(clauses, query.goals, options);
+  if (alternativeOptions.maxProofsPerRow > DEFAULT_MAX_PROOFS_PER_ROW) {
+    throw new EngineSafetyError('alternative proofs are relational-only in v0.8');
+  }
   const {
     maxRows = 1000,
     maxAggregateRows = 100_000,

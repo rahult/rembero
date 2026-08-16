@@ -114,6 +114,8 @@ export type RecallStatus =
 export interface RecallOptions {
   queryPromptVariant?: QueryPromptVariant;
   explain?: boolean;
+  /** Total proof witnesses per returned row, including the primary witness. */
+  proofLimit?: number;
   schemaPredicateLimit?: number;
   schemaByteLimit?: number;
 }
@@ -449,7 +451,10 @@ export async function retrieveQuestion(
         const explanation = explainKnowledge(
           clauses,
           queryText,
-          deps.store.sourcesFor(namespaces)
+          deps.store.sourcesFor(namespaces),
+          options.proofLimit === undefined
+            ? {}
+            : { maxProofsPerRow: options.proofLimit }
         );
         const bindings = explanation.rows.map((row) => row.bindings);
         return {

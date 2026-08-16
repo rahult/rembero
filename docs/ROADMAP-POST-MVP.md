@@ -1,4 +1,4 @@
-# Rembero post-MVP roadmap (v0.7 →)
+# Rembero post-MVP roadmap (v0.8 →)
 
 MVP shipped: public repo, CI, GitHub release v0.1.0, npm package ready (publish pending
 auth). What follows is ordered by user value per unit of effort — each phase is
@@ -75,6 +75,20 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 - Issue templates, CONTRIBUTING.md, dependabot, coverage reporting.
 - Demo GIF / asciinema in README; a blog-style walkthrough of the design.
 
+## Phase 11 — Evidence diversity  *(v0.8)*
+
+1. **Complete — bounded alternative-proof inspection**: relational explain surfaces can
+   enumerate deterministic branch-simple derivations without changing the ordinary
+   semi-naive fixpoint or first-witness default. Structural duplicates collapse, proof
+   count/search/depth/node/output limits fail closed, and aggregate completeness remains
+   separate.
+2. **Complete — corroborating source witnesses**: an asserted claim keeps its existing
+   first namespace source while expanded inspection exposes the remaining ordered active
+   sources as `sourceAlternatives`.
+3. **Complete — proof-instance graph projection**: expanded graphs add ephemeral `proof`
+   nodes and `proves` edges so two derivations of one grounded claim remain distinct
+   without materializing a second graph store.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
@@ -100,7 +114,8 @@ mutation/source IDs, and query-scoped hypergraphs across the library, CLI, and M
 is the foundation for conflict views, temporal history, and alternative proof inspection
 without replacing the readable personal knowledge base with a second graph store.
 
-The next reasoning milestone is an evidence-driven index pass once benchmarks show
-relation scans becoming material. Retrieval context is now bounded independently of
-knowledge-base growth while the finite, proof-carrying rule language remains the
-deterministic authority.
+The next reasoning milestone remains an evidence-driven index pass once benchmarks show
+relation scans becoming material. Retrieval context and alternative evidence are now
+bounded independently of knowledge-base growth while the finite, proof-carrying rule
+language remains the deterministic authority. Conflict sets still require an explicit
+integrity-constraint vocabulary rather than inferred single-value semantics.

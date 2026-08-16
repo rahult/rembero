@@ -107,6 +107,7 @@ node dist/cli.js remember "Rahul's dentist is Dr Chen"
 node dist/cli.js recall   "Who is Rahul's dentist?"
 node dist/cli.js recall   "Who owns Atlas?" --schema-predicate-limit 48
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
+node dist/cli.js explain  'path(a, X)' --proof-limit 4 # inspect every bounded proof path
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
 node dist/cli.js query    'employee(X), \+ suspended(X)' # closed-world negation
 node dist/cli.js query    'age(X, A), age(dana, D), A > D + 5' # numeric arithmetic filter
@@ -135,6 +136,15 @@ one bounded widening pass; if completeness still cannot be established, recall r
 `schema_budget_exhausted` instead of inventing “no memory.” Pruning diagnostics are
 returned by the library and MCP surfaces. See
 [the recall schema-pruning contract](docs/RECALL-SCHEMA-PRUNING.md).
+
+Explanations keep the first deterministic witness by default. Pass `--proof-limit <n>`
+(maximum 16) to `explain` or `recall-explain` to request a complete bounded set of
+branch-simple alternative derivations. The same `proofLimit` option is available on the
+MCP explain tools. Additional proofs remain query-scoped, retain ordered source evidence,
+and appear as distinct proof instances in the graph; no graph sidecar or proof index is
+persisted. If more proofs exist than the requested limit, Rembero fails explicitly rather
+than presenting incomplete evidence as complete. See
+[the alternative-proof contract](docs/ALTERNATIVE-PROOFS.md).
 
 `-n <ns>` / `--namespace <ns>` selects the namespace to write to; `--namespaces a,b` or
 `--namespaces '*'` selects which namespaces recall/query/list read from.

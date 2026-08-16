@@ -7,6 +7,7 @@ import {
 } from '../env.js';
 import type { PipelineDeps } from '../llm/pipeline.js';
 import { MAX_RECALL_SCHEMA_PREDICATES } from '../llm/schema.js';
+import { MAX_PROOFS_PER_ROW } from '../engine/index.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT, stringifyBoundedResult } from '../safety.js';
 import {
   assertFactsTool,
@@ -36,6 +37,13 @@ const schemaPredicateLimitField = z
   .max(MAX_RECALL_SCHEMA_PREDICATES)
   .optional()
   .describe('Maximum predicates receiving detailed recall context');
+const proofLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_PROOFS_PER_ROW)
+  .optional()
+  .describe('Total deterministic proof witnesses per result, including the primary witness');
 const boundedText = (description?: string) => {
   const field = z.string().max(MAX_INPUT_BYTES);
   return description ? field.describe(description) : field;
@@ -57,7 +65,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     recallSchemaPredicateLimit:
       deps.recallSchemaPredicateLimit ?? recallSchemaPredicateLimitFromEnv(),
   };
-  const server = new McpServer({ name: 'rembero', version: '0.7.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.8.0' });
 
   server.registerTool(
     'remember',
@@ -109,15 +117,17 @@ export function createServer(deps: PipelineDeps): McpServer {
         question: boundedText(),
         namespaces: namespacesField,
         schemaPredicateLimit: schemaPredicateLimitField,
+        proofLimit: proofLimitField,
       },
     },
-    async ({ question, namespaces, schemaPredicateLimit }) => {
+    async ({ question, namespaces, schemaPredicateLimit, proofLimit }) => {
       try {
         return asContent(
           await recallExplainTool(resolvedDeps, {
             question,
             namespaces,
             schemaPredicateLimit,
+            proofLimit,
           })
         );
       } catch (e) {
@@ -166,11 +176,15 @@ export function createServer(deps: PipelineDeps): McpServer {
       title: 'Explain query',
       description:
         'Run a raw Datalog query and return bindings, deterministic derivation or aggregate proofs, durable memory sources, and a query-scoped knowledge graph.',
-      inputSchema: { query: boundedText(), namespaces: namespacesField },
+      inputSchema: {
+        query: boundedText(),
+        namespaces: namespacesField,
+        proofLimit: proofLimitField,
+      },
     },
-    async ({ query, namespaces }) => {
+    async ({ query, namespaces, proofLimit }) => {
       try {
-        return asContent(explainQueryTool(deps, { query, namespaces }));
+        return asContent(explainQueryTool(deps, { query, namespaces, proofLimit }));
       } catch (e) {
         return asError(e);
       }

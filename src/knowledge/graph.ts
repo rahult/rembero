@@ -20,6 +20,8 @@ import type { MemorySource } from '../store/store.js';
 export interface SourcedDerivationProof extends Omit<DerivationProof, 'because'> {
   because?: SourcedProofStep[];
   sources?: MemorySource[];
+  /** Additional active namespace witnesses, emitted only during alternative-proof inspection. */
+  sourceAlternatives?: MemorySource[];
 }
 
 export type SourcedAbsenceProof = AbsenceProof;
@@ -37,6 +39,8 @@ export type SourcedQueryProof = SourcedProofStep | SourcedAggregateProof;
 export interface ExplainedKnowledgeRow {
   bindings: Record<string, string>;
   proofs: SourcedQueryProof[];
+  /** Additional complete proof vectors, ordered after the unchanged first witness. */
+  alternativeProofs?: SourcedQueryProof[][];
 }
 
 export interface ExplanationRule {
@@ -58,6 +62,7 @@ export interface ClaimGraphNode {
   derived: boolean;
   rule?: number;
   sources?: MemorySource[];
+  sourceAlternatives?: MemorySource[];
 }
 
 export interface EntityGraphNode {
@@ -85,19 +90,32 @@ export interface AggregateGraphNode {
   contributorCount: number;
 }
 
+export interface ProofGraphNode {
+  id: string;
+  kind: 'proof';
+  predicate: string;
+  values: (string | number)[];
+  rule?: number;
+  sources?: MemorySource[];
+  sourceAlternatives?: MemorySource[];
+}
+
 export type ExplanationGraphNode =
   | ResultGraphNode
   | ClaimGraphNode
   | EntityGraphNode
   | AbsenceGraphNode
-  | AggregateGraphNode;
+  | AggregateGraphNode
+  | ProofGraphNode;
 
 export interface ExplanationGraphEdge {
   id: string;
-  kind: 'answers' | 'because' | 'arg' | 'input' | 'witness';
+  kind: 'answers' | 'because' | 'arg' | 'input' | 'witness' | 'proves';
   from: string;
   to: string;
   position?: number;
+  /** One-based index into a row's alternativeProofs; absent for the primary witness. */
+  alternative?: number;
 }
 
 export interface ExplanationGraph {
@@ -132,7 +150,8 @@ function isAggregateProof(
 
 function addSources(
   proof: ProofStep,
-  sourceIndex: Map<string, MemorySource[]>
+  sourceIndex: Map<string, MemorySource[]>,
+  includeOtherSources = false
 ): SourcedProofStep {
   if (isAbsenceProof(proof)) return { ...proof, pattern: [...proof.pattern] };
   const sources = proof.rule === undefined ? sourceIndex.get(proofClauseKey(proof)) : undefined;
@@ -143,18 +162,28 @@ function addSources(
     ...(proof.rule === undefined ? {} : { rule: proof.rule }),
     ...(proof.because === undefined
       ? {}
-      : { because: proof.because.map((child) => addSources(child, sourceIndex)) }),
+      : {
+          because: proof.because.map((child) =>
+            addSources(child, sourceIndex, includeOtherSources)
+          ),
+        }),
     ...(witnessSources === undefined || witnessSources.length === 0
       ? {}
       : { sources: witnessSources }),
+    ...(!includeOtherSources || sources === undefined || sources.length < 2
+      ? {}
+      : { sourceAlternatives: sources.slice(1) }),
   };
 }
 
 function addQuerySources(
   proof: QueryProof,
-  sourceIndex: Map<string, MemorySource[]>
+  sourceIndex: Map<string, MemorySource[]>,
+  includeOtherSources = false
 ): SourcedQueryProof {
-  if (!isAggregateProof(proof)) return addSources(proof, sourceIndex);
+  if (!isAggregateProof(proof)) {
+    return addSources(proof, sourceIndex, includeOtherSources);
+  }
   return {
     aggregated: true,
     op: proof.op,
@@ -163,7 +192,9 @@ function addQuerySources(
     value: proof.value,
     contributors: proof.contributors.map((contributor) => ({
       bindings: bindingStrings(contributor.bindings),
-      proofs: contributor.proofs.map((child) => addSources(child, sourceIndex)),
+      proofs: contributor.proofs.map((child) =>
+        addSources(child, sourceIndex, includeOtherSources)
+      ),
     })),
     ...(proof.witnessPositions === undefined
       ? {}
@@ -220,6 +251,25 @@ function aggregateId(proof: SourcedAggregateProof): string {
   return `aggregate:${proof.op}:${hash.digest('hex')}`;
 }
 
+function proofStructure(proof: SourcedProofStep): unknown {
+  if (isAbsenceProof(proof)) {
+    return ['absence', proof.predicate, proof.pattern, proof.stratum];
+  }
+  return [
+    'claim',
+    proof.predicate,
+    proof.values.map((value) => typedValue(value)),
+    proof.rule ?? null,
+    (proof.because ?? []).map(proofStructure),
+  ];
+}
+
+function proofId(proof: SourcedDerivationProof): string {
+  return `proof:${createHash('sha256')
+    .update(JSON.stringify(proofStructure(proof)))
+    .digest('hex')}`;
+}
+
 function resultId(bindings: Record<string, string>): string {
   return `result:${JSON.stringify(Object.entries(bindings))}`;
 }
@@ -236,20 +286,23 @@ function edge(
   kind: ExplanationGraphEdge['kind'],
   from: string,
   to: string,
-  position?: number
+  position?: number,
+  alternative?: number
 ): ExplanationGraphEdge {
   return {
-    id: `edge:${JSON.stringify([kind, from, to, position ?? null])}`,
+    id: `edge:${JSON.stringify([kind, from, to, position ?? null, alternative ?? null])}`,
     kind,
     from,
     to,
     ...(position === undefined ? {} : { position }),
+    ...(alternative === undefined ? {} : { alternative }),
   };
 }
 
 export function buildExplanationGraph(rows: ExplainedKnowledgeRow[]): ExplanationGraph {
   const nodes = new Map<string, ExplanationGraphNode>();
   const edges = new Map<string, ExplanationGraphEdge>();
+  const expandedProofs = rows.some((row) => (row.alternativeProofs?.length ?? 0) > 0);
 
   const addEdge = (value: ExplanationGraphEdge) => edges.set(value.id, value);
   const addProof = (proof: SourcedProofStep): string => {
@@ -284,6 +337,9 @@ export function buildExplanationGraph(rows: ExplainedKnowledgeRow[]): Explanatio
       derived: proof.rule !== undefined,
       ...(proof.rule === undefined ? {} : { rule: proof.rule }),
       ...(proof.sources === undefined ? {} : { sources: proof.sources }),
+      ...(proof.sourceAlternatives === undefined
+        ? {}
+        : { sourceAlternatives: proof.sourceAlternatives }),
     });
     for (const [position, value] of proof.values.entries()) {
       const target = entityId(value);
@@ -298,6 +354,53 @@ export function buildExplanationGraph(rows: ExplainedKnowledgeRow[]): Explanatio
     for (const [position, child] of (proof.because ?? []).entries()) {
       const target = addProof(child);
       addEdge(edge('because', id, target, position));
+    }
+    return id;
+  };
+
+  const addProofInstance = (proof: SourcedProofStep): string => {
+    if (isAbsenceProof(proof)) return addProof(proof);
+    const claim = claimId(proof);
+    if (!nodes.has(claim)) {
+      nodes.set(claim, {
+        id: claim,
+        kind: 'claim',
+        predicate: proof.predicate,
+        values: proof.values,
+        derived: proof.rule !== undefined,
+        ...(proof.rule === undefined ? {} : { rule: proof.rule }),
+        ...(proof.sources === undefined ? {} : { sources: proof.sources }),
+        ...(proof.sourceAlternatives === undefined
+          ? {}
+          : { sourceAlternatives: proof.sourceAlternatives }),
+      });
+      for (const [position, value] of proof.values.entries()) {
+        const target = entityId(value);
+        nodes.set(target, {
+          id: target,
+          kind: 'entity',
+          value,
+          valueType: typeof value === 'number' ? 'number' : 'atom',
+        });
+        addEdge(edge('arg', claim, target, position));
+      }
+    }
+
+    const id = proofId(proof);
+    nodes.set(id, {
+      id,
+      kind: 'proof',
+      predicate: proof.predicate,
+      values: proof.values,
+      ...(proof.rule === undefined ? {} : { rule: proof.rule }),
+      ...(proof.sources === undefined ? {} : { sources: proof.sources }),
+      ...(proof.sourceAlternatives === undefined
+        ? {}
+        : { sourceAlternatives: proof.sourceAlternatives }),
+    });
+    addEdge(edge('proves', id, claim));
+    for (const [position, child] of (proof.because ?? []).entries()) {
+      addEdge(edge('because', id, addProofInstance(child), position));
     }
     return id;
   };
@@ -340,10 +443,30 @@ export function buildExplanationGraph(rows: ExplainedKnowledgeRow[]): Explanatio
         edge(
           'answers',
           id,
-          isAggregateProof(proof) ? addAggregate(proof) : addProof(proof),
+          isAggregateProof(proof)
+            ? addAggregate(proof)
+            : expandedProofs
+              ? addProofInstance(proof)
+              : addProof(proof),
           position
         )
       );
+    }
+    for (const [alternativeIndex, alternative] of (
+      row.alternativeProofs ?? []
+    ).entries()) {
+      for (const [position, proof] of alternative.entries()) {
+        if (isAggregateProof(proof)) continue;
+        addEdge(
+          edge(
+            'answers',
+            id,
+            addProofInstance(proof),
+            position,
+            alternativeIndex + 1
+          )
+        );
+      }
     }
   }
 
@@ -360,10 +483,25 @@ export function explainKnowledge(
   options: EvaluateOptions = {}
 ): ExplainKnowledgeResult {
   const explained = evaluateQuerySpecWithProof(clauses, parseQuerySpec(query), options);
-  const rows = explained.map(({ bindings, proofs }) => ({
-    bindings: bindingStrings(bindings),
-    proofs: proofs.map((proof) => addQuerySources(proof, sourceIndex)),
-  }));
+  const includeAlternatives = (options.maxProofsPerRow ?? 1) > 1;
+  const rows = explained.map(({ bindings, proofs, alternativeProofs }) => {
+    const serializedBindings = bindingStrings(bindings);
+    const sourcedProofs = proofs.map((proof) =>
+      addQuerySources(proof, sourceIndex, includeAlternatives)
+    );
+    const sourcedAlternatives = alternativeProofs?.map((alternative) =>
+      alternative.map((proof) => addQuerySources(proof, sourceIndex, true))
+    );
+    return {
+      bindings: serializedBindings,
+      proofs: sourcedProofs,
+      ...(sourcedAlternatives === undefined || sourcedAlternatives.length === 0
+        ? {}
+        : {
+            alternativeProofs: sourcedAlternatives,
+          }),
+    };
+  });
   return {
     rows,
     rules: clauses

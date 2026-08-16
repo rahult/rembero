@@ -25,6 +25,12 @@ An explanation contains:
   from the atomic supersession event;
 - a query-scoped hypergraph of results, claims, entities, and support relationships.
 
+Pass a proof limit above one to request bounded alternative derivations. The existing
+`proofs` field remains the first witness; `alternativeProofs` contains additional complete
+proof vectors. Expanded graphs introduce proof-instance nodes and `proves` edges so
+distinct derivations of the same grounded claim do not merge. See
+[the alternative-proof contract](ALTERNATIVE-PROOFS.md).
+
 Successful `\+ literal` goals appear as atomic `absence` nodes. They record the grounded
 pattern and completed lower stratum that was checked, but never claim a stored source or
 enumerate non-matches. A failed negative goal yields no result and therefore no invented
@@ -58,9 +64,10 @@ proof and graph objects.
 ## Deterministic boundary
 
 - Stored facts win over derived copies of the same claim.
-- When several rules, paths, or namespaces prove the same claim, the first witness wins:
-  query-local rule order, requested namespace order, body order, then fact insertion
-  order. Only that witness source is attached to the proof.
+- By default, when several rules, paths, or namespaces prove the same claim, the first
+  witness wins: query-local rule order, requested namespace order, body order, then fact
+  insertion order. Expanded proof inspection preserves that witness and adds bounded,
+  ordered structural alternatives plus other active namespace sources.
 - Comparisons, including bounded arithmetic expressions, filter a proof but do not create
   claim nodes. The positive facts that grounded every arithmetic variable remain in the
   proof, and the canonical rule text retains the exact expression.
@@ -84,6 +91,6 @@ required.
 
 The graph is intentionally query-scoped. Temporal history now builds on this contract by
 keeping `_until` facts in the same portable `.dl` authority and adding temporal fields to
-their existing source objects. A global materialized graph browser, conflict sets, and
-alternative-proof enumeration should preserve the same boundary rather than introduce
-another source of truth.
+their existing source objects. A global materialized graph browser and conflict sets
+should preserve the same boundary rather than introduce another source of truth.
+Alternative-proof enumeration now does so ephemerally in v0.8.

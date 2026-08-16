@@ -120,6 +120,7 @@ export {
   type ExplanationGraphEdge,
   type ExplanationGraphNode,
   type ExplanationRule,
+  type ProofGraphNode,
   type ResultGraphNode,
   type SourcedDerivationProof,
   type SourcedAbsenceProof,

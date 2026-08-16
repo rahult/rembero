@@ -10,7 +10,7 @@ import {
   removeClaudeHook,
 } from './autocapture/hooks.js';
 import { DEFAULT_TRANSCRIPT_TAIL_BYTES } from './autocapture/transcript.js';
-import { serializeClause } from './engine/index.js';
+import { MAX_PROOFS_PER_ROW, serializeClause } from './engine/index.js';
 import {
   loadEnv,
   recallSchemaPredicateLimitFromEnv,
@@ -58,6 +58,7 @@ Options:
       --namespaces <a,b|*> Namespaces to search for recall/query/list/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
+      --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
       --limit <n>          History event limit (maximum: 1000)
       --extension <path>   Path to the compiled Rembero SQLite extension
       --daily-cap <n>      Max auto-capture attempts per namespace/UTC day (default: 10)
@@ -84,6 +85,7 @@ interface ParsedArgs {
   managedBy?: string;
   validTimeMode?: string;
   schemaPredicateLimit?: string;
+  proofLimit?: string;
   limit?: string;
 }
 
@@ -123,6 +125,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--schema-predicate-limit') {
       parsed.schemaPredicateLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--proof-limit') {
+      parsed.proofLimit = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--limit') {
       parsed.limit = valueAfter(i, arg);
@@ -167,6 +172,15 @@ function recallSchemaPredicateLimitOption(value: string | undefined): number {
     throw new Error(
       `recall schema predicate limit must be from 1 to ${MAX_RECALL_SCHEMA_PREDICATES}`
     );
+  }
+  return parsed;
+}
+
+function proofLimitOption(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = integerOption(value, 0, 'proof limit');
+  if (parsed < 1 || parsed > MAX_PROOFS_PER_ROW) {
+    throw new Error(`proof limit must be from 1 to ${MAX_PROOFS_PER_ROW}`);
   }
   return parsed;
 }
@@ -279,6 +293,7 @@ async function main(): Promise<void> {
       return;
     }
     case 'recall-explain': {
+      const proofLimit = proofLimitOption(args.proofLimit);
       const result = await recallQuestion(
         {
           store,
@@ -290,7 +305,10 @@ async function main(): Promise<void> {
         },
         text,
         namespaces,
-        { explain: true }
+        {
+          explain: true,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+        }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
@@ -301,7 +319,15 @@ async function main(): Promise<void> {
       return;
     }
     case 'explain': {
-      const result = explainQueryTool({ store }, { query: text, namespaces });
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const result = explainQueryTool(
+        { store },
+        {
+          query: text,
+          namespaces,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+        }
+      );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }

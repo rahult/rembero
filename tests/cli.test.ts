@@ -97,6 +97,44 @@ describe('CLI ingress limits', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('status: unanswerable');
   });
+
+  it('rejects an invalid proof limit before evaluating an explanation', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-proof-limit-'));
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'explain', 'answer(a)', '--proof-limit', '17'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: join(root, 'home') },
+      }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/proof limit must be from 1 to 16/i);
+  });
+
+  it('prints alternative proof witnesses through the explain command', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-proofs-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'left(a). right(a). answer(X) :- left(X). answer(X) :- right(X).'
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'explain', 'answer(a)', '--proof-limit', '2'],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.rows[0]).toMatchObject({
+      proofs: [expect.objectContaining({ rule: 1 })],
+      alternativeProofs: [[expect.objectContaining({ rule: 2 })]],
+    });
+  });
 });
 
 describe('auto-capture CLI', () => {

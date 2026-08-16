@@ -26,6 +26,10 @@ describe('MCP explanation surfaces', () => {
     });
     store.assert('default', 'employee(alice). employee(bob). suspended(bob).');
     store.assert('default', 'score(alice, 20). score(bob, 14). baseline(team, 10).');
+    store.assert(
+      'default',
+      'left(a). right(a). answer(X) :- left(X). answer(X) :- right(X).'
+    );
     const server = createServer({
       store,
       llm: new ScriptedLlm(['?- pet(rahul, Name).', 'Your cat is Luna.']),
@@ -35,7 +39,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.7.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.8.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining(['explain_query', 'recall_explain', 'history'])
@@ -52,6 +56,22 @@ describe('MCP explanation surfaces', () => {
         predicate: 'pet',
         sources: [{ opId: 'mcp-source' }],
       });
+
+      const alternatives = await client.callTool({
+        name: 'explain_query',
+        arguments: { query: 'answer(a)', proofLimit: 2 },
+      });
+      const alternativesText = alternatives.content.find((item) => item.type === 'text');
+      const alternativesPayload = JSON.parse(
+        alternativesText?.type === 'text' ? alternativesText.text : ''
+      );
+      expect(alternativesPayload.rows[0]).toMatchObject({
+        proofs: [expect.objectContaining({ rule: 1 })],
+        alternativeProofs: [[expect.objectContaining({ rule: 2 })]],
+      });
+      expect(alternativesPayload.graph.nodes).toEqual(
+        expect.arrayContaining([expect.objectContaining({ kind: 'proof' })])
+      );
 
       const negated = await client.callTool({
         name: 'explain_query',

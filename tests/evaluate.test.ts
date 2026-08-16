@@ -15,8 +15,12 @@ import {
   type Clause,
   type Goal,
   type ScalarExpression,
+  DEFAULT_MAX_PROOF_ENUMERATION_STEPS,
+  DEFAULT_MAX_PROOFS_PER_ROW,
   materializeWithProof,
   literalMatches,
+  MAX_PROOF_ENUMERATION_STEPS,
+  MAX_PROOFS_PER_ROW,
 } from '../src/engine/index.js';
 
 /** Render bindings as sorted "X=a Y=b" rows for order-independent assertions. */
@@ -579,9 +583,32 @@ describe('evaluate: scalar query aggregation', () => {
       explainSpec(facts, query, { maxAggregateProofRows: 257 })[0].proofs[0]
     ).toMatchObject({ aggregated: true, value: 257 });
   });
+
+  it('rejects aggregate alternative-proof enumeration explicitly', () => {
+    const query = 'count(*) as Count where item(Item)';
+    expect(runSpec('item(1). item(2).', query, { maxProofsPerRow: 2 })).toEqual([
+      { Count: { type: 'num', value: 2 } },
+    ]);
+    expect(() =>
+      explainSpec('item(1). item(2).', query, { maxProofsPerRow: 2 })
+    ).toThrow(/alternative proofs are relational-only in v0.8/i);
+  });
 });
 
 describe('evaluateWithProof', () => {
+  it('keeps default proof behavior unchanged when alternative enumeration is off', () => {
+    const result = explain('works_at(rahul, acme).', 'works_at(rahul, acme)');
+    expect(result).toEqual([
+      {
+        bindings: {},
+        proofs: [{ predicate: 'works_at', values: ['rahul', 'acme'] }],
+      },
+    ]);
+    expect(result[0]).not.toHaveProperty('alternativeProofs');
+    expect(DEFAULT_MAX_PROOFS_PER_ROW).toBe(1);
+    expect(DEFAULT_MAX_PROOF_ENUMERATION_STEPS).toBe(100_000);
+  });
+
   it('returns a leaf proof for a base fact query', () => {
     expect(explain('works_at(rahul, acme).', 'works_at(rahul, acme)')).toEqual([
       {
@@ -608,6 +635,43 @@ describe('evaluateWithProof', () => {
     ]);
   });
 
+  it('enumerates distinct alternative proofs from multiple matching rules', () => {
+    const db = `
+      direct(a, d).
+      edge(a, b).
+      edge(b, d).
+      reach(X, Y) :- direct(X, Y).
+      reach(X, Y) :- edge(X, Z), edge(Z, Y).
+    `;
+
+    expect(explain(db, 'reach(a, d)', { maxProofsPerRow: 2 })).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'reach',
+            values: ['a', 'd'],
+            rule: 1,
+            because: [{ predicate: 'direct', values: ['a', 'd'] }],
+          },
+        ],
+        alternativeProofs: [
+          [
+            {
+              predicate: 'reach',
+              values: ['a', 'd'],
+              rule: 2,
+              because: [
+                { predicate: 'edge', values: ['a', 'b'] },
+                { predicate: 'edge', values: ['b', 'd'] },
+              ],
+            },
+          ],
+        ],
+      },
+    ]);
+  });
+
   it('returns a joined rule proof', () => {
     const db = `
       works_at(rahul, acme).
@@ -628,6 +692,57 @@ describe('evaluateWithProof', () => {
               { predicate: 'works_at', values: ['maya', 'acme'] },
             ],
           },
+        ],
+      },
+    ]);
+  });
+
+  it('enumerates recursive multi-path witnesses in deterministic order', () => {
+    const db = `
+      edge(a, b).
+      edge(b, d).
+      edge(a, c).
+      edge(c, d).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+
+    expect(explain(db, 'path(a, d)', { maxProofsPerRow: 2 })).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'path',
+            values: ['a', 'd'],
+            rule: 2,
+            because: [
+              { predicate: 'edge', values: ['a', 'b'] },
+              {
+                predicate: 'path',
+                values: ['b', 'd'],
+                rule: 1,
+                because: [{ predicate: 'edge', values: ['b', 'd'] }],
+              },
+            ],
+          },
+        ],
+        alternativeProofs: [
+          [
+            {
+              predicate: 'path',
+              values: ['a', 'd'],
+              rule: 2,
+              because: [
+                { predicate: 'edge', values: ['a', 'c'] },
+                {
+                  predicate: 'path',
+                  values: ['c', 'd'],
+                  rule: 1,
+                  because: [{ predicate: 'edge', values: ['c', 'd'] }],
+                },
+              ],
+            },
+          ],
         ],
       },
     ]);
@@ -717,6 +832,137 @@ describe('evaluateWithProof', () => {
     expect(explain(db, 'pick(a)')[0].proofs[0]).toMatchObject({ rule: 1 });
   });
 
+  it('deduplicates hidden-variable witnesses and identical duplicate-rule proofs structurally', () => {
+    const wildcard = `
+      person(alice).
+      tag(alice, one).
+      tag(alice, two).
+    `;
+    expect(explain(wildcard, 'person(Person), tag(Person, _)', { maxProofsPerRow: 2 })).toEqual([
+      {
+        bindings: { Person: { type: 'atom', value: 'alice' } },
+        proofs: [
+          { predicate: 'person', values: ['alice'] },
+          { predicate: 'tag', values: ['alice', 'one'] },
+        ],
+        alternativeProofs: [
+          [
+            { predicate: 'person', values: ['alice'] },
+            { predicate: 'tag', values: ['alice', 'two'] },
+          ],
+        ],
+      },
+    ]);
+
+    const duplicateRules = `
+      base(a).
+      pick(X) :- base(X).
+      pick(X) :- base(X).
+    `;
+    const duplicate = explain(duplicateRules, 'pick(a)', { maxProofsPerRow: 2 });
+    expect(duplicate).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'pick',
+            values: ['a'],
+            rule: 1,
+            because: [{ predicate: 'base', values: ['a'] }],
+          },
+        ],
+      },
+    ]);
+    expect(duplicate[0]).not.toHaveProperty('alternativeProofs');
+  });
+
+  it('keeps semantically distinct rules even when they have the same supporting facts', () => {
+    const db = `
+      base(a).
+      pick(X) :- base(X), 1 = 1.
+      pick(X) :- base(X), 2 = 2.
+    `;
+
+    const result = explain(db, 'pick(a)', { maxProofsPerRow: 2 });
+    expect(result[0].proofs[0]).toMatchObject({ rule: 1 });
+    expect(result[0].alternativeProofs).toEqual([
+      [expect.objectContaining({ predicate: 'pick', rule: 2 })],
+    ]);
+  });
+
+  it('avoids cyclic self-support while still returning the acyclic witness', () => {
+    const db = `
+      seed(a).
+      loop(X) :- seed(X).
+      loop(X) :- loop(X).
+    `;
+
+    expect(explain(db, 'loop(a)', { maxProofsPerRow: 2 })).toEqual([
+      {
+        bindings: {},
+        proofs: [
+          {
+            predicate: 'loop',
+            values: ['a'],
+            rule: 1,
+            because: [{ predicate: 'seed', values: ['a'] }],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('fails closed when a row has more proofs than the requested cap', () => {
+    const db = `
+      edge(a, b).
+      edge(b, d).
+      edge(a, c).
+      edge(c, d).
+      edge(a, e).
+      edge(e, d).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+
+    expect(() => explain(db, 'path(a, d)', { maxProofsPerRow: 2 })).toThrow(
+      /proof alternatives exceeded maxProofsPerRow 2/i
+    );
+  });
+
+  it('validates alternative-proof options and the exported hard caps', () => {
+    expect(MAX_PROOFS_PER_ROW).toBe(16);
+    expect(MAX_PROOF_ENUMERATION_STEPS).toBe(1_000_000);
+    expect(() => explain('fact(a).', 'fact(a)', { maxProofsPerRow: 0 })).toThrow(
+      /maxProofsPerRow/i
+    );
+    expect(() =>
+      explain('fact(a).', 'fact(a)', { maxProofsPerRow: MAX_PROOFS_PER_ROW + 1 })
+    ).toThrow(/maxProofsPerRow/i);
+    expect(() =>
+      explain('fact(a).', 'fact(a)', { maxProofEnumerationSteps: 0 })
+    ).toThrow(/maxProofEnumerationSteps/i);
+    expect(() =>
+      explain('fact(a).', 'fact(a)', {
+        maxProofEnumerationSteps: MAX_PROOF_ENUMERATION_STEPS + 1,
+      })
+    ).toThrow(/maxProofEnumerationSteps/i);
+  });
+
+  it('fails closed when proof enumeration work exceeds the configured cap', () => {
+    const db = `
+      person(alice).
+      tag(alice, one).
+      tag(alice, two).
+    `;
+
+    expect(() =>
+      explain(db, 'person(Person), tag(Person, _)', {
+        maxProofsPerRow: 2,
+        maxProofEnumerationSteps: 1,
+      })
+    ).toThrow(/proof enumeration exceeded 1 steps/i);
+  });
+
   it('enforces the proof depth cap during serialization', () => {
     const db = `
       edge(a, b).
@@ -727,6 +973,35 @@ describe('evaluateWithProof', () => {
     `;
 
     expect(() => explain(db, 'path(a, d)', { maxProofDepth: 2 })).toThrow(EngineLimitError);
+  });
+
+  it('shares proof depth and node budgets across primary and alternative witnesses', () => {
+    const wildcard = `
+      person(alice).
+      tag(alice, one).
+      tag(alice, two).
+    `;
+    expect(() =>
+      explain(wildcard, 'person(Person), tag(Person, _)', {
+        maxProofsPerRow: 2,
+        maxProofNodes: 3,
+      })
+    ).toThrow(EngineLimitError);
+
+    const recursive = `
+      edge(a, b).
+      edge(b, d).
+      edge(a, c).
+      edge(c, d).
+      path(X, Y) :- edge(X, Y).
+      path(X, Y) :- edge(X, Z), path(Z, Y).
+    `;
+    expect(() =>
+      explain(recursive, 'path(a, d)', {
+        maxProofsPerRow: 2,
+        maxProofDepth: 2,
+      })
+    ).toThrow(EngineLimitError);
   });
 
   it('enforces the proof node cap for a single joined proof', () => {
