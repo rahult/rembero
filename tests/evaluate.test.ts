@@ -17,6 +17,7 @@ import {
   type ScalarExpression,
   DEFAULT_MAX_PROOF_ENUMERATION_STEPS,
   DEFAULT_MAX_PROOFS_PER_ROW,
+  isIntegrityConstraint,
   materializeWithProof,
   literalMatches,
   MAX_PROOF_ENUMERATION_STEPS,
@@ -88,6 +89,26 @@ describe('evaluate: facts and joins', () => {
   it('handles zero-arity predicates', () => {
     expect(run('raining.', 'raining')).toEqual([{}]);
     expect(run('raining.', 'sunny')).toEqual([]);
+  });
+
+  it('ignores integrity constraints during ordinary evaluation and materialization', () => {
+    const program = `
+      employee(alice).
+      employee(bob).
+      age(alice, 30).
+      age(bob, 17).
+      :- employee(X), age(X, A), A < 18, \\+ guardian_present(X).
+    `;
+
+    const clauses = parseProgram(program);
+    expect(clauses.some(isIntegrityConstraint)).toBe(true);
+    expect(rows(evaluate(clauses, parseQuery('employee(X)')))).toEqual(['X=alice', 'X=bob']);
+    expect(materializeWithProof(clauses).map((fact) => fact.predicate)).toEqual([
+      'employee',
+      'employee',
+      'age',
+      'age',
+    ]);
   });
 });
 
@@ -591,11 +612,25 @@ describe('evaluate: scalar query aggregation', () => {
     ]);
     expect(() =>
       explainSpec('item(1). item(2).', query, { maxProofsPerRow: 2 })
-    ).toThrow(/alternative proofs are relational-only in v0.8/i);
+    ).toThrow(/alternative proofs are relational-only/i);
   });
 });
 
 describe('evaluateWithProof', () => {
+  it('keeps rule numbering and witnesses unchanged when integrity constraints are present', () => {
+    const withoutConstraint = `
+      edge(a, b).
+      path(X, Y) :- edge(X, Y).
+    `;
+    const withConstraint = `
+      edge(a, b).
+      :- edge(X, Y), X != Y, \\+ blocked(Y).
+      path(X, Y) :- edge(X, Y).
+    `;
+
+    expect(explain(withConstraint, 'path(a, b)')).toEqual(explain(withoutConstraint, 'path(a, b)'));
+  });
+
   it('keeps default proof behavior unchanged when alternative enumeration is off', () => {
     const result = explain('works_at(rahul, acme).', 'works_at(rahul, acme)');
     expect(result).toEqual([

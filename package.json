@@ -1,7 +1,7 @@
 {
   "name": "rembero",
-  "version": "0.8.0",
-  "description": "Logic-based memory for LLM chats and agents: Datalog facts + rules with deterministic inference, an MCP server, and an LLM natural-language pipeline",
+  "version": "0.9.0",
+  "description": "Logic-based memory for LLM chats and agents: deterministic Datalog facts, rules, integrity constraints, recall, provenance, and MCP",
   "type": "module",
   "bin": {
     "rembero": "dist/cli.js"
@@ -23,6 +23,7 @@
     "docs/TEMPORAL-HISTORY.md",
     "docs/RECALL-SCHEMA-PRUNING.md",
     "docs/ALTERNATIVE-PROOFS.md",
+    "docs/INTEGRITY-CONSTRAINTS.md",
     "docs/MIGRATING-0.2.md",
     "docs/MIGRATING-0.3.md",
     "docs/MIGRATING-0.4.md",
@@ -30,6 +31,7 @@
     "docs/MIGRATING-0.6.md",
     "docs/MIGRATING-0.7.md",
     "docs/MIGRATING-0.8.md",
+    "docs/MIGRATING-0.9.md",
     "README.md",
     "LICENSE"
   ],

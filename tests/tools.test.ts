@@ -7,6 +7,7 @@ import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT } from '../src/safety.js';
 import {
   assertFactsTool,
+  checkIntegrityTool,
   explainQueryTool,
   forgetTool,
   listMemoriesTool,
@@ -151,6 +152,28 @@ describe('MCP tool handlers', () => {
     expect(expanded.graph.nodes.some((node) => node.kind === 'proof')).toBe(true);
   });
 
+  it('check_integrity returns proof-bearing violations without mutating memory', () => {
+    store.assert(
+      'default',
+      'active(mira). suspended(mira). :- active(X), suspended(X).',
+      { opId: 'integrity-input' }
+    );
+    const before = store.load('default');
+
+    const result = checkIntegrityTool(
+      { store },
+      { maxViolations: 10 }
+    );
+
+    expect(result).toMatchObject({
+      status: 'violations',
+      constraintCount: 1,
+      violationCount: 1,
+      checks: [{ rows: [{ bindings: { X: 'mira' } }] }],
+    });
+    expect(store.load('default')).toEqual(before);
+  });
+
   it('recall_explain keeps the answer and adds deterministic evidence', async () => {
     store.assert('default', 'pet(rahul, luna).', {
       opId: 'pet-source',
@@ -213,9 +236,23 @@ describe('MCP tool handlers', () => {
     ]);
   });
 
+  it('list_memories exposes integrity constraints separately from predicates', () => {
+    store.assert('default', 'active(mira). :- active(X), suspended(X).');
+    expect(listMemoriesTool({ store }, {})).toEqual({
+      predicates: [{ predicate: 'active/1', facts: ['active(mira).'] }],
+      constraints: [':- active(X), suspended(X).'],
+    });
+  });
+
   it('list_memories filters by predicate name', () => {
-    store.assert('default', 'f(a). g(b).');
+    store.assert(
+      'default',
+      'f(a). g(b). :- f(X), blocked(X). :- g(X), hidden(X).'
+    );
     const result = listMemoriesTool({ store }, { predicate: 'f' });
-    expect(result.predicates).toEqual([{ predicate: 'f/1', facts: ['f(a).'] }]);
+    expect(result).toEqual({
+      predicates: [{ predicate: 'f/1', facts: ['f(a).'] }],
+      constraints: [':- f(X), blocked(X).'],
+    });
   });
 });

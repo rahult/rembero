@@ -10,6 +10,7 @@ import { MAX_RECALL_SCHEMA_PREDICATES } from '../llm/schema.js';
 import { MAX_PROOFS_PER_ROW } from '../engine/index.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT, stringifyBoundedResult } from '../safety.js';
 import {
+  checkIntegrityTool,
   assertFactsTool,
   explainQueryTool,
   forgetTool,
@@ -21,6 +22,7 @@ import {
   rememberTool,
 } from './tools.js';
 import { MAX_HISTORY_EVENTS } from '../store/store.js';
+import { MAX_INTEGRITY_VIOLATIONS } from '../knowledge/integrity.js';
 
 const namespaceField = z
   .string()
@@ -44,6 +46,13 @@ const proofLimitField = z
   .max(MAX_PROOFS_PER_ROW)
   .optional()
   .describe('Total deterministic proof witnesses per result, including the primary witness');
+const maxViolationsField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_INTEGRITY_VIOLATIONS)
+  .optional()
+  .describe('Maximum complete integrity-violation rows returned across all constraints');
 const boundedText = (description?: string) => {
   const field = z.string().max(MAX_INPUT_BYTES);
   return description ? field.describe(description) : field;
@@ -65,7 +74,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     recallSchemaPredicateLimit:
       deps.recallSchemaPredicateLimit ?? recallSchemaPredicateLimitFromEnv(),
   };
-  const server = new McpServer({ name: 'rembero', version: '0.8.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.9.0' });
 
   server.registerTool(
     'remember',
@@ -141,7 +150,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Assert facts',
       description:
-        "Store raw Datalog clauses directly, no LLM translation. Facts like 'works_at(rahul, acme).' or rules like 'senior(X) :- years(X, Y), Y >= 10 + 5.'. Arithmetic is allowed only in comparison filters.",
+        "Store raw Datalog clauses directly, no LLM translation. Accepts facts like 'works_at(rahul, acme).', rules like 'senior(X) :- years(X, Y), Y >= 10 + 5.', and explicit integrity constraints like ':- active(X), suspended(X).'. Arithmetic is allowed only in comparison filters.",
       inputSchema: { clauses: boundedText(), namespace: namespaceField },
     },
     async ({ clauses, namespace }) => {
@@ -192,6 +201,29 @@ export function createServer(deps: PipelineDeps): McpServer {
   );
 
   server.registerTool(
+    'check_integrity',
+    {
+      title: 'Check knowledge integrity',
+      description:
+        'Evaluate every explicit headless Datalog constraint over the selected current knowledge view. Returns one policy check each; violating rows include deterministic proofs, durable sources, and query-scoped graphs. No LLM is used and no memory is changed.',
+      inputSchema: {
+        namespaces: namespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+      },
+    },
+    async ({ namespaces, proofLimit, maxViolations }) => {
+      try {
+        return asContent(
+          checkIntegrityTool(deps, { namespaces, proofLimit, maxViolations })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
     'forget',
     {
       title: 'Forget',
@@ -233,7 +265,8 @@ export function createServer(deps: PipelineDeps): McpServer {
     'list_memories',
     {
       title: 'List memories',
-      description: 'List stored facts and rules, grouped by predicate, optionally filtered.',
+      description:
+        'List stored facts and rules grouped by predicate, plus explicit integrity constraints when present.',
       inputSchema: {
         namespaces: namespacesField,
         predicate: z.string().optional().describe("Filter: 'name' or 'name/arity'"),

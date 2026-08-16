@@ -1,0 +1,98 @@
+# Deterministic integrity constraints
+
+Rembero 0.9 adds explicit, headless Datalog constraints to the same portable `.dl`
+authority as facts and rules. A constraint is a body with no head:
+
+```prolog
+:- works_at(Person, Left), works_at(Person, Right), Left < Right.
+```
+
+The body describes a forbidden current state. If it has any solution, the knowledge view
+violates the constraint. Rembero never guesses that `works_at/2`, `owner/2`, or any other
+predicate is single-valued; integrity exists only where a user explicitly declares it.
+
+Declare policy through the raw, local surfaces:
+
+```bash
+rembero assert ':- works_at(Person, Left), works_at(Person, Right), Left < Right.'
+rembero check
+```
+
+The equivalent MCP operations are `assert_facts` and `check_integrity`. Natural-language
+`remember` and ambient auto-capture cannot create, modify, or retract constraints.
+
+## Examples
+
+One current employer per person:
+
+```prolog
+:- works_at(Person, Left), works_at(Person, Right), Left < Right.
+```
+
+Mutually exclusive status:
+
+```prolog
+:- status(Person, active), status(Person, terminated).
+```
+
+A required relationship, using closed-world absence explicitly:
+
+```prolog
+:- employee(Person), \+ manager(Person, _).
+```
+
+The ordering comparison in the first example is deliberate: it reports one ordered pair
+instead of the symmetric `(Left, Right)` and `(Right, Left)` duplicates. Constraints use
+the same range-safety rules as queries. Variables in comparisons and negated literals
+must be bound by an earlier positive relation.
+
+## Inspection result
+
+`rembero check` returns JSON with:
+
+- `status`: `unconstrained`, `consistent`, or `violations`;
+- the number of distinct alpha-equivalent constraints checked;
+- the complete violation count within the configured bound;
+- one check per constraint, including its stable content-derived ID, stored clause,
+  equivalent query, declaration sources, violating rows, deterministic proofs, rule
+  table, and query-scoped graph.
+
+`checks` is the complete policy audit, not only the findings list. A satisfied policy has
+one or more `rows`; a clean policy remains visible with an empty `rows` array and empty
+evidence graph.
+
+The command exits `0` for `unconstrained` or `consistent`, and `2` after printing a
+complete `violations` result. Invalid input and bounded failures exit `1`.
+
+Use `--proof-limit <n>` to inspect alternative derivations of a violation and
+`--max-violations <n>` to set the complete-result cap. MCP uses `proofLimit` and
+`maxViolations`. If another proof or violation exists beyond the requested bound,
+inspection fails rather than presenting an incomplete audit as complete.
+
+## Deterministic and temporal boundary
+
+- Constraints are stored, diffed, exported, imported, journaled, sourced, and
+  alpha-deduplicated like other clauses.
+- They never derive facts, affect stratification, change rule numbers, or alter ordinary
+  query and recall results. Checking is an explicit, read-only operation in 0.9.
+- The selected namespace set forms one knowledge view. Constraints from any selected
+  namespace inspect facts from the whole selected union. Requested namespace order still
+  controls deterministic source witnesses; `*` uses sorted namespace order.
+- Store files contain only current clauses. A superseded fact archived as `_until` does
+  not violate a constraint over the base predicate. A policy can inspect history only by
+  naming the `_until` predicate explicitly.
+- Duplicate alpha-equivalent declarations are checked once, while all active declaration
+  sources remain visible.
+- No conflict table, materialized graph, policy sidecar, or probabilistic score is
+  persisted. Reports are deterministic projections from the selected `.dl` files and
+  their append-only provenance journal.
+- Integrity constraints are portable-engine only in 0.9. The experimental SQLite
+  extension rejects headless programs rather than silently ignoring policy.
+
+## v0.9 scope
+
+This release is audit-first. It does not reject writes or repair conflicts automatically.
+That preserves existing mutation behavior while making inconsistent states observable
+and explainable. A later enforcement mode can reuse this exact constraint and evidence
+contract, but must prove atomic pre-commit validation across concurrent writers before it
+can become an authority boundary.

@@ -128,3 +128,13 @@ export {
   type SourcedProofStep,
   type SourcedQueryProof,
 } from './knowledge/graph.js';
+export {
+  checkIntegrity,
+  DEFAULT_MAX_INTEGRITY_VIOLATIONS,
+  MAX_INTEGRITY_CONSTRAINTS,
+  MAX_INTEGRITY_VIOLATIONS,
+  type IntegrityCheckOptions,
+  type IntegrityCheckResult,
+  type IntegrityConstraintCheck,
+  type IntegrityStatus,
+} from './knowledge/integrity.js';

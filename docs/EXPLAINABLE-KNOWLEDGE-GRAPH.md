@@ -91,6 +91,8 @@ required.
 
 The graph is intentionally query-scoped. Temporal history now builds on this contract by
 keeping `_until` facts in the same portable `.dl` authority and adding temporal fields to
-their existing source objects. A global materialized graph browser and conflict sets
-should preserve the same boundary rather than introduce another source of truth.
-Alternative-proof enumeration now does so ephemerally in v0.8.
+their existing source objects. Alternative-proof enumeration does so ephemerally in
+v0.8. Explicit headless integrity constraints reuse the same projection in v0.9: every
+violating row carries its ordinary proof/source graph, grouped beneath the exact policy
+that rejected that state. No conflict graph is persisted globally and ordinary query
+graphs remain unchanged.

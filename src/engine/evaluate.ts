@@ -13,6 +13,7 @@ import {
   MAX_ARITHMETIC_EXPRESSION_NODES,
   isArithmeticExpression,
   isComparison,
+  isIntegrityConstraint,
   isNegation,
   canonicalKey,
   predKey,
@@ -678,12 +679,13 @@ function deriveDatabase(
   collectAlternativeRules = false
 ): DerivedDatabase {
   const { maxFacts = 100_000, maxIterations = 10_000 } = options;
-  for (const clause of clauses) {
+  const ordinaryClauses = clauses.filter((clause) => !isIntegrityConstraint(clause));
+  for (const clause of ordinaryClauses) {
     for (const term of clause.head.args) assertFiniteNumericTerm(term);
     assertGoalsNumericSafety(clause.body);
   }
-  const facts = clauses.filter((c) => c.body.length === 0);
-  const stratified = stratifyProgram(clauses);
+  const facts = ordinaryClauses.filter((c) => c.body.length === 0);
+  const stratified = stratifyProgram(ordinaryClauses);
   const rulesByPredicate = new Map<string, StratifiedRule[]>();
   const ruleIdentity = new Map<number, string>();
   if (collectAlternativeRules) {
@@ -1180,7 +1182,7 @@ export function evaluateQuerySpecWithProof(
   const alternativeOptions = resolveAlternativeProofOptions(options);
   if (query.kind === 'relational') return evaluateWithProof(clauses, query.goals, options);
   if (alternativeOptions.maxProofsPerRow > DEFAULT_MAX_PROOFS_PER_ROW) {
-    throw new EngineSafetyError('alternative proofs are relational-only in v0.8');
+    throw new EngineSafetyError('alternative proofs are relational-only');
   }
   const {
     maxRows = 1000,

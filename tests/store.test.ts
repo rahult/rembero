@@ -50,6 +50,28 @@ describe('MemoryStore.assert', () => {
     expect(arithmeticRenamed.duplicates).toBe(1);
   });
 
+  it('persists and alpha-deduplicates explicit integrity constraints', () => {
+    const first = store.assert(
+      'default',
+      ':- active(Person), suspended(Person).'
+    );
+    const renamed = store.assert(
+      'default',
+      ':- active(User), suspended(User).'
+    );
+
+    expect(first.added.map(serializeClause)).toEqual([
+      ':- active(Person), suspended(Person).',
+    ]);
+    expect(renamed).toMatchObject({ added: [], duplicates: 1 });
+    expect(readFileSync(join(root, 'default.dl'), 'utf8')).toContain(
+      ':- active(Person), suspended(Person).'
+    );
+    expect(new MemoryStore(root).load('default').map(serializeClause)).toEqual([
+      ':- active(Person), suspended(Person).',
+    ]);
+  });
+
   it('rejects invalid namespace names', () => {
     expect(() => store.assert('../evil', 'f(a).')).toThrow(/namespace/i);
     expect(() => store.assert('no spaces', 'f(a).')).toThrow(/namespace/i);
@@ -107,6 +129,18 @@ describe('MemoryStore.retract', () => {
     expect(result.removed).toBe(1);
     expect(store.load('default').map(serializeClause)).not.toContain(
       'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'
+    );
+  });
+
+  it('retracts an alpha-equivalent integrity constraint exactly', () => {
+    store.assert('default', ':- works_at(Person, A), works_at(Person, B), A < B.');
+    const result = store.retract(
+      'default',
+      ':- works_at(User, Left), works_at(User, Right), Left < Right.'
+    );
+    expect(result.removed).toBe(1);
+    expect(store.load('default').map(serializeClause)).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^:- works_at/)]),
     );
   });
 

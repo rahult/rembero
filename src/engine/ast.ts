@@ -48,10 +48,19 @@ export interface Negation {
 
 export type Goal = Literal | Comparison | Negation;
 
-export interface Clause {
+export interface OrdinaryClause {
   head: Literal;
   body: Goal[];
+  integrity?: false;
 }
+
+export interface IntegrityConstraintClause {
+  head: Literal;
+  body: Goal[];
+  integrity: true;
+}
+
+export type Clause = OrdinaryClause | IntegrityConstraintClause;
 
 export type AggregateOperator = 'count' | 'sum' | 'min' | 'max';
 
@@ -84,6 +93,12 @@ export function isArithmeticExpression(
 
 export function isNegation(goal: Goal): goal is Negation {
   return 'not' in goal;
+}
+
+export function isIntegrityConstraint(
+  clause: Clause
+): clause is IntegrityConstraintClause {
+  return clause.integrity === true;
 }
 
 export function predKey(lit: Literal): string {
@@ -168,6 +183,9 @@ export function serializeGoal(goal: Goal): string {
 }
 
 export function serializeClause(clause: Clause): string {
+  if (isIntegrityConstraint(clause)) {
+    return `:- ${clause.body.map(serializeGoal).join(', ')}.`;
+  }
   const head = serializeGoal(clause.head);
   if (clause.body.length === 0) return `${head}.`;
   return `${head} :- ${clause.body.map(serializeGoal).join(', ')}.`;
@@ -220,8 +238,14 @@ export function canonicalKey(clause: Clause): string {
       : isNegation(goal)
         ? { not: { predicate: goal.not.predicate, args: goal.not.args.map(rename) } }
         : { predicate: goal.predicate, args: goal.args.map(rename) };
-  return serializeClause({
-    head: renameGoal(clause.head) as Literal,
-    body: clause.body.map(renameGoal),
-  });
+  return isIntegrityConstraint(clause)
+    ? serializeClause({
+        head: clause.head,
+        body: clause.body.map(renameGoal),
+        integrity: true,
+      })
+    : serializeClause({
+        head: renameGoal(clause.head) as Literal,
+        body: clause.body.map(renameGoal),
+      });
 }

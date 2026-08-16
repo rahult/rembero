@@ -1,4 +1,9 @@
-import { type Clause, predKey, serializeClause } from '../engine/index.js';
+import {
+  type Clause,
+  isIntegrityConstraint,
+  predKey,
+  serializeClause,
+} from '../engine/index.js';
 
 export const NOTHING_SENTINEL = '% nothing';
 export const UNANSWERABLE = 'unanswerable';
@@ -25,8 +30,12 @@ export function serializePromptClause(clause: Clause): string {
 
 /** Predicates with arities and up to 3 sample facts each, plus all rules verbatim. */
 export function buildSchemaSummary(clauses: Clause[]): string {
-  const facts = clauses.filter((c) => c.body.length === 0);
-  const rules = clauses.filter((c) => c.body.length > 0);
+  const facts = clauses.filter(
+    (clause) => clause.body.length === 0 && !isIntegrityConstraint(clause)
+  );
+  const rules = clauses.filter(
+    (clause) => clause.body.length > 0 && !isIntegrityConstraint(clause)
+  );
   if (facts.length === 0 && rules.length === 0) return '% (no memories yet)';
 
   const byPredicate = new Map<string, string[]>();
@@ -62,6 +71,7 @@ Output one clause per line and nothing else — no prose, no code fences.
 - Rule bodies may use comparisons: =, !=, <, >, <=, >=. Numeric comparison operands may use +, -, *, /, unary signs, and parentheses, e.g. more_experienced(X, Y) :- years(X, A), years(Y, B), A > B + 5. Arithmetic is filter-only and must not appear in facts, rule heads, or relation arguments.
 - Closed-world negation is written \\+ pred(...). Use negation only for a general exception stated by the input, never to guess a missing fact.
 - Facts must be ground (no variables). Every variable in a rule head, comparison, or negated literal must be bound by an earlier positive body relation.
+- Headless integrity constraints (lines beginning with :-) are user-authored policy. Never emit, modify, or retract them from natural-language memory text.
 - Prefer several small binary facts over one wide fact. Emit a rule only when the input states a general relationship ("every X who ... is ...").
 - For relations that should never relate a thing to itself (colleague, sibling, neighbor, ...), add an inequality to the rule body: colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
 - Reuse predicates from the existing schema below when they fit; invent new ones only when needed.

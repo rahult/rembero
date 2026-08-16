@@ -11,6 +11,7 @@ import {
   type Term,
   canonicalKey,
   evaluateQuerySpecWithProof,
+  isIntegrityConstraint,
   parseQuerySpec,
   serializeClause,
   serializeTerm,
@@ -505,7 +506,9 @@ export function explainKnowledge(
   return {
     rows,
     rules: clauses
-      .filter((clause) => clause.body.length > 0)
+      .filter(
+        (clause) => clause.body.length > 0 && !isIntegrityConstraint(clause)
+      )
       .map((clause, index) => ({ number: index + 1, clause: serializeClause(clause) })),
     graph: buildExplanationGraph(rows),
   };

@@ -135,6 +135,58 @@ describe('CLI ingress limits', () => {
       alternativeProofs: [[expect.objectContaining({ rule: 2 })]],
     });
   });
+
+  it('checks explicit integrity constraints and exits 2 when violations exist', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-integrity-'));
+    const home = join(root, 'home');
+    const asserted = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'assert',
+        'status(mira, active). status(mira, terminated). :- status(Person, active), status(Person, terminated).',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(asserted.status).toBe(0);
+    expect(JSON.parse(asserted.stdout).added).toHaveLength(3);
+
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'check', '--max-violations', '10'],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'violations',
+      constraintCount: 1,
+      violationCount: 1,
+      checks: [{ rows: [{ bindings: { Person: 'mira' } }] }],
+    });
+  });
+
+  it('returns zero for a consistent constrained knowledge base', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-integrity-clean-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'status(mira, active). :- status(Person, active), status(Person, terminated).'
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'check'],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'consistent',
+      violationCount: 0,
+    });
+  });
 });
 
 describe('auto-capture CLI', () => {

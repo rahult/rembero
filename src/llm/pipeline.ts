@@ -5,6 +5,7 @@ import {
   type QuerySpec,
   evaluateQuerySpec,
   isComparison,
+  isIntegrityConstraint,
   isNegation,
   parseProgram,
   parseQuery,
@@ -206,7 +207,13 @@ export async function rememberText(
       ) {
         throw new Error('each retract line must contain exactly one positive fact pattern');
       }
-      return { clauses: parseProgram(clauseLines.join('\n')), retractions };
+      const clauses = parseProgram(clauseLines.join('\n'));
+      if (clauses.some(isIntegrityConstraint)) {
+        throw new Error(
+          'natural-language memory extraction may not create integrity constraints'
+        );
+      }
+      return { clauses, retractions };
     }
   );
   if (extraction === null) return { added: [], duplicates: 0, retracted: 0 };

@@ -4,6 +4,7 @@ import {
   parseQuery,
   parseQuerySpec,
   canonicalKey,
+  isIntegrityConstraint,
   serializeClause,
   serializeQuerySpec,
   ParseError,
@@ -102,6 +103,18 @@ describe('parseProgram', () => {
     );
   });
 
+  it('parses headless integrity constraints and serializes them canonically', () => {
+    const [constraint] = parseProgram(
+      ':- employee(X), age(X, A), A < 18, \\+ guardian_present(X).'
+    );
+    expect(isIntegrityConstraint(constraint)).toBe(true);
+    expect(constraint.body).toHaveLength(4);
+    expect(serializeClause(constraint)).toBe(
+      ':- employee(X), age(X, A), A < 18, \\+ guardian_present(X).'
+    );
+    expect(parseProgram(serializeClause(constraint))).toEqual([constraint]);
+  });
+
   it('requires negation and comparisons to use earlier positive bindings', () => {
     expect(() => parseProgram('available(X) :- \\+ suspended(X), employee(X).')).toThrow(
       /earlier positive/i
@@ -112,6 +125,18 @@ describe('parseProgram', () => {
     expect(() =>
       parseProgram('ahead(X) :- metric(X, A), A > Missing + 5.')
     ).toThrow(/earlier positive/i);
+  });
+
+  it('applies query-style range restriction to integrity constraints', () => {
+    expect(
+      parseProgram(':- employee(X), age(X, A), A < 18, \\+ suspended(X).')
+    ).toHaveLength(1);
+    expect(() => parseProgram(':- \\+ suspended(X), employee(X).')).toThrow(
+      /earlier positive query relation/i
+    );
+    expect(() => parseProgram(':- employee(X), Missing > 0.')).toThrow(
+      /earlier positive query relation/i
+    );
   });
 
   it('parses bounded arithmetic expressions in comparison filters', () => {
@@ -179,6 +204,16 @@ describe('parseProgram', () => {
     expect(() => parseProgram('p :- \\+ p.')).toThrow(StratificationError);
     expect(() => parseProgram('p :- \\+ q. q :- \\+ p.')).toThrow(StratificationError);
     expect(() => parseProgram('p :- q. q :- \\+ p.')).toThrow(StratificationError);
+  });
+
+  it('ignores integrity constraints during stratification', () => {
+    expect(() =>
+      parseProgram(`
+        p(a).
+        :- p(X), \\+ p(X).
+        q(X) :- p(X).
+      `)
+    ).not.toThrow();
   });
 
   it('rejects missing final period', () => {
@@ -341,5 +376,18 @@ describe('serializeClause', () => {
       'ahead(Person) :- score(Person, Score), baseline(Base), Score > Base + 5.'
     );
     expect(canonicalKey(left)).toBe(canonicalKey(right));
+  });
+
+  it('canonicalizes alpha-equivalent integrity constraints deterministically', () => {
+    const [left] = parseProgram(
+      ':- employee(X), age(X, A), A < 18, \\+ guardian_present(X).'
+    );
+    const [right] = parseProgram(
+      ':- employee(Person), age(Person, Years), Years < 18, \\+ guardian_present(Person).'
+    );
+    expect(canonicalKey(left)).toBe(canonicalKey(right));
+    expect(canonicalKey(left)).toBe(
+      ':- employee(V0), age(V0, V1), V1 < 18, \\+ guardian_present(V0).'
+    );
   });
 });

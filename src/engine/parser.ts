@@ -3,6 +3,7 @@ import {
   type CmpOp,
   type Comparison,
   type Goal,
+  type IntegrityConstraintClause,
   type Literal,
   type ArithmeticOp,
   type AggregateOperator,
@@ -15,6 +16,7 @@ import {
   MAX_ARITHMETIC_EXPRESSION_NODES,
   isArithmeticExpression,
   isComparison,
+  isIntegrityConstraint,
   isNegation,
 } from './ast.js';
 import { ParseError, type Token, tokenize } from './lexer.js';
@@ -255,6 +257,10 @@ function goalVars(goal: Goal): string[] {
 }
 
 function checkClause(clause: Clause, line: number): void {
+  if (isIntegrityConstraint(clause)) {
+    checkQuery(clause.body);
+    return;
+  }
   if (clause.body.length === 0) {
     const vars = goalVars(clause.head);
     if (vars.length > 0 || clause.head.args.some((a) => a.type === 'wildcard')) {
@@ -292,6 +298,14 @@ function checkClause(clause: Clause, line: number): void {
   if (headWild) {
     throw new ParseError('rule heads may not contain wildcards', line);
   }
+}
+
+function makeIntegrityConstraint(body: Goal[]): IntegrityConstraintClause {
+  return {
+    head: { predicate: '$integrity_constraint', args: [] },
+    body,
+    integrity: true,
+  };
 }
 
 function checkQuery(goals: Goal[]): void {
@@ -429,18 +443,24 @@ export function parseProgram(input: string): Clause[] {
   const clauses: Clause[] = [];
   while (ts.peek().kind !== 'eof') {
     const line = ts.peek().line;
-    const head = parseLiteral(ts);
-    const body: Goal[] = [];
+    let clause: Clause;
     if (ts.peek().kind === ':-') {
       ts.next();
-      body.push(parseGoal(ts));
-      while (ts.peek().kind === ',') {
+      clause = makeIntegrityConstraint(parseGoalList(ts));
+    } else {
+      const head = parseLiteral(ts);
+      const body: Goal[] = [];
+      if (ts.peek().kind === ':-') {
         ts.next();
         body.push(parseGoal(ts));
+        while (ts.peek().kind === ',') {
+          ts.next();
+          body.push(parseGoal(ts));
+        }
       }
+      clause = { head, body };
     }
     ts.expect('.');
-    const clause = { head, body };
     checkClause(clause, line);
     clauses.push(clause);
   }

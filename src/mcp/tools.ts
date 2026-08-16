@@ -1,5 +1,8 @@
 import {
   evaluateQuerySpec,
+  isComparison,
+  isIntegrityConstraint,
+  isNegation,
   parseQuerySpec,
   predKey,
   serializeClause,
@@ -14,6 +17,10 @@ import {
 } from '../llm/pipeline.js';
 import type { MemoryHistory, MemoryStore } from '../store/store.js';
 import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
+import {
+  checkIntegrity,
+  type IntegrityCheckResult,
+} from '../knowledge/integrity.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 
 export type LlmToolDeps = PipelineDeps;
@@ -111,6 +118,29 @@ export function explainQueryTool(
   );
 }
 
+export function checkIntegrityTool(
+  deps: StoreToolDeps,
+  args: {
+    namespaces?: string[] | '*';
+    proofLimit?: number;
+    maxViolations?: number;
+  }
+): IntegrityCheckResult {
+  const namespaces = namespacesOrDefault(args.namespaces);
+  return checkIntegrity(
+    deps.store.clausesFor(namespaces),
+    deps.store.sourcesFor(namespaces),
+    {
+      ...(args.proofLimit === undefined
+        ? {}
+        : { maxProofsPerRow: args.proofLimit }),
+      ...(args.maxViolations === undefined
+        ? {}
+        : { maxViolations: args.maxViolations }),
+    }
+  );
+}
+
 export function forgetTool(
   deps: StoreToolDeps,
   args: { pattern: string; namespace?: string }
@@ -140,10 +170,25 @@ export interface PredicateGroup {
 export function listMemoriesTool(
   deps: StoreToolDeps,
   args: { namespaces?: string[] | '*'; predicate?: string }
-): { predicates: PredicateGroup[] } {
+): { predicates: PredicateGroup[]; constraints?: string[] } {
   const clauses = deps.store.clausesFor(namespacesOrDefault(args.namespaces));
   const groups = new Map<string, PredicateGroup>();
+  const constraints: string[] = [];
   for (const clause of clauses) {
+    if (isIntegrityConstraint(clause)) {
+      const matchesFilter =
+        args.predicate === undefined ||
+        clause.body.some((goal) => {
+          if (isComparison(goal)) return false;
+          const literal = isNegation(goal) ? goal.not : goal;
+          return (
+            literal.predicate === args.predicate ||
+            predKey(literal) === args.predicate
+          );
+        });
+      if (matchesFilter) constraints.push(serializeClause(clause));
+      continue;
+    }
     const key = predKey(clause.head);
     if (args.predicate && key !== args.predicate && clause.head.predicate !== args.predicate) {
       continue;
@@ -159,5 +204,8 @@ export function listMemoriesTool(
       (group.rules ??= []).push(serializeClause(clause));
     }
   }
-  return { predicates: [...groups.values()] };
+  return {
+    predicates: [...groups.values()],
+    ...(constraints.length === 0 ? {} : { constraints }),
+  };
 }

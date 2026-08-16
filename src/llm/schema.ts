@@ -3,6 +3,7 @@ import {
   type Goal,
   type Term,
   isComparison,
+  isIntegrityConstraint,
   isNegation,
   predKey,
   serializeClause,
@@ -115,6 +116,7 @@ function boundedInteger(value: number, minimum: number, maximum: number, label: 
 function groupsFor(clauses: Clause[]): Map<string, PredicateGroup> {
   const groups = new Map<string, PredicateGroup>();
   for (const clause of clauses) {
+    if (isIntegrityConstraint(clause)) continue;
     const key = predKey(clause.head);
     let group = groups.get(key);
     if (group === undefined) {

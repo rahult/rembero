@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
-import { serializeClause } from '../src/engine/index.js';
+import { parseProgram, serializeClause } from '../src/engine/index.js';
 import { buildSchemaSummary } from '../src/llm/prompts.js';
 import { rememberText, recallQuestion, retrieveQuestion } from '../src/llm/pipeline.js';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
@@ -47,6 +47,16 @@ describe('buildSchemaSummary', () => {
   it('says so when there are no memories yet', () => {
     expect(buildSchemaSummary([])).toContain('no memories yet');
   });
+
+  it('keeps integrity policy out of the LLM-facing recall schema', () => {
+    const summary = buildSchemaSummary(
+      parseProgram('active(mira). :- active(X), suspended(X).')
+    );
+    expect(summary).toContain('active/1');
+    expect(summary).not.toContain('integrity');
+    expect(summary).not.toContain('suspended');
+    expect(summary).not.toContain(':-');
+  });
 });
 
 describe('rememberText', () => {
@@ -85,6 +95,17 @@ describe('rememberText', () => {
   it('throws after a second failure, surfacing the error', async () => {
     const llm = new ScriptedLlm(['nonsense((', 'still nonsense((']);
     await expect(rememberText({ store, llm }, 'gibberish')).rejects.toThrow(/pars|expected/i);
+    expect(store.load('default')).toEqual([]);
+  });
+
+  it('never lets natural-language extraction create integrity policy', async () => {
+    const llm = new ScriptedLlm([
+      ':- active(X), suspended(X).',
+      ':- active(X), terminated(X).',
+    ]);
+    await expect(
+      rememberText({ store, llm }, 'Make sure active users are not suspended')
+    ).rejects.toThrow(/may not create integrity constraints/i);
     expect(store.load('default')).toEqual([]);
   });
 

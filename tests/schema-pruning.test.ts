@@ -17,6 +17,23 @@ function distractors(count: number): string {
 }
 
 describe('deterministic recall schema pruning', () => {
+  it('does not advertise integrity policy as recallable memory schema', () => {
+    const clauses = parseProgram(`
+      active(mira).
+      :- active(Person), suspended(Person).
+    `);
+
+    const selection = selectRecallSchema(clauses, 'Who is active?', {
+      predicateLimit: 8,
+    });
+
+    expect(selection.totalPredicates).toBe(1);
+    expect(selection.selectedPredicates).toEqual(['active/1']);
+    expect(selection.summary).not.toContain('integrity');
+    expect(selection.summary).not.toContain('suspended');
+    expect(selection.summary).not.toContain(':-');
+  });
+
   it('keeps the relevant predicate and question-matching sample under 100+ distractors', () => {
     const clauses = parseProgram(`${distractors(120)}
       works_at(alice, northwind).

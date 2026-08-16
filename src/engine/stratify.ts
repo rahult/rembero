@@ -1,6 +1,7 @@
 import {
   type Clause,
   isComparison,
+  isIntegrityConstraint,
   isNegation,
   predKey,
 } from './ast.js';
@@ -41,6 +42,7 @@ export function stratifyProgram(clauses: Clause[]): StratifiedProgram {
 
   let ruleNumber = 0;
   for (const clause of clauses) {
+    if (isIntegrityConstraint(clause)) continue;
     const head = predKey(clause.head);
     predicates.add(head);
     if (clause.body.length === 0) continue;

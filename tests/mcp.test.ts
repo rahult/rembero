@@ -25,6 +25,9 @@ describe('MCP explanation surfaces', () => {
       sourceText: 'My cat is called Luna.',
     });
     store.assert('default', 'employee(alice). employee(bob). suspended(bob).');
+    store.assert('default', ':- employee(X), suspended(X).', {
+      opId: 'mcp-integrity-policy',
+    });
     store.assert('default', 'score(alice, 20). score(bob, 14). baseline(team, 10).');
     store.assert(
       'default',
@@ -39,10 +42,15 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.8.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.9.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
-        expect.arrayContaining(['explain_query', 'recall_explain', 'history'])
+        expect.arrayContaining([
+          'explain_query',
+          'recall_explain',
+          'check_integrity',
+          'history',
+        ])
       );
 
       const explained = await client.callTool({
@@ -72,6 +80,26 @@ describe('MCP explanation surfaces', () => {
       expect(alternativesPayload.graph.nodes).toEqual(
         expect.arrayContaining([expect.objectContaining({ kind: 'proof' })])
       );
+
+      const integrity = await client.callTool({
+        name: 'check_integrity',
+        arguments: { maxViolations: 10 },
+      });
+      const integrityText = integrity.content.find((item) => item.type === 'text');
+      const integrityPayload = JSON.parse(
+        integrityText?.type === 'text' ? integrityText.text : ''
+      );
+      expect(integrityPayload).toMatchObject({
+        status: 'violations',
+        constraintCount: 1,
+        violationCount: 1,
+        checks: [
+          {
+            sources: [{ opId: 'mcp-integrity-policy' }],
+            rows: [{ bindings: { X: 'bob' } }],
+          },
+        ],
+      });
 
       const negated = await client.callTool({
         name: 'explain_query',

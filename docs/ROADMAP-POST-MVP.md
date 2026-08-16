@@ -1,4 +1,4 @@
-# Rembero post-MVP roadmap (v0.8 →)
+# Rembero post-MVP roadmap (v0.9 →)
 
 MVP shipped: public repo, CI, GitHub release v0.1.0, npm package ready (publish pending
 auth). What follows is ordered by user value per unit of effort — each phase is
@@ -89,6 +89,20 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    nodes and `proves` edges so two derivations of one grounded claim remain distinct
    without materializing a second graph store.
 
+## Phase 12 — Knowledge integrity  *(v0.9)*
+
+1. **Complete — explicit headless constraints**: portable programs can declare forbidden
+   states as `:- goals.` without guessing functional or mutually exclusive semantics from
+   predicate names. Constraints are range-restricted, alpha-deduplicated, journaled, and
+   inert during ordinary evaluation, stratification, recall, and rule numbering.
+2. **Complete — deterministic integrity inspection**: library `checkIntegrity`, CLI
+   `check`, and MCP `check_integrity` evaluate the selected current namespace union and
+   return complete bounded violation rows with proofs, durable sources, and query-scoped
+   graphs. Archived facts participate only when a policy names `_until` explicitly.
+3. **Complete — policy trust boundary**: raw local Datalog can declare constraints, while
+   natural-language remember and ambient capture are forbidden from creating policy.
+   v0.9 is read-only audit; atomic reject-on-write enforcement remains a later milestone.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
@@ -115,7 +129,8 @@ is the foundation for conflict views, temporal history, and alternative proof in
 without replacing the readable personal knowledge base with a second graph store.
 
 The next reasoning milestone remains an evidence-driven index pass once benchmarks show
-relation scans becoming material. Retrieval context and alternative evidence are now
-bounded independently of knowledge-base growth while the finite, proof-carrying rule
-language remains the deterministic authority. Conflict sets still require an explicit
-integrity-constraint vocabulary rather than inferred single-value semantics.
+relation scans becoming material. Retrieval context, alternative evidence, and explicit
+integrity audits are bounded independently of knowledge-base growth while the finite,
+proof-carrying rule language remains the deterministic authority. Reject-on-write
+enforcement must prove atomic pre-commit validation across concurrent writers before it
+can become an authority boundary.

@@ -19,8 +19,17 @@ import {
 import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
 import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { MAX_RECALL_SCHEMA_PREDICATES } from './llm/schema.js';
+import { MAX_INTEGRITY_VIOLATIONS } from './knowledge/integrity.js';
 import { serveStdio } from './mcp/server.js';
-import { explainQueryTool, forgetTool, historyTool, listMemoriesTool, queryTool } from './mcp/tools.js';
+import {
+  checkIntegrityTool,
+  assertFactsTool,
+  explainQueryTool,
+  forgetTool,
+  historyTool,
+  listMemoriesTool,
+  queryTool,
+} from './mcp/tools.js';
 import { MAX_HISTORY_EVENTS, MemoryStore, type ValidTimeMode } from './store/store.js';
 import {
   MAX_INPUT_BYTES,
@@ -39,7 +48,9 @@ Usage:
   rembero recall <question>              Answer a question from memory
   rembero recall-explain <question>      Recall with proofs, sources, and a graph
   rembero query <datalog>                Run a raw Datalog query
+  rembero assert <datalog>               Store raw Datalog facts, rules, or constraints
   rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
+  rembero check                          Check explicit integrity constraints with evidence
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero list                           List stored memories
@@ -55,10 +66,11 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/list/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/check/list/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
+      --max-violations <n> Maximum integrity violations (default: 1000; max: ${MAX_INTEGRITY_VIOLATIONS})
       --limit <n>          History event limit (maximum: 1000)
       --extension <path>   Path to the compiled Rembero SQLite extension
       --daily-cap <n>      Max auto-capture attempts per namespace/UTC day (default: 10)
@@ -86,6 +98,7 @@ interface ParsedArgs {
   validTimeMode?: string;
   schemaPredicateLimit?: string;
   proofLimit?: string;
+  maxViolations?: string;
   limit?: string;
 }
 
@@ -128,6 +141,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--proof-limit') {
       parsed.proofLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--max-violations') {
+      parsed.maxViolations = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--limit') {
       parsed.limit = valueAfter(i, arg);
@@ -181,6 +197,17 @@ function proofLimitOption(value: string | undefined): number | undefined {
   const parsed = integerOption(value, 0, 'proof limit');
   if (parsed < 1 || parsed > MAX_PROOFS_PER_ROW) {
     throw new Error(`proof limit must be from 1 to ${MAX_PROOFS_PER_ROW}`);
+  }
+  return parsed;
+}
+
+function maxViolationsOption(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = integerOption(value, 0, 'maximum integrity violations');
+  if (parsed < 1 || parsed > MAX_INTEGRITY_VIOLATIONS) {
+    throw new Error(
+      `maximum integrity violations must be from 1 to ${MAX_INTEGRITY_VIOLATIONS}`
+    );
   }
   return parsed;
 }
@@ -318,6 +345,14 @@ async function main(): Promise<void> {
       console.log(stringifyBoundedResult(result.bindings, 'CLI result'));
       return;
     }
+    case 'assert': {
+      const result = assertFactsTool(
+        { store },
+        { clauses: text, namespace: args.namespace }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
     case 'explain': {
       const proofLimit = proofLimitOption(args.proofLimit);
       const result = explainQueryTool(
@@ -329,6 +364,21 @@ async function main(): Promise<void> {
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'check': {
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const maxViolations = maxViolationsOption(args.maxViolations);
+      const result = checkIntegrityTool(
+        { store },
+        {
+          namespaces,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(maxViolations === undefined ? {} : { maxViolations }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      if (result.status === 'violations') process.exitCode = 2;
       return;
     }
     case 'forget': {
