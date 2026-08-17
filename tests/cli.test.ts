@@ -568,6 +568,45 @@ describe('CLI ingress limits', () => {
     ]);
   });
 
+  it('audits rule hazards with an operational warning exit code', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-rule-audit-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'employee(bob). eligible(X) :- employee(X), \\+ blocked(X).',
+      { opId: 'baseline' }
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'audit-rules', 'eligible', '--direction', 'upstream'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'review',
+      warningCount: 1,
+      findings: [
+        {
+          severity: 'warning',
+          code: 'open_negated_input',
+          predicateKeys: ['blocked/1'],
+        },
+      ],
+      topology: { selection: { focus: 'eligible/1', direction: 'upstream' } },
+      graph: {
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ kind: 'finding', code: 'open_negated_input' }),
+        ]),
+      },
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

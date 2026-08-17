@@ -34,6 +34,7 @@ import {
   topologyTool,
   recordedDiffTool,
   repairPlanTool,
+  auditRulesTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -332,7 +333,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.27.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.28.0' });
 
   server.registerTool(
     'remember',
@@ -843,6 +844,46 @@ export function createServer(deps: PipelineDeps): McpServer {
             maxDiagnosticDepth,
             maxCandidatesPerFailure,
             maxEvidenceFacts,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'audit_rules',
+    {
+      title: 'Audit deterministic rule health',
+      description:
+        'Audit the selected current or recorded rule program for undefined closed-world negation, policy inputs without definitions, inert recursion, open positive inputs, inactive derived predicates, alpha-equivalent duplicates, and predicate arity overload. Findings link to an evidence topology graph; no LLM or mutation is used.',
+      inputSchema: {
+        namespaces: namespacesField,
+        focus: topologyFocusField,
+        direction: topologyDirectionField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({
+      namespaces,
+      focus,
+      direction,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+    }) => {
+      try {
+        return asContent(
+          auditRulesTool(resolvedDeps, {
+            namespaces,
+            focus,
+            direction,
+            entityIdentity,
+            trustMode,
+            recordedSequence,
           })
         );
       } catch (e) {

@@ -46,7 +46,7 @@ The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `que
 `check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
 `supersede_facts`, `what-if`, `what_if`, `why-not`, `why_not`, `topology`,
 `knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
-`plan_query_repair`, `forget`, `list_memories`)
+`plan_query_repair`, `audit-rules`, `audit_rules`, `forget`, `list_memories`)
 work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
 
@@ -73,7 +73,8 @@ Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
-`plan_query_repair`, `checkpoint_journal`, `list_checkpoints`, and `list_memories`.
+`plan_query_repair`, `audit_rules`, `checkpoint_journal`, `list_checkpoints`, and
+`list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -153,6 +154,7 @@ node dist/cli.js why-not  'colleague(mira, rahul)' # missing premises + nearby e
 node dist/cli.js topology 'colleague' --direction upstream # rule dependency closure
 node dist/cli.js diff 17 23 --query 'status(mira, State)' # semantic + consequence diff
 node dist/cli.js repair 'eligible(bob)' # minimal verified assumptions/retractions
+node dist/cli.js audit-rules 'eligible' --direction upstream # proactive rule health
 node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete support
 node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
@@ -259,6 +261,12 @@ the query against each candidate, removes redundant edits, and reports both stri
 no-new-violations policy safety. It never writes a proposed fact and returns a digest of
 the exact baseline used for verification. See
 [the repair-planning contract](docs/REPAIR-PLANNING.md).
+
+Version 0.28 audits rule health before a query fails. `audit-rules` reports undefined
+closed-world negation, policy inputs without definitions, inert recursion, open positive
+inputs, currently inactive derivations, alpha-equivalent duplicates, and arity overload.
+Warnings exit `2`; informational findings remain successful. Every finding links into the
+selected topology graph. See [the deterministic rule-audit contract](docs/RULE-AUDIT.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

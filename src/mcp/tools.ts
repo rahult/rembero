@@ -56,6 +56,10 @@ import {
   planKnowledgeRepair,
   type RepairPlanResult,
 } from '../knowledge/repair.js';
+import {
+  auditKnowledgeRules,
+  type RuleAuditResult,
+} from '../knowledge/rule-audit.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -706,6 +710,37 @@ export function repairPlanTool(
       ? {}
       : { maxSearchStates: args.maxSearchStates }),
   });
+}
+
+export function auditRulesTool(
+  deps: StoreToolDeps,
+  args: {
+    namespaces?: string[] | '*';
+    focus?: string;
+    direction?: TopologyDirection;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+  }
+): RuleAuditResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  if (args.focus !== undefined) assertBoundedInput(args.focus, 'rule audit focus');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = auditKnowledgeRules(recorded.clauses, recorded.sources, {
+    ...(args.focus === undefined ? {} : { focus: args.focus }),
+    ...(args.direction === undefined ? {} : { direction: args.direction }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
+  });
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
 }
 
 export function forgetTool(

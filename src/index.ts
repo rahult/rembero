@@ -247,6 +247,20 @@ export {
   type RepairPlanResult,
 } from './knowledge/repair.js';
 export {
+  auditKnowledgeRules,
+  MAX_RULE_AUDIT_FINDINGS,
+  type RuleAuditSeverity,
+  type RuleAuditStatus,
+  type RuleAuditCode,
+  type RuleAuditFinding,
+  type RuleAuditFindingNode,
+  type RuleAuditGraphNode,
+  type RuleAuditGraphEdge,
+  type RuleAuditGraph,
+  type AuditKnowledgeRulesOptions,
+  type RuleAuditResult,
+} from './knowledge/rule-audit.js';
+export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,
   MAX_TENTATIVE_CLAUSE_BYTES,

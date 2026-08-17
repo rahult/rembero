@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.27.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.28.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -62,6 +62,7 @@ describe('MCP explanation surfaces', () => {
           'knowledge_topology',
           'diff_recorded_knowledge',
           'plan_query_repair',
+          'audit_rules',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -175,6 +176,19 @@ describe('MCP explanation surfaces', () => {
         ]),
       });
       expect(repairsPayload.plans).toHaveLength(2);
+
+      const audit = await client.callTool({
+        name: 'audit_rules',
+        arguments: { focus: 'answer', direction: 'upstream' },
+      });
+      const auditText = audit.content.find((item) => item.type === 'text');
+      expect(JSON.parse(auditText?.type === 'text' ? auditText.text : '')).toMatchObject({
+        status: 'clean',
+        warningCount: 0,
+        infoCount: 0,
+        findings: [],
+        topology: { selection: { focus: 'answer/1', direction: 'upstream' } },
+      });
 
       const asserted = await client.callTool({
         name: 'assert_facts',

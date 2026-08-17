@@ -18,6 +18,9 @@ The library exposes `analyzeKnowledgeTopology(clauses, sources, options)`. MCP e
 `knowledge_topology`. All paths are local, read-only, and deterministic; no LLM or graph
 sidecar is involved.
 
+Version 0.28 layers `audit-rules` / `audit_rules` over this graph, adding stable finding
+nodes and evidence links while keeping topology itself descriptive rather than normative.
+
 ## Graph contract
 
 Predicate nodes report:

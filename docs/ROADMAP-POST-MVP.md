@@ -324,6 +324,19 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    trust views, namespaces, hypothetical provenance, packaged installs, and fail-closed
    plan/depth/state/output bounds share one non-mutating contract.
 
+## Phase 31 — Deterministic rule health audit  *(v0.28)*
+
+1. **Complete — evidence-only finding taxonomy**: undefined negated inputs, policy
+   dependencies without definitions, and currently unseeded recursion are warnings;
+   open positive inputs, inactive derivations, duplicate semantic rules, and arity
+   overload remain informational rather than being mislabeled as invalid programs.
+2. **Complete — topology and productivity evidence**: each finding has stable identity,
+   exact related predicate/rule/policy nodes, current materialized counts, and `flags`
+   edges over the non-persistent topology graph.
+3. **Complete — operational interface parity**: current/recorded and focused library,
+   CLI, MCP, identity, trust, namespace, package, evaluator/topology/output limits, and a
+   warning-only CLI exit `2` share one deterministic audit contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

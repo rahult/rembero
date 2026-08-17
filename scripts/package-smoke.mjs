@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "if (materialize(parseProgram('base(a). derived(X) :- base(X).')).filter((fact) => fact.derived).length !== 1) throw new Error('public proof-free materialization API failed'); " +
@@ -58,6 +58,8 @@ try {
         "if (whyNot.status !== 'blocked' || whyNot.failures[0]?.rules[0]?.failures[0]?.reason !== 'missing_fact') throw new Error('public why-not API failed'); " +
         "const topology = analyzeKnowledgeTopology(parseProgram('employee(alice). eligible(X) :- employee(X), badge(X).')); " +
         "if (topology.ruleCount !== 1 || topology.openInputs[0] !== 'badge/1' || !topology.graph.edges.some((edge) => edge.kind === 'defines')) throw new Error('public topology API failed'); " +
+        "const ruleAudit = auditKnowledgeRules(parseProgram('employee(alice). eligible(X) :- employee(X), badge(X).')); " +
+        "if (ruleAudit.status !== 'advisory' || !ruleAudit.findings.some((finding) => finding.code === 'open_positive_input')) throw new Error('public rule audit API failed'); " +
         "const repairStore = new MemoryStore('./repair-memory'); repairStore.assert('default', 'employee(bob). eligible(X) :- employee(X), badge(X).'); " +
         "const repair = planKnowledgeRepair(repairStore, 'eligible(bob)'); " +
         "if (repair.plans[0]?.assume[0] !== 'badge(bob).' || repairStore.clausesFor(['default']).length !== 2) throw new Error('public repair planning API failed'); " +
@@ -309,6 +311,18 @@ try {
     repairOutput.plans?.[0]?.assume?.[0] !== 'badge(bob).'
   ) {
     throw new Error('packaged verified repair planning failed');
+  }
+  const repairAudit = JSON.parse(
+    run(process.execPath, [installedCli, 'audit-rules'], {
+      cwd: directory,
+      env: repairEnv,
+    })
+  );
+  if (
+    repairAudit.status !== 'advisory' ||
+    !repairAudit.findings?.some(({ code }) => code === 'open_positive_input')
+  ) {
+    throw new Error('packaged deterministic rule audit failed');
   }
   const extensionPath = run(process.execPath, [installedCli, 'sqlite-build'], {
     cwd: directory,
@@ -616,7 +630,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

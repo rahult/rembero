@@ -70,6 +70,7 @@ import {
   topologyTool,
   recordedDiffTool,
   repairPlanTool,
+  auditRulesTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -111,6 +112,7 @@ Usage:
   rembero topology [predicate]           Map rules, policies, strata, and influence
   rembero diff <from> <to>               Compare two exact recorded knowledge states
   rembero repair <query>                 Propose minimal verified fact-only query repairs
+  rembero audit-rules [predicate]        Audit rule health with deterministic evidence
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -128,7 +130,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/audit-rules/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -628,6 +630,7 @@ async function main(): Promise<void> {
       'topology',
       'diff',
       'repair',
+      'audit-rules',
       'list',
     ].includes(command ?? '')
   ) {
@@ -653,8 +656,12 @@ async function main(): Promise<void> {
   ) {
     throw new Error('why-not diagnostic limits are available only for why-not');
   }
-  if (args.direction !== undefined && command !== 'topology') {
-    throw new Error('--direction is available only for topology');
+  if (
+    args.direction !== undefined &&
+    command !== 'topology' &&
+    command !== 'audit-rules'
+  ) {
+    throw new Error('--direction is available only for topology or audit-rules');
   }
   if (args.queryText !== undefined && command !== 'diff') {
     throw new Error('--query is available only for diff');
@@ -680,10 +687,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1066,6 +1073,26 @@ async function main(): Promise<void> {
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'audit-rules': {
+      const result = auditRulesTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          namespaces,
+          ...(text.length === 0 ? {} : { focus: text }),
+          ...(args.direction === undefined
+            ? {}
+            : { direction: topologyDirectionOption(args.direction) }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      if (result.warningCount > 0) process.exitCode = 2;
       return;
     }
     case 'check': {

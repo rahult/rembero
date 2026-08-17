@@ -29,6 +29,7 @@ import {
   topologyTool,
   recordedDiffTool,
   repairPlanTool,
+  auditRulesTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -608,6 +609,39 @@ describe('MCP tool handlers', () => {
       ],
     });
     expect(store.clausesFor(['default'])).toHaveLength(2);
+  });
+
+  it('audits current and recorded rule health through the tool boundary', () => {
+    store.assert(
+      'default',
+      'employee(bob). eligible(X) :- employee(X), \\+ blocked(X).',
+      { opId: 'audit-before' }
+    );
+    store.assert('default', 'blocked(bob).', { opId: 'audit-after' });
+
+    expect(auditRulesTool({ store }, {})).toMatchObject({
+      status: 'advisory',
+      warningCount: 0,
+      findings: [
+        expect.objectContaining({
+          code: 'inactive_derived_predicate',
+          predicateKeys: ['eligible/1'],
+        }),
+      ],
+    });
+    expect(
+      auditRulesTool({ store }, { recordedSequence: 1 })
+    ).toMatchObject({
+      status: 'review',
+      warningCount: 1,
+      findings: [
+        expect.objectContaining({
+          code: 'open_negated_input',
+          predicateKeys: ['blocked/1'],
+        }),
+      ],
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
   });
 
   it('query and explain read deterministic recorded snapshots with past sources', () => {
