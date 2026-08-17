@@ -109,3 +109,9 @@ knowledge-base growth.
 Lexical ranking is intentionally the v0.7 baseline. Embedding-assisted ranking remains a
 future option only if the checked-in scale eval demonstrates a meaningful recall gap that
 justifies its privacy and reproducibility cost.
+
+Version 0.19 adds a separate bounded safeguard after a query returns rows. High-confidence
+same-anchor predicate competition or omitted named temporal context triggers one review;
+ordinary grounded answers remain one-call. This does not change schema selection or the
+honest-negative widening rules above. See
+[the non-empty recall disambiguation contract](RECALL-DISAMBIGUATION.md).

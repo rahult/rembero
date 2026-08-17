@@ -54,6 +54,8 @@ export {
   type PipelineDeps,
   type RecallOptions,
   type RecallPruningReport,
+  type RecallQueryReview,
+  type RecallQueryReviewReason,
   type RecallResult,
   type RecallSchemaAttempt,
   type RecallSchemaAttemptOutcome,

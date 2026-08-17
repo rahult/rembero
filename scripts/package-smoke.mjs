@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, parseProgram, parseQuery, parseQuerySpec, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, parseProgram, parseQuery, parseQuerySpec, retrieveQuestion, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -53,6 +53,10 @@ try {
         "if (integrity.status !== 'violations' || integrity.violationCount !== 1) throw new Error('public integrity API failed'); " +
         "const conflicts = inspectConflicts(parseProgram('active(mira). suspended(mira). :- active(Person), suspended(Person).'), new Map(), { focus: 'mira' }); " +
         "if (conflicts.clusterCount !== 1 || conflicts.clusters[0]?.focus !== 'mira' || !conflicts.clusters[0]?.graph.nodes.some((node) => node.kind === 'conflict')) throw new Error('public conflict view API failed'); " +
+        "const reviewStore = new MemoryStore('./review-memory'); reviewStore.assert('default', 'uses_language(atlas, rust). project_owner(atlas, rahul).'); " +
+        "const reviewLlm = { responses: ['?- uses_language(atlas, Value).', '?- project_owner(atlas, Owner).'], async complete() { const value = this.responses.shift(); if (value === undefined) throw new Error('review responses exhausted'); return value; } }; " +
+        "const review = await retrieveQuestion({ store: reviewStore, llm: reviewLlm }, 'Who owns Atlas?'); " +
+        "if (review.query !== 'project_owner(atlas, Owner)' || review.bindings[0]?.Owner !== 'rahul' || review.queryReviews?.[0]?.outcome !== 'corrected') throw new Error('public recall disambiguation API failed'); " +
         "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed'); " +
         "const identity = canonicalizeKnowledge(parseProgram(\"rembero_alias('Mira Patel', mira). rembero_entity_position(works_at, 2, 0). works_at('Mira Patel', acme).\")); " +
         "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed'); " +
@@ -374,7 +378,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

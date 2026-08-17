@@ -382,6 +382,162 @@ describe('recallQuestion', () => {
     expect(llm.calls[0][0].content).toContain('schema examples as syntax evidence only');
   });
 
+  it('corrects a semantically wrong non-empty predicate before accepting its rows', async () => {
+    const confusable = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-disambiguation-'))
+    );
+    confusable.assert(
+      'default',
+      'uses_language(atlas, rust). project_owner(atlas, rahul).'
+    );
+    const llm = new ScriptedLlm([
+      '?- uses_language(atlas, Value).',
+      '?- project_owner(atlas, Owner).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: confusable, llm },
+      'Who owns Atlas?'
+    );
+
+    expect(result).toEqual({
+      status: 'answered',
+      query: 'project_owner(atlas, Owner)',
+      bindings: [{ Owner: 'rahul' }],
+      queryReviews: [
+        {
+          originalQuery: 'uses_language(atlas, Value)',
+          reviewedQuery: 'project_owner(atlas, Owner)',
+          reasons: ['competing_predicate'],
+          competingPredicates: ['project_owner/2'],
+          outcome: 'corrected',
+        },
+      ],
+    });
+    expect(llm.calls).toHaveLength(2);
+    expect(llm.calls[1].at(-1)?.content).toContain('Returned-row sample');
+    expect(llm.calls[1].at(-1)?.content).toContain('rust');
+    expect(llm.calls[1].at(-1)?.content).toContain('project_owner/2');
+  });
+
+  it('corrects the inverse owner-versus-language non-empty confusion', async () => {
+    const confusable = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-language-disambiguation-'))
+    );
+    confusable.assert(
+      'default',
+      'uses_language(atlas, rust). project_owner(atlas, rahul).'
+    );
+    const llm = new ScriptedLlm([
+      '?- project_owner(atlas, Value).',
+      '?- uses_language(atlas, Language).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: confusable, llm },
+      'What language does Atlas use?'
+    );
+
+    expect(result.query).toBe('uses_language(atlas, Language)');
+    expect(result.bindings).toEqual([{ Language: 'rust' }]);
+    expect(result.queryReviews?.[0]).toMatchObject({
+      originalQuery: 'project_owner(atlas, Value)',
+      reviewedQuery: 'uses_language(atlas, Language)',
+      competingPredicates: ['uses_language/2'],
+      outcome: 'corrected',
+    });
+  });
+
+  it('keeps the one-call path for a semantically grounded non-empty query', async () => {
+    const confusable = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-safe-answer-'))
+    );
+    confusable.assert(
+      'default',
+      'uses_language(atlas, rust). project_owner(atlas, rahul).'
+    );
+    const llm = new ScriptedLlm(['?- project_owner(atlas, Owner).']);
+
+    const result = await retrieveQuestion(
+      { store: confusable, llm },
+      'Who owns the Atlas project?'
+    );
+
+    expect(result).toEqual({
+      status: 'answered',
+      query: 'project_owner(atlas, Owner)',
+      bindings: [{ Owner: 'rahul' }],
+    });
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it('records when the bounded review confirms an ambiguous query unchanged', async () => {
+    const confusable = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-review-repeat-'))
+    );
+    confusable.assert(
+      'default',
+      'lives_in(mira, sydney). works_at(mira, acme).'
+    );
+    const llm = new ScriptedLlm([
+      '?- works_at(mira, Company).',
+      '?- works_at(mira, Company).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: confusable, llm },
+      'Who employs Mira?'
+    );
+
+    expect(result.bindings).toEqual([{ Company: 'acme' }]);
+    expect(result.queryReviews).toEqual([
+      {
+        originalQuery: 'works_at(mira, Company)',
+        reviewedQuery: 'works_at(mira, Company)',
+        reasons: ['competing_predicate'],
+        competingPredicates: ['lives_in/2'],
+        outcome: 'repeated',
+      },
+    ]);
+    expect(llm.calls).toHaveLength(2);
+  });
+
+  it('bounds non-empty review rows and competing predicate names', async () => {
+    const bounded = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-review-bounds-'))
+    );
+    bounded.assert(
+      'default',
+      `alpha_relation(atlas, one).
+       beta_relation(atlas, two).
+       delta_relation(atlas, three).
+       echo_relation(atlas, four).
+       foxtrot_relation(atlas, five).
+       zzz_relation(atlas, first).
+       zzz_relation(atlas, second).
+       zzz_relation(atlas, third).
+       zzz_relation(atlas, fourth).
+       zzz_relation(atlas, fifth).`
+    );
+    const llm = new ScriptedLlm([
+      '?- zzz_relation(atlas, Value).',
+      '?- zzz_relation(atlas, Value).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: bounded, llm },
+      'Tell me about Atlas'
+    );
+
+    expect(result.queryReviews?.[0]?.competingPredicates).toHaveLength(4);
+    const reviewPrompt = llm.calls[1].at(-1)?.content ?? '';
+    expect(reviewPrompt).toContain('first');
+    expect(reviewPrompt).toContain('second');
+    expect(reviewPrompt).toContain('third');
+    expect(reviewPrompt).not.toContain('fourth');
+    expect(reviewPrompt).not.toContain('fifth');
+  });
+
   it('uses the grounded query prompt by default', async () => {
     const llm = new ScriptedLlm(['?- works_at(rahul, Company).']);
     await retrieveQuestion({ store, llm }, 'Where does Rahul work?');
@@ -754,6 +910,176 @@ describe('recallQuestion', () => {
     expect(llm.calls[0][0].content).toContain(
       'works_at(mira, initech), works_at_until(mira, Company, Until)'
     );
+  });
+
+  it('reviews a non-empty historical query that omits the named later state', async () => {
+    const temporal = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-temporal-review-'))
+    );
+    temporal.assert(
+      'default',
+      "works_at(mira, initech). works_at_until(mira, acme, '2026-08-16T16:59:00.000Z')."
+    );
+    const llm = new ScriptedLlm([
+      '?- works_at_until(mira, Company, Until).',
+      '?- works_at(mira, initech), works_at_until(mira, Company, Until).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: temporal, llm },
+      'Where did Mira work before Initech?'
+    );
+
+    expect(result.query).toBe(
+      'works_at(mira, initech), works_at_until(mira, Company, Until)'
+    );
+    expect(result.bindings).toEqual([
+      { Company: 'acme', Until: "'2026-08-16T16:59:00.000Z'" },
+    ]);
+    expect(result.queryReviews).toEqual([
+      {
+        originalQuery: 'works_at_until(mira, Company, Until)',
+        reviewedQuery:
+          'works_at(mira, initech), works_at_until(mira, Company, Until)',
+        reasons: ['missing_temporal_context'],
+        competingPredicates: ['works_at/2'],
+        outcome: 'corrected',
+      },
+    ]);
+  });
+
+  it('does not let a review unanswerable decision bypass full-schema widening', async () => {
+    const scaled = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-review-widen-'))
+    );
+    const noise = Array.from(
+      { length: 40 },
+      (_, index) => `noise_${String(index).padStart(3, '0')}(subject_${index}, value_${index}).`
+    ).join('\n');
+    scaled.assert(
+      'default',
+      `${noise}\nuses_language(atlas, rust). project_owner(atlas, rahul).`
+    );
+    const llm = new ScriptedLlm([
+      '?- project_owner(atlas, Value).',
+      '?- unanswerable.',
+      '?- uses_language(atlas, Language).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: scaled, llm, recallSchemaPredicateLimit: 2 },
+      'What language does Atlas use?'
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query: 'uses_language(atlas, Language)',
+      bindings: [{ Language: 'rust' }],
+      queryReviews: [
+        {
+          originalQuery: 'project_owner(atlas, Value)',
+          reviewedQuery: null,
+          outcome: 'unanswerable',
+        },
+      ],
+      pruning: {
+        schemaComplete: true,
+        attempts: [
+          expect.objectContaining({ outcome: 'unanswerable' }),
+          expect.objectContaining({ outcome: 'answered' }),
+        ],
+      },
+    });
+    expect(llm.calls).toHaveLength(3);
+  });
+
+  it('fails closed before exporting a sensitive non-empty row sample for review', async () => {
+    const sensitive = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-review-sensitive-'))
+    );
+    sensitive.assert(
+      'default',
+      `uses_language(atlas, sk_secretvalue1).
+       uses_language(atlas, alpha).
+       uses_language(atlas, beta).
+       uses_language(atlas, gamma).
+       project_owner(atlas, rahul).`
+    );
+    const llm = new ScriptedLlm(['?- uses_language(atlas, Value).']);
+
+    await expect(
+      retrieveQuestion({ store: sensitive, llm }, 'Who owns Atlas?')
+    ).rejects.toThrow(/sensitive query review evidence/i);
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it('reviews the canonical executed query rather than the raw alias query', async () => {
+    const identity = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-review-identity-'))
+    );
+    identity.assert(
+      'default',
+      `rembero_alias('Atlas Project', atlas).
+       rembero_entity_position(uses_language, 2, 0).
+       rembero_entity_position(project_owner, 2, 0).
+       uses_language('Atlas Project', rust).
+       project_owner('Atlas Project', rahul).`
+    );
+    const llm = new ScriptedLlm([
+      "?- uses_language('Atlas Project', Value).",
+      "?- project_owner('Atlas Project', Owner).",
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: identity, llm },
+      'Who owns the Atlas Project?',
+      ['default'],
+      { entityIdentity: 'canonical' }
+    );
+
+    expect(result.query).toBe('project_owner(atlas, Owner)');
+    expect(result.bindings).toEqual([{ Owner: 'rahul' }]);
+    expect(result.queryReviews?.[0]).toMatchObject({
+      originalQuery: 'uses_language(atlas, Value)',
+      reviewedQuery: 'project_owner(atlas, Owner)',
+      outcome: 'corrected',
+    });
+  });
+
+  it('uses the selected recorded snapshot for disambiguation and evaluation', async () => {
+    const recorded = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-review-recorded-'))
+    );
+    recorded.assert(
+      'default',
+      'uses_language(atlas, rust). project_owner(atlas, rahul).',
+      { opId: 'baseline' }
+    );
+    recorded.supersede(
+      'default',
+      ['project_owner(atlas, _)'],
+      'project_owner(atlas, mira).',
+      { opId: 'later' }
+    );
+    const llm = new ScriptedLlm([
+      '?- uses_language(atlas, Value).',
+      '?- project_owner(atlas, Owner).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: recorded, llm },
+      'Who owns Atlas?',
+      ['default'],
+      { recordedSequence: 1 }
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query: 'project_owner(atlas, Owner)',
+      bindings: [{ Owner: 'rahul' }],
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+      queryReviews: [{ outcome: 'corrected' }],
+    });
   });
 
   it('retries an aggregate the question did not explicitly request', async () => {

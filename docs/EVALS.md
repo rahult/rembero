@@ -28,6 +28,10 @@ The v0.7 corpus adds 100 unrelated predicate families to the real memory program
 every labeled case exercises the same bounded schema-selection path used by a scaled
 personal knowledge base.
 
+Version 0.19 adds four confusable non-empty cases where the wrong related predicate also
+returns plausible rows: owner versus implementation language and home versus workplace.
+These cases exercise the bounded query-review path as well as final evidence scoring.
+
 ## Metrics
 
 - **Accuracy**: percentage of cases with the correct query/unanswerable decision and an
@@ -50,9 +54,9 @@ facts are held out from the sample facts included in the model-visible schema su
 
 ## Last live comparison
 
-Measured on 2026-08-17 AEST (2026-08-16 UTC) with `openai/gpt-5.6-luna`. The current
-v0.7 grounded prompt passed all 20 labeled cases among 100 distractor predicates without
-schema-budget exhaustion:
+Measured on 2026-08-17 AEST (2026-08-16 UTC) with `openai/gpt-5.6-luna`. The pre-v0.19
+grounded prompt passed all 20 then-current labeled cases among 100 distractor predicates
+without schema-budget exhaustion. This checkpoint predates the four new confusable cases:
 
 | Corpus | Prompt | Accuracy | Precision | Recall | F1 | Answerability | Budget exhausted |
 |---|---|---:|---:|---:|---:|---:|---:|

@@ -216,6 +216,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    edges combine cross-policy rows, declaration sources, fact proofs, rules, and existing
    selectable graph support without persisting conflict or repair state.
 
+## Phase 22 — Non-empty recall disambiguation  *(v0.19)*
+
+1. **Complete — deterministic ambiguity trigger**: a non-empty query receives one review
+   only when its executed predicate has a stronger same-arity, same-anchor competitor or
+   a named-state temporal question omits the matching current predicate.
+2. **Complete — bounded and honest correction**: the review sees at most three rows and
+   four predicate keys, passes external-LLM safety checks, reuses query validation, and
+   cannot bypass full-schema widening or manufacture a non-empty result.
+3. **Complete — inspectable interface and regressions**: library, CLI, and MCP recall
+   expose stable `queryReviews`; canonical identity, recorded snapshots, temporal queries,
+   sensitive evidence, and confusable non-empty eval cases have explicit coverage.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

@@ -181,6 +181,13 @@ stable cluster IDs, and selectable evidence graphs. Canonical aliases and exact 
 snapshots use the existing opt-in contracts; no conflict store or inferred subject schema
 is added. See [the conflict-view contract](docs/CONFLICT-VIEWS.md).
 
+Version 0.19 no longer treats every non-empty natural-language query as semantically
+correct. When deterministic local evidence finds a same-ground-anchor predicate
+competitor or a historical query missing its named later state, recall performs one
+bounded review before accepting the rows. The response records repeat, correction, or
+unanswerable decisions in `queryReviews`; ordinary grounded recalls keep the one-call path. See
+[the recall disambiguation contract](docs/RECALL-DISAMBIGUATION.md).
+
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
 complete selected namespaces. Empty or unanswerable results from a partial slice trigger

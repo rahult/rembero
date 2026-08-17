@@ -55,6 +55,11 @@ describe('recall eval corpus', () => {
       'Where does Rahul work?'
     );
     expect(RECALL_EVAL_DISTRACTOR_COUNT).toBeGreaterThanOrEqual(100);
+    expect(
+      RECALL_EVAL_CASES.filter((test) =>
+        test.tags.includes('confusable-nonempty')
+      )
+    ).toHaveLength(4);
     expect(selection.pruned).toBe(true);
     expect(selection.selectedPredicates).toContain('works_at/2');
     for (const heldOut of [

@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.18.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.19.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -495,6 +495,56 @@ describe('MCP explanation surfaces', () => {
             focus: 'mira',
             graphSelection: { selector: { kind: 'result', row: 1 } },
             rows: [{ bindings: { Person: 'mira' } }],
+          },
+        ],
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('returns inspectable non-empty query reviews over the real recall protocol', async () => {
+    const store = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-mcp-recall-review-'))
+    );
+    store.assert(
+      'default',
+      'uses_language(atlas, rust). project_owner(atlas, rahul).'
+    );
+    const server = createServer({
+      store,
+      llm: new ScriptedLlm([
+        '?- uses_language(atlas, Value).',
+        '?- project_owner(atlas, Owner).',
+        'Rahul owns Atlas.',
+      ]),
+    });
+    const client = new Client({ name: 'rembero-recall-review-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const response = await client.callTool({
+        name: 'recall',
+        arguments: { question: 'Who owns Atlas?' },
+      });
+      const responseText = response.content.find((item) => item.type === 'text');
+      const payload = JSON.parse(
+        responseText?.type === 'text' ? responseText.text : ''
+      );
+      expect(payload).toMatchObject({
+        status: 'answered',
+        answer: 'Rahul owns Atlas.',
+        query: 'project_owner(atlas, Owner)',
+        bindings: [{ Owner: 'rahul' }],
+        queryReviews: [
+          {
+            originalQuery: 'uses_language(atlas, Value)',
+            reviewedQuery: 'project_owner(atlas, Owner)',
+            reasons: ['competing_predicate'],
+            competingPredicates: ['project_owner/2'],
+            outcome: 'corrected',
           },
         ],
       });

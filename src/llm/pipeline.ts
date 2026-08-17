@@ -2,7 +2,9 @@ import {
   type Bindings,
   type Clause,
   type Goal,
+  type Literal,
   type QuerySpec,
+  type Term,
   evaluateQuerySpec,
   isComparison,
   isIntegrityConstraint,
@@ -36,6 +38,7 @@ import {
   NOTHING_SENTINEL,
   PHRASING_SYSTEM_PROMPT,
   UNANSWERABLE,
+  answeredQueryReviewPrompt,
   buildSchemaSummary,
   extractionSystemPrompt,
   phrasingUserPrompt,
@@ -101,6 +104,7 @@ export interface RecallResult {
   query: string | null;
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
+  queryReviews?: RecallQueryReview[];
   pruning?: RecallPruningReport;
   recordedSnapshot?: RecordedSnapshotMetadata;
 }
@@ -110,8 +114,21 @@ export interface RetrievalResult {
   query: string | null;
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
+  queryReviews?: RecallQueryReview[];
   pruning?: RecallPruningReport;
   recordedSnapshot?: RecordedSnapshotMetadata;
+}
+
+export type RecallQueryReviewReason =
+  | 'competing_predicate'
+  | 'missing_temporal_context';
+
+export interface RecallQueryReview {
+  originalQuery: string;
+  reviewedQuery: string | null;
+  reasons: RecallQueryReviewReason[];
+  competingPredicates: string[];
+  outcome: 'repeated' | 'corrected' | 'unanswerable';
 }
 
 export type RecallSchemaAttemptOutcome = 'answered' | 'empty' | 'unanswerable';
@@ -466,6 +483,208 @@ function validateQuerySpec(
 
 const UNANSWERABLE_RE = new RegExp(`^(\\?-)?\\s*${UNANSWERABLE}\\s*\\.?$`);
 
+const MAX_QUERY_REVIEW_ROWS = 3;
+const MAX_QUERY_REVIEW_COMPETITORS = 4;
+const NAMED_LATER_STATE = /\b(?:before|prior\s+to)\b/i;
+
+interface AnsweredQueryAmbiguity {
+  reasons: RecallQueryReviewReason[];
+  competingPredicates: string[];
+}
+
+function positiveLiterals(query: QuerySpec): Literal[] {
+  return query.goals.filter(
+    (goal): goal is Literal => !isComparison(goal) && !isNegation(goal)
+  );
+}
+
+function sameGroundTerm(left: Term, right: Term): boolean {
+  return (
+    (left.type === 'atom' && right.type === 'atom' && left.value === right.value) ||
+    (left.type === 'num' && right.type === 'num' && left.value === right.value)
+  );
+}
+
+function literalAnchors(literal: Literal, arity = literal.args.length): Array<{
+  position: number;
+  term: Extract<Term, { type: 'atom' | 'num' }>;
+}> {
+  return literal.args
+    .slice(0, arity)
+    .map((term, position) => ({ term, position }))
+    .filter(
+      (entry): entry is {
+        position: number;
+        term: Extract<Term, { type: 'atom' | 'num' }>;
+      } => entry.term.type === 'atom' || entry.term.type === 'num'
+    );
+}
+
+function factMatchesAnchors(
+  clause: Clause,
+  anchors: ReadonlyArray<{ position: number; term: Term }>
+): boolean {
+  return anchors.every(({ position, term }) =>
+    sameGroundTerm(clause.head.args[position], term)
+  );
+}
+
+function factsByPredicate(clauses: Clause[]): ReadonlyMap<string, Clause[]> {
+  const facts = new Map<string, Clause[]>();
+  for (const clause of clauses) {
+    if (isIntegrityConstraint(clause) || clause.body.length > 0) continue;
+    const key = `${clause.head.predicate}/${clause.head.args.length}`;
+    const grouped = facts.get(key) ?? [];
+    grouped.push(clause);
+    facts.set(key, grouped);
+  }
+  return facts;
+}
+
+function predicateWordOverlap(predicate: string, questionWords: ReadonlySet<string>): number {
+  return new Set(
+    recallWords(predicate).filter((word) => questionWords.has(word))
+  ).size;
+}
+
+function predicateParts(key: string): { predicate: string; arity: number } | undefined {
+  const match = key.match(/^(.*)\/(\d+)$/);
+  return match === null
+    ? undefined
+    : { predicate: match[1], arity: Number(match[2]) };
+}
+
+function directCompetitors(
+  query: QuerySpec,
+  selection: RecallSchemaSelection,
+  facts: ReadonlyMap<string, Clause[]>,
+  questionWords: ReadonlySet<string>
+): string[] {
+  const ordered = [...selection.availablePredicates];
+  const rank = new Map(ordered.map((key, index) => [key, index]));
+  const used = new Set(
+    positiveLiterals(query).map(
+      (literal) => `${literal.predicate}/${literal.args.length}`
+    )
+  );
+  const competitors = new Set<string>();
+
+  for (const literal of positiveLiterals(query)) {
+    const chosenKey = `${literal.predicate}/${literal.args.length}`;
+    const chosenRank = rank.get(chosenKey);
+    const chosenOverlap = predicateWordOverlap(literal.predicate, questionWords);
+    const anchors = literalAnchors(literal);
+    if (chosenRank === undefined || chosenOverlap !== 0 || anchors.length === 0) continue;
+
+    for (const candidateKey of ordered) {
+      if (used.has(candidateKey)) continue;
+      const candidate = predicateParts(candidateKey);
+      if (candidate === undefined || candidate.arity !== literal.args.length) continue;
+      const candidateRank = rank.get(candidateKey)!;
+      const candidateOverlap = predicateWordOverlap(candidate.predicate, questionWords);
+      if (candidateOverlap <= chosenOverlap && candidateRank >= chosenRank) continue;
+      if (
+        (facts.get(candidateKey) ?? []).some((clause) =>
+          factMatchesAnchors(clause, anchors)
+        )
+      ) {
+        competitors.add(candidateKey);
+      }
+    }
+  }
+
+  return [...competitors].sort(
+    (left, right) => (rank.get(left) ?? Number.MAX_SAFE_INTEGER) -
+      (rank.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right)
+  );
+}
+
+function temporalCompetitors(
+  query: QuerySpec,
+  selection: RecallSchemaSelection,
+  facts: ReadonlyMap<string, Clause[]>,
+  question: string,
+  questionWords: ReadonlySet<string>
+): string[] {
+  if (!NAMED_LATER_STATE.test(question)) return [];
+  const literals = positiveLiterals(query);
+  const usedPredicates = new Set(literals.map((literal) => literal.predicate));
+  const competitors = new Set<string>();
+
+  for (const historical of literals) {
+    if (!historical.predicate.endsWith('_until') || historical.args.length < 2) continue;
+    const basePredicate = historical.predicate.slice(0, -'_until'.length);
+    const baseArity = historical.args.length - 1;
+    const baseKey = `${basePredicate}/${baseArity}`;
+    if (
+      usedPredicates.has(basePredicate) ||
+      !selection.availablePredicates.has(baseKey)
+    ) {
+      continue;
+    }
+    const anchors = literalAnchors(historical, baseArity);
+    const anchorPositions = new Set(anchors.map(({ position }) => position));
+    const namesCurrentState = (facts.get(baseKey) ?? []).some((clause) => {
+      if (!factMatchesAnchors(clause, anchors)) return false;
+      return clause.head.args.some((term, position) => {
+        if (anchorPositions.has(position)) return false;
+        const value = term.type === 'atom'
+          ? term.value
+          : term.type === 'num'
+            ? String(term.value)
+            : '';
+        return recallWords(value).some((word) => questionWords.has(word));
+      });
+    });
+    if (namesCurrentState) competitors.add(baseKey);
+  }
+
+  return [...competitors].sort();
+}
+
+function answeredQueryAmbiguity(
+  query: QuerySpec,
+  selection: RecallSchemaSelection,
+  clauses: Clause[],
+  question: string
+): AnsweredQueryAmbiguity | undefined {
+  const questionWords = new Set(recallWords(question));
+  const literals = positiveLiterals(query);
+  const mayHaveDirectCompetitor = literals.some(
+    (literal) =>
+      literalAnchors(literal).length > 0 &&
+      predicateWordOverlap(literal.predicate, questionWords) === 0
+  );
+  const mayNeedTemporalContext =
+    NAMED_LATER_STATE.test(question) &&
+    literals.some((literal) => literal.predicate.endsWith('_until'));
+  if (!mayHaveDirectCompetitor && !mayNeedTemporalContext) return undefined;
+  const facts = factsByPredicate(clauses);
+  const direct = mayHaveDirectCompetitor
+    ? directCompetitors(query, selection, facts, questionWords)
+    : [];
+  const temporal = mayNeedTemporalContext
+    ? temporalCompetitors(
+        query,
+        selection,
+        facts,
+        question,
+        questionWords
+      )
+    : [];
+  const reasons: RecallQueryReviewReason[] = [];
+  if (direct.length > 0) reasons.push('competing_predicate');
+  if (temporal.length > 0) reasons.push('missing_temporal_context');
+  if (reasons.length === 0) return undefined;
+  return {
+    reasons,
+    competingPredicates: [...new Set([...direct, ...temporal])].slice(
+      0,
+      MAX_QUERY_REVIEW_COMPETITORS
+    ),
+  };
+}
+
 export async function retrieveQuestion(
   deps: PipelineDeps,
   question: string,
@@ -536,6 +755,7 @@ export async function retrieveQuestion(
     query: string | null;
     bindings: Record<string, string>[];
     explanation?: ExplainKnowledgeResult;
+    queryReview?: RecallQueryReview;
   }
 
   const runPass = async (selection: RecallSchemaSelection): Promise<PassResult> => {
@@ -597,7 +817,56 @@ export async function retrieveQuestion(
     }
     let queryText = serializeQuerySpec(query);
     let result = evaluate(query, queryText);
-    if (result.outcome === 'answered') return result;
+    if (result.outcome === 'answered') {
+      const ambiguity = answeredQueryAmbiguity(
+        query,
+        selection,
+        clauses,
+        question
+      );
+      if (ambiguity === undefined) return result;
+
+      const originalQuery = queryText;
+      const reviewPrompt = answeredQueryReviewPrompt(
+        question,
+        originalQuery,
+        result.bindings.slice(0, MAX_QUERY_REVIEW_ROWS),
+        ambiguity.reasons,
+        ambiguity.competingPredicates
+      );
+      assertSafeForExternalLlm(reviewPrompt, 'query review evidence');
+      const reviewMessages: ChatMessage[] = [
+        ...messages,
+        { role: 'assistant', content: `?- ${originalQuery}.` },
+        { role: 'user', content: reviewPrompt },
+      ];
+      query = await completeWithRetry(deps.llm, reviewMessages, validateResponse);
+      if (query === null) {
+        return {
+          outcome: 'unanswerable',
+          query: null,
+          bindings: [],
+          queryReview: {
+            originalQuery,
+            reviewedQuery: null,
+            reasons: ambiguity.reasons,
+            competingPredicates: ambiguity.competingPredicates,
+            outcome: 'unanswerable',
+          },
+        };
+      }
+      queryText = serializeQuerySpec(query);
+      const queryReview: RecallQueryReview = {
+        originalQuery,
+        reviewedQuery: queryText,
+        reasons: ambiguity.reasons,
+        competingPredicates: ambiguity.competingPredicates,
+        outcome: queryText === originalQuery ? 'repeated' : 'corrected',
+      };
+      if (queryReview.outcome === 'repeated') return { ...result, queryReview };
+      result = evaluate(query, queryText);
+      return { ...result, queryReview };
+    }
 
     const fallbackMessages: ChatMessage[] = [
       ...messages,
@@ -617,8 +886,10 @@ export async function retrieveQuestion(
   };
 
   const attempts: RecallSchemaAttempt[] = [];
+  const queryReviews: RecallQueryReview[] = [];
   let finalSelection = initialSelection;
   let pass = await runPass(finalSelection);
+  if (pass.queryReview !== undefined) queryReviews.push(pass.queryReview);
   const recordAttempt = () => {
     attempts.push({
       detailedPredicates: finalSelection.selectedPredicates.length,
@@ -643,6 +914,7 @@ export async function retrieveQuestion(
         ...(schemaByteLimit === undefined ? {} : { byteLimit: schemaByteLimit }),
       });
       pass = await runPass(finalSelection);
+      if (pass.queryReview !== undefined) queryReviews.push(pass.queryReview);
       recordAttempt();
     } catch (error) {
       if (!(error instanceof RecallSchemaBudgetError)) {
@@ -663,15 +935,23 @@ export async function retrieveQuestion(
         },
       }
     : {};
-  const { outcome, ...retrieval } = pass;
+  const { outcome, queryReview: _queryReview, ...retrieval } = pass;
+  const reviewResult = queryReviews.length === 0 ? {} : { queryReviews };
   const snapshotResult = recordedSnapshot === undefined ? {} : { recordedSnapshot };
   if (pass.outcome === 'answered') {
-    return { status: 'answered', ...retrieval, ...pruning, ...snapshotResult };
+    return {
+      status: 'answered',
+      ...retrieval,
+      ...reviewResult,
+      ...pruning,
+      ...snapshotResult,
+    };
   }
   if (!finalSelection.schemaComplete) {
     return {
       status: 'schema_budget_exhausted',
       ...retrieval,
+      ...reviewResult,
       ...pruning,
       ...snapshotResult,
     };
@@ -679,6 +959,7 @@ export async function retrieveQuestion(
   return {
     status: outcome === 'empty' ? 'no_match' : 'unanswerable',
     ...retrieval,
+    ...reviewResult,
     ...pruning,
     ...snapshotResult,
   };
