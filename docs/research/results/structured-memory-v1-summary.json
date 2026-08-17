@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "rembero.memory-stack.summary.v1",
+  "measuredAt": "2026-08-18T00:00:00+10:00",
+  "suite": {
+    "id": "rembero-structured-memory",
+    "version": "1.0.0",
+    "digest": "2a483f29d0123bea651a8f4a7eec0a7b5193e58667474b5e96bbe8319c131524",
+    "cases": 7,
+    "questions": 8
+  },
+  "method": {
+    "mode": "deterministic structured-memory conformance",
+    "timingStatus": "diagnostic-only",
+    "repetitions": 1,
+    "answerRows": "typed cells; cell order significant; row order ignored",
+    "retrieval": "gold event recall at each question's published top-k",
+    "citations": "exact source-event identifiers found in deterministic proofs",
+    "notes": [
+      "The suite evaluates downstream structured memory after question interpretation.",
+      "It does not measure natural-language extraction or answer generation.",
+      "Retrieval-only adapters are not assigned answer accuracy.",
+      "No external vendor stack was executed in this snapshot."
+    ]
+  },
+  "runs": [
+    {
+      "adapter": "rembero-engine",
+      "answerCoverage": 1,
+      "answerAccuracy": 1,
+      "answerPrecision": 1,
+      "answerRecall": 1,
+      "answerabilityAccuracy": 1,
+      "retrievalCoverage": 0.875,
+      "retrievalRecallAtK": 1,
+      "meanReciprocalRank": 1,
+      "citationCoverage": 1,
+      "citationPrecision": 1,
+      "citationRecall": 1,
+      "operationalErrors": 0,
+      "semanticDigest": "8ca23aa43d8df715a14cf37ac534cee6febc75ed40a1c01a080f1a016eeea6cf"
+    },
+    {
+      "adapter": "direct-fact-scan",
+      "answerCoverage": 1,
+      "answerAccuracy": 0.5,
+      "answerPrecision": 0.5,
+      "answerRecall": 0.5,
+      "answerabilityAccuracy": 0.5,
+      "retrievalCoverage": 0.875,
+      "retrievalRecallAtK": 0.42857142857142855,
+      "meanReciprocalRank": 0.42857142857142855,
+      "citationCoverage": 1,
+      "citationPrecision": 0.5,
+      "citationRecall": 0.5,
+      "operationalErrors": 0,
+      "semanticDigest": "88d446649f85f48809209849b2cedac24be4594ee96cdc5737058636966c1fa7"
+    },
+    {
+      "adapter": "lexical-overlap-top-k",
+      "answerCoverage": 0,
+      "answerAccuracy": null,
+      "retrievalCoverage": 0.875,
+      "retrievalRecallAtK": 0.857142857142857,
+      "meanReciprocalRank": 1,
+      "citationCoverage": 0,
+      "citationRecall": null,
+      "operationalErrors": 0,
+      "semanticDigest": "becc01782f5aba271bb9381a2bddbf97440f236005c47dda00f3f3a0b9b99d1c"
+    },
+    {
+      "adapter": "recency-top-k",
+      "answerCoverage": 0,
+      "answerAccuracy": null,
+      "retrievalCoverage": 0.875,
+      "retrievalRecallAtK": 1,
+      "meanReciprocalRank": 0.9285714285714286,
+      "citationCoverage": 0,
+      "citationRecall": null,
+      "operationalErrors": 0,
+      "semanticDigest": "0230b8f91c906742b12c33b80b6340bbd1ff0db40219e5f83295968c7b4db882"
+    }
+  ]
+}

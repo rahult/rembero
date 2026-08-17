@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc 3.10.1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Rahul Trikha" />
+  <meta name="dcterms.date" content="2026-08-18" />
+  <title>Proof-Carrying Agent Memory: A Deterministic Conformance Suite for Answers, Evidence, Updates, and Trust</title>
+  <style>
+
+html {
+color: #1a1a1a;
+background-color: #fdfdfd;
+}
+body {
+margin: 0 auto;
+max-width: 36em;
+padding-left: 50px;
+padding-right: 50px;
+padding-top: 50px;
+padding-bottom: 50px;
+hyphens: auto;
+overflow-wrap: break-word;
+text-rendering: optimizeLegibility;
+font-kerning: normal;
+}
+@media (max-width: 600px) {
+body {
+font-size: 0.9em;
+padding: 12px;
+}
+h1 {
+font-size: 1.8em;
+}
+}
+@media print {
+html {
+background-color: white;
+}
+body {
+background-color: transparent;
+color: black;
+}
+p, h2, h3 {
+orphans: 3;
+widows: 3;
+}
+h2, h3, h4 {
+page-break-after: avoid;
+}
+}
+p {
+margin: 1em 0;
+}
+a {
+color: #1a1a1a;
+}
+a:visited {
+color: #1a1a1a;
+}
+img {
+max-width: 100%;
+}
+svg {
+height: auto;
+max-width: 100%;
+}
+h1, h2, h3, h4, h5, h6 {
+margin-top: 1.4em;
+}
+h5, h6 {
+font-size: 1em;
+font-style: italic;
+}
+h6 {
+font-weight: normal;
+}
+ol, ul {
+padding-left: 1.7em;
+margin-top: 1em;
+}
+li > ol, li > ul {
+margin-top: 0;
+}
+blockquote {
+margin: 1em 0 1em 1.7em;
+padding-left: 1em;
+border-left: 2px solid #e6e6e6;
+color: #606060;
+}
+div.abstract {
+margin: 2em 2em 2em 2em;
+text-align: left;
+font-size: 85%;
+}
+div.abstract-title {
+font-weight: bold;
+text-align: center;
+padding: 0;
+margin-bottom: 0.5em;
+}
+code {
+white-space: pre-wrap;
+font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+font-size: 85%;
+margin: 0;
+hyphens: manual;
+}
+pre {
+margin: 1em 0;
+overflow: auto;
+}
+pre code {
+padding: 0;
+overflow: visible;
+overflow-wrap: normal;
+}
+.sourceCode {
+background-color: transparent;
+overflow: visible;
+}
+hr {
+border: none;
+border-top: 1px solid #1a1a1a;
+height: 1px;
+margin: 1em 0;
+}
+table {
+margin: 1em 0;
+border-collapse: collapse;
+width: 100%;
+overflow-x: auto;
+display: block;
+font-variant-numeric: lining-nums tabular-nums;
+}
+table caption {
+margin-bottom: 0.75em;
+}
+tbody {
+margin-top: 0.5em;
+border-top: 1px solid #1a1a1a;
+border-bottom: 1px solid #1a1a1a;
+}
+th {
+border-top: 1px solid #1a1a1a;
+padding: 0.25em 0.5em 0.25em 0.5em;
+}
+td {
+padding: 0.125em 0.5em 0.25em 0.5em;
+}
+header {
+margin-bottom: 4em;
+text-align: center;
+}
+#TOC li {
+list-style: none;
+}
+#TOC ul {
+padding-left: 1.3em;
+}
+#TOC > ul {
+padding-left: 0;
+}
+#TOC a:not(:hover) {
+text-decoration: none;
+}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+
+div.csl-bib-body { }
+div.csl-entry {
+clear: both;
+}
+.hanging-indent div.csl-entry {
+margin-left:2em;
+text-indent:-2em;
+}
+div.csl-left-margin {
+min-width:2em;
+float:left;
+}
+div.csl-right-inline {
+margin-left:2em;
+padding-left:1em;
+}
+div.csl-indent {
+margin-left: 2em;
+} </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Proof-Carrying Agent Memory: A Deterministic
+Conformance Suite for Answers, Evidence, Updates, and Trust</h1>
+<p class="author">Rahul Trikha</p>
+<p class="date">18 August 2026</p>
+<div class="abstract">
+<div class="abstract-title">Abstract</div>
+<p>Agent-memory evaluations commonly combine memory formation,
+retrieval, and language-model reading into a single answer score. This
+makes failures difficult to localize and does not test whether an answer
+is deterministically supported by the selected memory snapshot. We
+introduce the Rembero Structured-Memory Conformance Suite, a small
+public benchmark that reports exact typed answers, answerability,
+gold-evidence retrieval, citations, temporal updates, trust views, and
+deterministic replay as separate dimensions. The v1 suite contains seven
+cases and eight questions spanning direct recall among distractors,
+multi-hop and recursive rules, a knowledge update, abstention, tentative
+knowledge, and conflict detection. We evaluate Rembero and three
+transparent baselines. Rembero attains 100% exact answer accuracy and
+citation recall on the suite; a direct-fact baseline attains 50% answer
+accuracy, while lexical and recency baselines are evaluated only on
+retrieval. These preliminary results establish conformance, not
+statistical superiority over external memory systems. We contribute an
+isolated JSON adapter protocol for future Mem0, Graphiti/Zep, Letta,
+LangGraph, and LlamaIndex runs, and position the suite as a complement
+to LoCoMo and LongMemEval rather than a replacement.</p>
+</div>
+</header>
+<h1 id="introduction">1. Introduction</h1>
+<p>Long-lived language-model agents need information beyond a single
+context window. Current systems address this need with extracted facts,
+vector retrieval, graph representations, persistent stores, editable
+memory blocks, and increasingly explicit temporal metadata. The
+resulting “agent memory” category spans complete products such as Mem0
+and Zep, agent-managed context systems such as Letta/MemGPT, and
+framework primitives in LangGraph and LlamaIndex <span class="citation" data-cites="mem02025 zep2025 memgpt2023 langgraphmemory2026 llamaindexmemory2026">(<a href="#ref-mem02025" role="doc-biblioref">Chhikara et al. 2025</a>; <a href="#ref-zep2025" role="doc-biblioref"><span class="nocase">Rasmussen
+et al.</span> 2025</a>; <a href="#ref-memgpt2023" role="doc-biblioref">Packer et al. 2023</a>; <a href="#ref-langgraphmemory2026" role="doc-biblioref">LangChain 2026</a>;
+<a href="#ref-llamaindexmemory2026" role="doc-biblioref">LlamaIndex
+2026</a>)</span>.</p>
+<p>Existing evaluation has advanced quickly. LoCoMo measures question
+answering and other tasks over multi-session conversations <span class="citation" data-cites="locomo2024">(<a href="#ref-locomo2024" role="doc-biblioref">Maharana et al. 2024</a>)</span>. LongMemEval
+evaluates information extraction, multi-session reasoning, temporal
+reasoning, knowledge updates, and abstention, and usefully separates
+indexing, retrieval, and reading <span class="citation" data-cites="longmemeval2025">(<a href="#ref-longmemeval2025" role="doc-biblioref">Wu et al. 2025</a>)</span>. RAGAS proposes
+automated measures for faithfulness, answer relevance, and context
+relevance <span class="citation" data-cites="ragas2024">(<a href="#ref-ragas2024" role="doc-biblioref">Es et al. 2024</a>)</span>.
+Static retrieval benchmarks such as BEIR and MTEB provide mature
+retrieval and embedding metrics <span class="citation" data-cites="beir2021 mteb2022">(<a href="#ref-beir2021" role="doc-biblioref">Thakur et al. 2021</a>; <a href="#ref-mteb2022" role="doc-biblioref">Muennighoff et al. 2022</a>)</span>.</p>
+<p>These benchmarks do not directly test a different contract: given an
+immutable structured knowledge snapshot and a precise query, does the
+system return the exact answer supported by that snapshot, identify the
+complete source support, honor trust boundaries, and produce the same
+semantic result when replayed?</p>
+<p>This paper introduces a deterministic structured-memory conformance
+suite for that contract. It makes four contributions:</p>
+<ol type="1">
+<li>a versioned public case and label format with typed, ordered answer
+cells;</li>
+<li>separate scores for answers, answerability, retrieval, citations,
+and stale evidence;</li>
+<li>transparent direct-fact, lexical, and recency baselines; and</li>
+<li>an isolated JSON process protocol for evaluating external stacks
+without coupling the benchmark package to their dependencies or
+credentials.</li>
+</ol>
+<p>The contribution is deliberately narrow. The suite evaluates
+downstream structured memory after question interpretation. It does not
+evaluate natural-language extraction, free-form generation, or
+million-token scalability. The reported results therefore establish
+deterministic conformance on the published cases, not general market
+superiority.</p>
+<h1 id="related-work">2. Related work</h1>
+<h2 id="conversational-memory-benchmarks">2.1 Conversational memory
+benchmarks</h2>
+<p>LoCoMo’s current ACL release contains ten long conversations,
+averaging approximately 600 turns and 16,000 tokens over as many as 32
+sessions. Its question-answering task covers single-hop, multi-hop,
+temporal, open-domain/world-knowledge, and adversarial questions <span class="citation" data-cites="locomo2024">(<a href="#ref-locomo2024" role="doc-biblioref">Maharana et al. 2024</a>)</span>. The conversations
+were generated through an agent pipeline and human-edited for
+consistency. This provides controlled long-range dependencies, but it is
+not a sample of organic production histories.</p>
+<p>LongMemEval contains 500 human-curated questions embedded in scalable
+user-assistant histories. Its core abilities are information extraction,
+multi-session reasoning, temporal reasoning, knowledge updates, and
+abstention <span class="citation" data-cites="longmemeval2025">(<a href="#ref-longmemeval2025" role="doc-biblioref">Wu et al.
+2025</a>)</span>. Standard settings include an approximately
+115,000-token history and a 500-session, approximately 1.5 million-token
+history. The benchmark reports answer accuracy and gold-evidence
+retrieval, making it suitable for separating retriever and reader
+failures.</p>
+<p>Our suite borrows both the capability taxonomy and the separation of
+retrieval from answer use. It adds deterministic rule entailment,
+explicit proof sources, typed answers, trust views, and semantic replay.
+Conversely, it does not reproduce the scale or linguistic variability of
+either benchmark.</p>
+<h2 id="retrieval-and-answer-attribution">2.2 Retrieval and answer
+attribution</h2>
+<p>BEIR evaluates heterogeneous zero-shot retrieval using measures
+including nDCG, MAP, Recall@k, precision, and MRR <span class="citation" data-cites="beir2021">(<a href="#ref-beir2021" role="doc-biblioref">Thakur et al. 2021</a>)</span>. MTEB broadens
+embedding evaluation across retrieval, reranking, clustering,
+classification, semantic similarity, and related tasks <span class="citation" data-cites="mteb2022">(<a href="#ref-mteb2022" role="doc-biblioref">Muennighoff et al. 2022</a>)</span>. These
+benchmarks are appropriate for retrieval components but do not evaluate
+memory formation, temporal correction, or deductive answer support.</p>
+<p>RAGAS introduced reference-free, model-based measures of RAG
+faithfulness and relevance <span class="citation" data-cites="ragas2024">(<a href="#ref-ragas2024" role="doc-biblioref">Es
+et al. 2024</a>)</span>. Such measures are valuable when answers and
+sources are natural language. They remain estimates produced by an
+evaluator model. In the present suite, answer and source correctness are
+mechanically decidable, so probabilistic judging is unnecessary.</p>
+<h2 id="agent-memory-systems">2.3 Agent-memory systems</h2>
+<p>Mem0 extracts, consolidates, and retrieves salient conversational
+information; its 2025 paper evaluates multiple configurations and
+baselines on LoCoMo <span class="citation" data-cites="mem02025">(<a href="#ref-mem02025" role="doc-biblioref">Chhikara et al.
+2025</a>)</span>. Graphiti/Zep represents episodes, entities, and
+bi-temporal facts in an incrementally updated temporal knowledge graph
+<span class="citation" data-cites="zep2025">(<a href="#ref-zep2025" role="doc-biblioref"><span class="nocase">Rasmussen et al.</span>
+2025</a>)</span>. MemGPT frames long-term agent state as a
+virtual-context management problem with working, recall, and archival
+tiers <span class="citation" data-cites="memgpt2023">(<a href="#ref-memgpt2023" role="doc-biblioref">Packer et al.
+2023</a>)</span>. LangGraph provides thread checkpoints and cross-thread
+stores while leaving memory semantics to the application <span class="citation" data-cites="langgraphmemory2026">(<a href="#ref-langgraphmemory2026" role="doc-biblioref">LangChain
+2026</a>)</span>. LlamaIndex provides FIFO short-term history and
+pluggable static, fact-extraction, and vector memory blocks <span class="citation" data-cites="llamaindexmemory2026">(<a href="#ref-llamaindexmemory2026" role="doc-biblioref">LlamaIndex
+2026</a>)</span>.</p>
+<p>These differences make a single aggregate leaderboard inappropriate.
+An adapter must declare whether it produces answers, ranked retrieval,
+citations, rule reasoning, temporal updates, and trust views.
+Unsupported capabilities remain unscored rather than silently receiving
+zero or full credit.</p>
+<h1 id="benchmark-design">3. Benchmark design</h1>
+<h2 id="scope-and-unit-of-evaluation">3.1 Scope and unit of
+evaluation</h2>
+<p>Each case contains timestamped events and one or more questions. An
+event has a stable ID, human-readable text, canonical Datalog clauses,
+and an accepted or tentative trust label. A question has a stable ID,
+natural-language text, a canonical query, explicit ordered answer
+columns, a trust-view selection, and an optional retrieval cutoff.</p>
+<p>The canonical query is part of the public input. This design
+intentionally removes question translation from the measured system.
+External adapters may use the natural question for retrieval and the
+query for structured execution. Results must disclose which
+representation was used.</p>
+<p>Private labels are withheld from the adapter request. A label
+specifies expected status, typed answer rows, gold event IDs, and
+optionally stale event IDs. Fixture and label collections are
+content-addressed with canonical JSON and SHA-256.</p>
+<h2 id="cases">3.2 Cases</h2>
+<p>Version 1.0.0 contains seven cases and eight questions:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Case</th>
+<th>Contract under test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Direct fact at scale</td>
+<td>Exact recall among 100 unrelated predicates</td>
+</tr>
+<tr>
+<td>Multi-hop rule</td>
+<td>Derived answer with two base facts and an authored rule</td>
+</tr>
+<tr>
+<td>Recursive reasoning</td>
+<td>Transitive closure over a three-edge parent chain</td>
+</tr>
+<tr>
+<td>Temporal update</td>
+<td>Current value selected from two revisions with an aggregate
+rule</td>
+</tr>
+<tr>
+<td>Honest abstention</td>
+<td>No answer for an absent predicate</td>
+</tr>
+<tr>
+<td>Explicit trust</td>
+<td>Accepted-only and accepted-plus-tentative views</td>
+</tr>
+<tr>
+<td>Integrity conflict</td>
+<td>Conflict derived from two incompatible statuses</td>
+</tr>
+</tbody>
+</table>
+<p>This diagnostic composition over-represents deductive capabilities by
+design. Scores must not be interpreted as expected production query
+frequencies.</p>
+<h2 id="typed-answers-and-status-semantics">3.3 Typed answers and status
+semantics</h2>
+<p>An answer row is an ordered array of typed cells. A cell is either an
+atom string or a finite number. Result-row order is ignored, but cell
+order is preserved. Consequently, <code>[parent, child]</code> is not
+equal to <code>[child, parent]</code>, and the atom <code>&quot;1&quot;</code> is
+not equal to the number <code>1</code>.</p>
+<p>The protocol distinguishes <code>answered</code>,
+<code>no_match</code>, <code>unsupported</code>, and <code>error</code>.
+This avoids three common evaluation errors: treating a structurally
+unsupported capability as an incorrect answer, confusing an empty result
+with an operational failure, and counting an unsupported adapter as a
+correct abstention.</p>
+<h2 id="metrics">3.4 Metrics</h2>
+<p>For expected row set
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>E</mi><annotation encoding="application/x-tex">E</annotation></semantics></math>
+and returned row set
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>A</mi><annotation encoding="application/x-tex">A</annotation></semantics></math>,
+answer precision and recall are</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>P</mi><mi>a</mi></msub><mo>=</mo><mfrac><mrow><mo stretchy="false" form="prefix">|</mo><mi>A</mi><mo>∩</mo><mi>E</mi><mo stretchy="false" form="prefix">|</mo></mrow><mrow><mo stretchy="false" form="prefix">|</mo><mi>A</mi><mo stretchy="false" form="prefix">|</mo></mrow></mfrac><mo>,</mo><mspace width="2.0em"></mspace><msub><mi>R</mi><mi>a</mi></msub><mo>=</mo><mfrac><mrow><mo stretchy="false" form="prefix">|</mo><mi>A</mi><mo>∩</mo><mi>E</mi><mo stretchy="false" form="prefix">|</mo></mrow><mrow><mo stretchy="false" form="prefix">|</mo><mi>E</mi><mo stretchy="false" form="prefix">|</mo></mrow></mfrac><mi>.</mi></mrow><annotation encoding="application/x-tex">P_a = \frac{|A \cap E|}{|A|}, \qquad R_a = \frac{|A \cap E|}{|E|}.</annotation></semantics></math></p>
+<p>Exact-answer accuracy additionally requires the correct status and
+set equality. Empty-set precision and recall are defined as one only
+when both sets are empty.</p>
+<p>For gold evidence event set
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>G</mi><annotation encoding="application/x-tex">G</annotation></semantics></math>
+and the
+top-<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mi>k</mi><annotation encoding="application/x-tex">k</annotation></semantics></math>
+retrieved event IDs
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi>D</mi><mi>k</mi></msub><annotation encoding="application/x-tex">D_k</annotation></semantics></math>,
+retrieval recall is</p>
+<p><math display="block" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>R</mi><mi>@</mi><mi>k</mi><mo>=</mo><mfrac><mrow><mo stretchy="false" form="prefix">|</mo><msub><mi>D</mi><mi>k</mi></msub><mo>∩</mo><mi>G</mi><mo stretchy="false" form="prefix">|</mo></mrow><mrow><mo stretchy="false" form="prefix">|</mo><mi>G</mi><mo stretchy="false" form="prefix">|</mo></mrow></mfrac><mi>.</mi></mrow><annotation encoding="application/x-tex">R@k = \frac{|D_k \cap G|}{|G|}.</annotation></semantics></math></p>
+<p>Mean reciprocal rank uses the rank of the first gold event. Questions
+without relevant events, such as the abstention case, are excluded from
+retrieval aggregates. Citation precision and recall apply the same set
+equations to explicit citation IDs. Duplicate IDs are removed before
+scoring.</p>
+<p>Capability coverage is reported with every metric. Timing is reported
+diagnostically but excluded from semantic digests. A release check
+requires a full-coverage Rembero run with exact answers, exact
+answerability, complete citations, no stale leakage, and zero
+operational errors.</p>
+<h2 id="external-adapter-isolation">3.5 External adapter isolation</h2>
+<p>The harness launches one process per case, without a shell, passes
+one bounded JSON request on standard input, and requires one JSON
+response on standard output. It enforces time and output limits, kills
+failed children, suppresses standard-error contents, and passes only a
+small environment allowlist plus explicit adapter configuration. This
+provides state isolation and prevents vendor packages from becoming
+Rembero runtime dependencies.</p>
+<h1 id="systems-and-baselines">4. Systems and baselines</h1>
+<p><strong>Rembero engine.</strong> Accepted clauses, plus tentative
+clauses only when selected, are parsed and evaluated by the same bounded
+Datalog engine used by the product <span class="citation" data-cites="rembero2026">(<a href="#ref-rembero2026" role="doc-biblioref">Trikha 2026</a>)</span>. Answer rows come from
+explicit variables. Citation event IDs are recovered recursively from
+base facts, rule identifiers, and aggregate contributors in the
+deterministic proof.</p>
+<p><strong>Direct fact scan.</strong> The same parser and evaluator
+receive ground facts only; all rules are removed. This isolates the
+value of deductive and temporal computation while retaining identical
+typed-query and trust-view mechanics.</p>
+<p><strong>Lexical overlap top-k.</strong> Events are ranked by
+deterministic normalized token overlap with the natural-language
+question, with event ID as the tie-breaker. It does not produce answers
+or citations.</p>
+<p><strong>Recency top-k.</strong> Events are ranked by descending
+timestamp with stable event-ID tie-breaking. It does not produce answers
+or citations.</p>
+<p>No Mem0, Graphiti/Zep, Letta, LangGraph, or LlamaIndex adapter was
+executed in this first snapshot. The protocol supports such runs, but
+reporting unexecuted values would defeat the purpose of the
+benchmark.</p>
+<h1 id="results">5. Results</h1>
+<p>The suite digest is
+<code>2a483f29d0123bea651a8f4a7eec0a7b5193e58667474b5e96bbe8319c131524</code>.
+Table 2 reports the checked-in 18 August 2026 run.</p>
+<table>
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr>
+<th>Adapter</th>
+<th style="text-align: right;">Answer coverage</th>
+<th style="text-align: right;">Exact answer</th>
+<th style="text-align: right;">Retrieval R@k</th>
+<th style="text-align: right;">MRR</th>
+<th style="text-align: right;">Citation recall</th>
+<th style="text-align: right;">Errors</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rembero engine</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Direct fact scan</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">50%</td>
+<td style="text-align: right;">42.9%</td>
+<td style="text-align: right;">42.9%</td>
+<td style="text-align: right;">50%</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Lexical overlap top-k</td>
+<td style="text-align: right;">0%</td>
+<td style="text-align: right;">N/A</td>
+<td style="text-align: right;">85.7%</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">N/A</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Recency top-k</td>
+<td style="text-align: right;">0%</td>
+<td style="text-align: right;">N/A</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">92.9%</td>
+<td style="text-align: right;">N/A</td>
+<td style="text-align: right;">0</td>
+</tr>
+</tbody>
+</table>
+<p>Rembero returned the exact expected typed rows and complete
+source-event set for every question. Three repeated deterministic runs
+in the automated test produced an identical semantic digest; wall-clock
+duration is intentionally excluded from that digest.</p>
+<p>The direct-fact baseline answered the cases whose requested relations
+were explicitly stored and failed on rule-dependent, recursive,
+temporal, and conflict-derived outputs. The lexical and recency
+baselines retrieved substantial evidence but were not evaluated on
+answers. This is not a flaw in those adapters; it is an explicit
+boundary of their declared capabilities.</p>
+<h1 id="discussion">6. Discussion</h1>
+<p>The result demonstrates that deterministic proof-carrying memory can
+satisfy a set of contracts that retrieval metrics alone cannot express.
+In particular, the same execution that produces a derived answer
+produces the source support; no post-hoc model is asked to guess which
+retrieved text justifies the answer.</p>
+<p>The suite also illustrates why capability coverage must accompany
+accuracy. Reporting zero answer accuracy for retrieval-only baselines
+would imply that they attempted and failed to answer. Reporting 100%
+abstention accuracy would reward them for never answering. The correct
+value is not applicable.</p>
+<p>Finally, a complete proof may legitimately cite older temporal facts
+because those facts participate in establishing which revision is
+greatest. “Old evidence appeared in the proof” is therefore not
+equivalent to “the system leaked a stale answer.” Temporal benchmarks
+should distinguish evidence needed to establish an update from obsolete
+values incorrectly returned as current.</p>
+<h1 id="threats-to-validity">7. Threats to validity</h1>
+<p><strong>Scale.</strong> Eight questions cannot estimate real-world
+accuracy or support significance tests. The suite is a release
+conformance gate.</p>
+<p><strong>Task composition.</strong> The cases were designed by the
+Rembero author around Rembero’s contracts. This creates obvious vendor
+bias. External benchmark results must be reported alongside LoCoMo and
+LongMemEval, and future cases should accept independent
+contributions.</p>
+<p><strong>Structured input advantage.</strong> Rembero receives
+canonical clauses and queries. This removes its natural-language
+extraction and translation failure modes. The suite measures the
+structured memory layer, not the complete user experience.</p>
+<p><strong>Baseline strength.</strong> Direct, lexical, and recency
+baselines are transparent controls, not state-of-the-art competitors. No
+external-stack superiority claim follows.</p>
+<p><strong>Latency.</strong> The checked-in run uses a single local
+repetition. Timings are diagnostic and must not be compared with
+published vendor latency.</p>
+<p><strong>Proof completeness definition.</strong> Gold evidence is
+specified at event granularity. A production source may contain several
+claims or several source spans, requiring finer attribution labels.</p>
+<h1 id="reproducibility-and-future-work">8. Reproducibility and future
+work</h1>
+<p>All fixtures, labels, scorers, adapters, tests, and the versioned
+result summary are stored with Rembero <span class="citation" data-cites="rembero2026">(<a href="#ref-rembero2026" role="doc-biblioref">Trikha 2026</a>)</span>. The release command builds
+the project before executing the suite. The semantic result excludes
+generated timestamps and timings.</p>
+<p>Immediate future work is:</p>
+<ol type="1">
+<li>implement and independently review adapters for Mem0, Graphiti/Zep,
+Letta, LangGraph, and LlamaIndex;</li>
+<li>pin and run the cleaned LongMemEval dataset and current LoCoMo
+release through the same adapter disclosures;</li>
+<li>add natural-language formation as a separate track with signed
+mutation precision and recall;</li>
+<li>add recorded-time versus valid-time, out-of-order updates, deletion,
+and alternative proof cases;</li>
+<li>repeat performance measurements under disclosed hardware, models,
+regions, concurrency, and retrieval budgets; and</li>
+<li>invite external case authors and preregister thresholds before
+expanding the suite.</li>
+</ol>
+<h1 id="conclusion">9. Conclusion</h1>
+<p>Agent memory should be evaluated as a pipeline, not a single answer
+score. Retrieval, answer use, temporal behavior, abstention, citations,
+and deterministic proof are related but distinct properties. The Rembero
+Structured-Memory Conformance Suite makes those properties explicit and
+provides a reproducible process boundary for other systems.</p>
+<p>The first result is intentionally modest: Rembero conforms to eight
+published structured memory questions; simple controls expose where
+direct lookup and retrieval stop. The work does not yet establish
+superiority over external stacks. Its purpose is to make the next
+comparison inspectable enough that a reader can tell exactly what was
+measured, what was not measured, and why every reported answer received
+its score.</p>
+<h1 id="disclosure">Disclosure</h1>
+<p>The author is the creator of Rembero. The suite and paper are
+vendor-authored. The current snapshot contains measured Rembero and
+transparent baseline results only.</p>
+<h1 id="references">References</h1>
+<div id="refs" class="references csl-bib-body hanging-indent" role="list">
+<div id="ref-mem02025" class="csl-entry" role="listitem">
+Chhikara, Prateek, Dev Khant, Saket Aryan, Taranjeet Singh, and Deshraj
+Yadav. 2025. <span>“Mem0: Building Production-Ready AI Agents with
+Scalable Long-Term Memory.”</span> <em>arXiv Preprint
+arXiv:2504.19413</em>. <a href="https://arxiv.org/abs/2504.19413">https://arxiv.org/abs/2504.19413</a>.
+</div>
+<div id="ref-ragas2024" class="csl-entry" role="listitem">
+Es, Shahul, Jithin James, Luis Espinosa Anke, and Steven Schockaert.
+2024. <span>“RAGAS: Automated Evaluation of Retrieval Augmented
+Generation.”</span> <em>Proceedings of the 18th Conference of the
+European Chapter of the Association for Computational Linguistics:
+System Demonstrations</em>. <a href="https://doi.org/10.18653/v1/2024.eacl-demo.16">https://doi.org/10.18653/v1/2024.eacl-demo.16</a>.
+</div>
+<div id="ref-langgraphmemory2026" class="csl-entry" role="listitem">
+LangChain. 2026. <em>LangGraph: Add and Manage Memory</em>. <a href="https://docs.langchain.com/oss/python/langgraph/add-memory">https://docs.langchain.com/oss/python/langgraph/add-memory</a>.
+</div>
+<div id="ref-llamaindexmemory2026" class="csl-entry" role="listitem">
+LlamaIndex. 2026. <em>LlamaIndex Memory</em>. <a href="https://developers.llamaindex.ai/python/framework/module_guides/deploying/agents/memory/">https://developers.llamaindex.ai/python/framework/module_guides/deploying/agents/memory/</a>.
+</div>
+<div id="ref-locomo2024" class="csl-entry" role="listitem">
+Maharana, Adyasha, Dong-Ho Lee, Sergey Tulyakov, Mohit Bansal, Francesco
+Barbieri, and Yuwei Fang. 2024. <span>“Evaluating Very Long-Term
+Conversational Memory of LLM Agents.”</span> <em>Proceedings of the 62nd
+Annual Meeting of the Association for Computational Linguistics</em>,
+13851–70. <a href="https://doi.org/10.18653/v1/2024.acl-long.747">https://doi.org/10.18653/v1/2024.acl-long.747</a>.
+</div>
+<div id="ref-mteb2022" class="csl-entry" role="listitem">
+Muennighoff, Niklas, Nouamane Tazi, Loïc Magne, and Nils Reimers. 2022.
+<span>“MTEB: Massive Text Embedding Benchmark.”</span> <em>arXiv
+Preprint arXiv:2210.07316</em>. <a href="https://arxiv.org/abs/2210.07316">https://arxiv.org/abs/2210.07316</a>.
+</div>
+<div id="ref-memgpt2023" class="csl-entry" role="listitem">
+Packer, Charles, Vivian Fang, Shishir G. Patil, Kevin Lin, Sarah
+Wooders, and Joseph E. Gonzalez. 2023. <span>“MemGPT: Towards LLMs as
+Operating Systems.”</span> <em>arXiv Preprint arXiv:2310.08560</em>. <a href="https://arxiv.org/abs/2310.08560">https://arxiv.org/abs/2310.08560</a>.
+</div>
+<div id="ref-zep2025" class="csl-entry" role="listitem">
+<span class="nocase">Rasmussen, Peter et al.</span> 2025. <span>“Zep: A
+Temporal Knowledge Graph Architecture for Agent Memory.”</span>
+<em>arXiv Preprint arXiv:2501.13956</em>. <a href="https://arxiv.org/abs/2501.13956">https://arxiv.org/abs/2501.13956</a>.
+</div>
+<div id="ref-beir2021" class="csl-entry" role="listitem">
+Thakur, Nandan, Nils Reimers, Johannes Daxenberger, and Iryna Gurevych.
+2021. <span>“BEIR: A Heterogeneous Benchmark for Zero-Shot Evaluation of
+Information Retrieval Models.”</span> <em>Thirty-Fifth Conference on
+Neural Information Processing Systems Datasets and Benchmarks
+Track</em>. <a href="https://arxiv.org/abs/2104.08663">https://arxiv.org/abs/2104.08663</a>.
+</div>
+<div id="ref-rembero2026" class="csl-entry" role="listitem">
+Trikha, Rahul. 2026. <em>Rembero: Logic-Based Memory for Agents</em>. <a href="https://github.com/rahult/rembero">https://github.com/rahult/rembero</a>.
+</div>
+<div id="ref-longmemeval2025" class="csl-entry" role="listitem">
+Wu, Di, Hongwei Wang, Wenhao Yu, Yuwei Zhang, Kai-Wei Chang, and Dong
+Yu. 2025. <span>“LongMemEval: Benchmarking Chat Assistants on Long-Term
+Interactive Memory.”</span> <em>International Conference on Learning
+Representations</em>. <a href="https://proceedings.iclr.cc/paper_files/paper/2025/file/d813d324dbf0598bbdc9c8e79740ed01-Paper-Conference.pdf">https://proceedings.iclr.cc/paper_files/paper/2025/file/d813d324dbf0598bbdc9c8e79740ed01-Paper-Conference.pdf</a>.
+</div>
+</div>
+</body>
+</html>

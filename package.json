@@ -1,6 +1,6 @@
 {
   "name": "rembero",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "description": "Logic-based memory for LLM chats and agents: deterministic Datalog rules, explicit entity identity, integrity, provenance, graphs, and MCP",
   "type": "module",
   "bin": {
@@ -40,6 +40,7 @@
     "docs/RELATED-KNOWLEDGE-RECALL.md",
     "docs/WEB-CONSOLE.md",
     "docs/MARKETING-PLAYGROUND.md",
+    "docs/research",
     "docs/LOCAL-KNOWLEDGE-SEARCH.md",
     "docs/EXPLICIT-GRAPH-BROWSE.md",
     "docs/KNOWLEDGE-PATHS.md",
@@ -120,6 +121,7 @@
     "docs/MIGRATING-0.51.md",
     "docs/MIGRATING-0.52.md",
     "docs/MIGRATING-0.53.md",
+    "docs/MIGRATING-0.54.md",
     "README.md",
     "LICENSE"
   ],
@@ -138,10 +140,12 @@
     "test:package": "npm run build && node scripts/package-smoke.mjs",
     "eval:extract": "npm run build && node dist/evals/run-extraction.js",
     "eval:recall": "npm run build && node dist/evals/run-recall.js",
+    "bench:memory": "npm run build && node dist/evals/run-memory-stack.js",
+    "bench:memory:check": "npm run build && node dist/evals/run-memory-stack.js --check",
     "bench:engine": "npm run build && node dist/evals/run-engine-benchmark.js",
     "test:watch": "vitest",
     "dev": "tsx src/cli.ts",
-    "prepublishOnly": "npm test && npm run build"
+    "prepublishOnly": "npm test && npm run bench:memory:check && npm run build"
   },
   "repository": {
     "type": "git",

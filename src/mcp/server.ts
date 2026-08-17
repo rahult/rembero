@@ -502,7 +502,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     knowledgeCheckEnforcement: configuredChecks,
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.53.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.54.0' });
 
   server.registerTool(
     'remember',

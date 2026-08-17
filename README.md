@@ -454,6 +454,16 @@ retrieval graph—to `no_match`, `unanswerable`, and schema-budget results from 
 same snapshot. It never changes answer authority or adds a model call. See
 [the related-knowledge recall contract](docs/RELATED-KNOWLEDGE-RECALL.md).
 
+Version 0.54 adds a public structured-memory benchmark that reports exact typed answers,
+answerability, gold-evidence retrieval, proof citations, temporal updates, and trust views
+as separate dimensions. `npm run bench:memory:check` is a deterministic release gate;
+isolated JSON command adapters let external stacks participate without adding their
+dependencies or credentials to Rembero. The first checked-in result measures Rembero and
+transparent direct, lexical, and recency baselines only. See the
+[benchmark](docs/research/MEMORY-STACK-BENCHMARK.md),
+[Medium draft](docs/research/MEDIUM-DRAFT.md), and
+[research paper](docs/research/paper/paper.md).
+
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
 complete selected namespaces. Empty or unanswerable results from a partial slice trigger

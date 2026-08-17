@@ -25,6 +25,8 @@ jobs:
       - if: matrix.node == 24
         run: npm run test:package
       - if: matrix.node == 24
+        run: npm run bench:memory:check
+      - if: matrix.node == 24
         working-directory: site
         run: npm ci --ignore-scripts
       - if: matrix.node == 24

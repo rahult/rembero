@@ -115,6 +115,20 @@ describe('recall eval corpus', () => {
 });
 
 describe('recall eval metrics', () => {
+  it('preserves semantic column order inside multi-column rows', () => {
+    const ordered = observation(
+      testCase('ordered', [['alice', 'bob']]),
+      'relationship(Parent, Child)',
+      [['bob', 'alice']]
+    );
+    expect(observationIsCorrect(ordered)).toBe(false);
+    expect(scoreRecallEval([ordered])).toMatchObject({
+      accuracy: 0,
+      precision: 0,
+      recall: 0,
+    });
+  });
+
   it('separates row precision/recall from exact-case and answerability accuracy', () => {
     const partial = observation(
       testCase('partial', [['a'], ['b']]),

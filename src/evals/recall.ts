@@ -294,7 +294,7 @@ export interface RecallEvalScore {
 }
 
 function rowKey(row: readonly string[]): string {
-  return JSON.stringify([...row].sort());
+  return JSON.stringify(row);
 }
 
 function sameSet(left: Set<string>, right: Set<string>): boolean {
