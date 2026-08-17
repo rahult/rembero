@@ -14,6 +14,7 @@ import {
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { OpenRouterClient } from '../src/llm/client.js';
 import { wrapTentativeFacts } from '../src/knowledge/trust.js';
+import { assertTentativeFacts } from '../src/knowledge/trust-store.js';
 
 /** LlmClient returning scripted responses, recording every request. */
 class ScriptedLlm implements LlmClient {
@@ -508,6 +509,84 @@ describe('recallQuestion', () => {
     expect(llm.calls).toHaveLength(1);
   });
 
+  it('renders compact deterministic rule and source evidence without phrasing', async () => {
+    const sourced = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-evidence-')));
+    sourced.assert(
+      'default',
+      `works_at(rahul, acme). works_at(maya, acme).
+       colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.`,
+      {
+        opId: 'employment-source',
+        sourceText: 'Rahul and Maya work at Acme.',
+        at: new Date('2026-08-17T09:00:00.000Z'),
+      }
+    );
+    const llm = new ScriptedLlm(['?- colleague(rahul, Who).']);
+    const result = await recallQuestion(
+      { store: sourced, llm },
+      "Who are Rahul's colleagues?",
+      ['default'],
+      { answerMode: 'evidence' }
+    );
+
+    expect(result.answerMode).toBe('evidence');
+    expect(result.answer).toBe(
+      `Evidence for colleague(rahul, Who):
+1. Who = maya
+   Claims: colleague(rahul, maya); works_at(maya, acme); works_at(rahul, acme)
+   Rules: #1 colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
+   Sources: default/employment-source@2026-08-17T09:00:00.000Z "Rahul and Maya work at Acme."`
+    );
+    expect(result.explanation?.rows).toHaveLength(1);
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it('renders absence, aggregate, and tentative evidence locally', async () => {
+    const sourced = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-evidence-kinds-')));
+    sourced.assert(
+      'default',
+      `assigned(alice, admin).
+       available(Person, Role) :- assigned(Person, Role), \\+ suspended(Person).
+       member(red, alice). member(red, bob).
+       team_size(Team, Count) :- count(*) as Count where member(Team, Person).`,
+      { opId: 'evidence-source', at: new Date('2026-08-17T09:05:00.000Z') }
+    );
+    const absence = await recallQuestion(
+      { store: sourced, llm: new ScriptedLlm(['?- available(alice, Role).']) },
+      'What role is Alice available for?',
+      ['default'],
+      { answerMode: 'evidence' }
+    );
+    expect(absence.answer).toContain('Absent: suspended(alice)');
+
+    const aggregate = await recallQuestion(
+      { store: sourced, llm: new ScriptedLlm(['?- team_size(red, Count).']) },
+      'How many members are on the red team?',
+      ['default'],
+      { answerMode: 'evidence' }
+    );
+    expect(aggregate.answer).toContain('Aggregates: count(*) = 2');
+
+    const tentativeStore = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-evidence-tentative-'))
+    );
+    assertTentativeFacts(tentativeStore, 'default', 'status(mira, paused).', {
+      opId: 'tentative-evidence',
+      at: new Date('2026-08-17T09:10:00.000Z'),
+    });
+    const tentative = await recallQuestion(
+      {
+        store: tentativeStore,
+        llm: new ScriptedLlm(['?- status(mira, State).']),
+      },
+      'What might Mira status be?',
+      ['default'],
+      { answerMode: 'evidence', trustMode: 'include_tentative' }
+    );
+    expect(tentative.answer).toContain('1. [tentative] State = paused');
+    expect(tentative.answer).toContain('[tentative]');
+  });
+
   it('renders boolean and tentative rows without losing trust labels', async () => {
     expect(deterministicRecallAnswer('project(atlas)', [{}])).toBe(
       'The query project(atlas) is supported.'
@@ -573,7 +652,7 @@ describe('recallQuestion', () => {
         { store, llm, recallAnswerMode: 'creative' as never },
         'Who works at Acme?'
       )
-    ).rejects.toThrow(/must be 'natural' or 'deterministic'/i);
+    ).rejects.toThrow(/natural.*deterministic.*evidence/i);
     expect(llm.calls).toHaveLength(0);
   });
 

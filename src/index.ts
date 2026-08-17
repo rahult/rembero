@@ -93,6 +93,7 @@ export {
   type RetrievalResult,
   recallQuestion,
   deterministicRecallAnswer,
+  evidenceRecallAnswer,
   rememberTranscriptText,
   rememberText,
   extractRememberText,

@@ -17,12 +17,15 @@ describe('recallAnswerModeFromEnv', () => {
     expect(
       recallAnswerModeFromEnv({ REMBERO_RECALL_ANSWER_MODE: 'deterministic' })
     ).toBe('deterministic');
+    expect(
+      recallAnswerModeFromEnv({ REMBERO_RECALL_ANSWER_MODE: 'evidence' })
+    ).toBe('evidence');
   });
 
   it('fails closed on an unknown answer mode', () => {
     expect(() =>
       recallAnswerModeFromEnv({ REMBERO_RECALL_ANSWER_MODE: 'creative' })
-    ).toThrow(/must be 'natural' or 'deterministic'/i);
+    ).toThrow(/natural.*deterministic.*evidence/i);
   });
 });
 import {

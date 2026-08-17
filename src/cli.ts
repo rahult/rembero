@@ -196,7 +196,7 @@ Options:
       --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
       --entity-identity <mode>  Read projection: off (default) or canonical
       --trust <mode>        Writes: accepted/tentative; reads: accepted/include_tentative
-      --answer-mode <mode>  Recall phrasing: natural (default) or deterministic
+      --answer-mode <mode>  Recall phrasing: natural, deterministic, or evidence
       --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
       --assume <facts>     Ground facts to add in a what-if simulation; repeatable
       --without <pattern> Ground fact pattern to remove in a what-if simulation; repeatable
@@ -598,8 +598,10 @@ function recallAnswerModeOption(
   value: string | undefined
 ): RecallAnswerMode {
   if (value === undefined) return recallAnswerModeFromEnv();
-  if (value === 'natural' || value === 'deterministic') return value;
-  throw new Error("--answer-mode must be 'natural' or 'deterministic'");
+  if (value === 'natural' || value === 'deterministic' || value === 'evidence') {
+    return value;
+  }
+  throw new Error("--answer-mode must be 'natural', 'deterministic', or 'evidence'");
 }
 
 function graphNodeIdOption(value: string, label: string): string {

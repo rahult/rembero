@@ -61,9 +61,13 @@ export function recallAnswerModeFromEnv(
   env: NodeJS.ProcessEnv = process.env
 ): RecallAnswerMode {
   const configured = env.REMBERO_RECALL_ANSWER_MODE ?? 'natural';
-  if (configured === 'natural' || configured === 'deterministic') return configured;
+  if (
+    configured === 'natural' ||
+    configured === 'deterministic' ||
+    configured === 'evidence'
+  ) return configured;
   throw new Error(
-    "REMBERO_RECALL_ANSWER_MODE must be 'natural' or 'deterministic'"
+    "REMBERO_RECALL_ANSWER_MODE must be 'natural', 'deterministic', or 'evidence'"
   );
 }
 

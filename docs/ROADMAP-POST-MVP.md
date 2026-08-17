@@ -637,6 +637,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    direct remember, ambient capture, trust, reviewed apply, package installs, structured
    error/exit `8`, and fail-closed suite bounds share one invariant.
 
+## Phase 54 — Compact deterministic evidence recall  *(v0.51)*
+
+1. **Complete — readable local provenance**: positive rows render projected bindings,
+   claims, rules, absences, aggregates, projections, trust, temporal lineage, and durable
+   sources without an LLM phrasing call.
+2. **Complete — proof-complete compaction**: primary and requested alternative proof trees
+   are traversed under existing bounds, then stable sets deduplicate repeated support while
+   preserving every selected evidence category.
+3. **Complete — honest negative continuity**: no-match keeps deterministic why-not;
+   unanswerable and budget-exhausted statuses retain explicit local messages and never call
+   the phrasing model.
+4. **Complete — operational parity**: library renderer/options, CLI, MCP, environment
+   default, accepted/tentative, aggregate/absence/source tests, package install, canonical
+   value formatting, and 16 MiB output bound share one mode.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

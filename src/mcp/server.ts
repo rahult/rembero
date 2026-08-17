@@ -299,9 +299,9 @@ const trustViewField = z
   .optional()
   .describe('Accepted knowledge only (default), or opt in to tentative claims');
 const recallAnswerModeField = z
-  .enum(['natural', 'deterministic'])
+  .enum(['natural', 'deterministic', 'evidence'])
   .optional()
-  .describe('LLM phrasing (natural default) or exact local binding rendering');
+  .describe('LLM phrasing, exact local bindings, or compact local proof/source evidence');
 const graphSelectorField = z
   .discriminatedUnion('kind', [
     z.object({
@@ -458,7 +458,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     knowledgeCheckEnforcement: configuredChecks,
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.50.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.51.0' });
 
   server.registerTool(
     'remember',

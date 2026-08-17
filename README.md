@@ -38,7 +38,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_AUTO_CAPTURE_TAIL_BYTES` | no | `24576` bytes (maximum `49152`) |
 | `REMBERO_VALID_TIME_MODE` | no | `delete`; set `archive_until` to preserve superseded facts |
 | `REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT` | no | `32` detailed predicates on the first recall pass (range: 1–256) |
-| `REMBERO_RECALL_ANSWER_MODE` | no | `natural`; use `deterministic` for local binding rendering |
+| `REMBERO_RECALL_ANSWER_MODE` | no | `natural`; use `deterministic` bindings or compact `evidence` |
 | `REMBERO_INTEGRITY_MODE` | no | `off`; use `strict` or migration mode `no_new_violations` for atomic write rejection |
 | `REMBERO_INTEGRITY_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view when enforcement is active |
 | `REMBERO_CHECK_MODE` | no | `off`; use `strict` or migration mode `no_regressions` |
@@ -142,6 +142,7 @@ node dist/cli.js recall   "Who is Rahul's dentist?"
 node dist/cli.js recall   "Who owns Atlas?" --schema-predicate-limit 48
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
 node dist/cli.js recall "Who works at Acme?" --answer-mode deterministic
+node dist/cli.js recall "Who works at Acme?" --answer-mode evidence
 node dist/cli.js assert   ':- status(Person, active), status(Person, terminated).'
 node dist/cli.js check    --proof-limit 2 --max-violations 100
 node dist/cli.js conflicts mira # focused cross-policy conflict evidence
@@ -418,6 +419,11 @@ Strict mode requires a green candidate; `no_regressions` permits legacy debt and
 while rejecting newly failed checks or lower coverage. Enforcement runs under the mutation
 lock and composes with integrity policy. See
 [the all-writer check-enforcement contract](docs/CHECK-ENFORCEMENT.md).
+
+Version 0.51 adds compact deterministic evidence answers. Positive recall can render
+bindings, claims, rules, absences, aggregates, projections, trust, temporal lineage, and
+durable sources locally, while negative recall keeps why-not summaries. No final phrasing
+model call is made. See [the evidence-answer contract](docs/EVIDENCE-ANSWER-MODE.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

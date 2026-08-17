@@ -25,6 +25,7 @@ import {
 } from '../engine/index.js';
 import type {
   MemoryStore,
+  MemorySource,
   RecordedSnapshotMetadata,
   ValidTimeMode,
 } from '../store/store.js';
@@ -200,7 +201,7 @@ export type RecallStatus =
   | 'unanswerable'
   | 'schema_budget_exhausted';
 
-export type RecallAnswerMode = 'natural' | 'deterministic';
+export type RecallAnswerMode = 'natural' | 'deterministic' | 'evidence';
 
 export interface RecallOptions {
   queryPromptVariant?: QueryPromptVariant;
@@ -214,7 +215,7 @@ export interface RecallOptions {
   graphSelector?: ExplanationGraphSelector;
   /** Read from the deterministic global journal position instead of current files. */
   recordedSequence?: number;
-  /** Natural LLM phrasing (default) or exact local binding rendering. */
+  /** Natural LLM phrasing, exact local bindings, or compact local evidence. */
   answerMode?: RecallAnswerMode;
 }
 
@@ -259,10 +260,149 @@ export function deterministicRecallAnswer(
   return answer;
 }
 
+interface RecallEvidenceSummary {
+  claims: Set<string>;
+  rules: Set<number>;
+  absences: Set<string>;
+  aggregates: Set<string>;
+  projections: Set<string>;
+  sources: Map<string, string>;
+}
+
+function evidenceSummary(): RecallEvidenceSummary {
+  return {
+    claims: new Set(),
+    rules: new Set(),
+    absences: new Set(),
+    aggregates: new Set(),
+    projections: new Set(),
+    sources: new Map(),
+  };
+}
+
+function sourceLabel(source: MemorySource): string {
+  const temporal = source.temporal === undefined
+    ? ''
+    : ` [valid until ${source.temporal.validUntil}; previously ${source.temporal.previousClause}]`;
+  const trust = source.trust === 'tentative' ? ' [tentative]' : '';
+  const text = source.text === undefined ? '' : ` ${JSON.stringify(source.text)}`;
+  return `${source.namespace}/${source.opId}@${source.ts}${trust}${temporal}${text}`;
+}
+
+function evidenceValue(value: string | number): string {
+  return serializeTerm(
+    typeof value === 'number'
+      ? { type: 'num', value }
+      : { type: 'atom', value }
+  );
+}
+
+function collectEvidence(
+  proof: SourcedQueryProof,
+  summary: RecallEvidenceSummary
+): void {
+  if ('aggregated' in proof) {
+    summary.aggregates.add(`${proof.op}(${proof.input}) = ${proof.value}`);
+    for (const contributor of proof.contributors) {
+      for (const child of contributor.proofs) collectEvidence(child, summary);
+    }
+    return;
+  }
+  if ('negated' in proof) {
+    summary.absences.add(
+      `${proof.predicate}(${proof.pattern
+        .map((value) => value === null ? '_' : evidenceValue(value))
+        .join(', ')})`
+    );
+    return;
+  }
+  summary.claims.add(
+    `${proof.predicate}(${proof.values.map(evidenceValue).join(', ')})`
+  );
+  if (proof.rule !== undefined) summary.rules.add(proof.rule);
+  if (proof.projectedFrom !== undefined) {
+    summary.projections.add(proof.projectedFrom);
+  }
+  for (const source of [
+    ...(proof.sources ?? []),
+    ...(proof.sourceAlternatives ?? []),
+  ]) {
+    const key = JSON.stringify(source);
+    summary.sources.set(key, sourceLabel(source));
+  }
+  for (const child of proof.because ?? []) collectEvidence(child, summary);
+  if (proof.aggregate !== undefined) {
+    summary.aggregates.add(
+      `${proof.aggregate.op}(${proof.aggregate.input}) = ${proof.aggregate.value}`
+    );
+    for (const contributor of proof.aggregate.contributors) {
+      for (const child of contributor.proofs) collectEvidence(child, summary);
+    }
+  }
+}
+
+/** Render successful recall with compact local proof and provenance evidence. */
+export function evidenceRecallAnswer(
+  query: string,
+  bindings: Record<string, string>[],
+  explanation: ExplainKnowledgeResult,
+  rowTrust?: KnowledgeTrust[]
+): string {
+  if (explanation.rows.length !== bindings.length) {
+    throw new Error('evidence recall explanation rows must match binding rows');
+  }
+  if (rowTrust !== undefined && rowTrust.length !== bindings.length) {
+    throw new Error('evidence recall rowTrust must match binding rows');
+  }
+  const ruleByNumber = new Map(
+    explanation.rules.map((rule) => [rule.number, rule.clause])
+  );
+  const lines = [`Evidence for ${query}:`];
+  for (const [index, binding] of bindings.entries()) {
+    const values = Object.entries(binding)
+      .map(([name, value]) => `${name} = ${value}`)
+      .join(', ');
+    const tentative = rowTrust?.[index] === 'tentative' ? '[tentative] ' : '';
+    lines.push(`${index + 1}. ${tentative}${values || 'supported'}`);
+    const summary = evidenceSummary();
+    const row = explanation.rows[index];
+    for (const proof of row.proofs) collectEvidence(proof, summary);
+    for (const alternative of row.alternativeProofs ?? []) {
+      for (const proof of alternative) collectEvidence(proof, summary);
+    }
+    if (summary.claims.size > 0) {
+      lines.push(`   Claims: ${[...summary.claims].sort().join('; ')}`);
+    }
+    if (summary.rules.size > 0) {
+      lines.push(
+        `   Rules: ${[...summary.rules]
+          .sort((left, right) => left - right)
+          .map((number) => `#${number} ${ruleByNumber.get(number) ?? '(unknown rule)'}`)
+          .join('; ')}`
+      );
+    }
+    if (summary.absences.size > 0) {
+      lines.push(`   Absent: ${[...summary.absences].sort().join('; ')}`);
+    }
+    if (summary.aggregates.size > 0) {
+      lines.push(`   Aggregates: ${[...summary.aggregates].sort().join('; ')}`);
+    }
+    if (summary.projections.size > 0) {
+      lines.push(`   Projected from: ${[...summary.projections].sort().join('; ')}`);
+    }
+    if (summary.sources.size > 0) {
+      lines.push(`   Sources: ${[...summary.sources.values()].sort().join('; ')}`);
+    }
+  }
+  const answer = lines.join('\n');
+  assertBoundedOutput(answer, 'evidence recall answer');
+  return answer;
+}
+
 function resolvedRecallAnswerMode(value: unknown): RecallAnswerMode {
   if (value === undefined || value === 'natural') return 'natural';
-  if (value === 'deterministic') return value;
-  throw new Error("recall answer mode must be 'natural' or 'deterministic'");
+  if (value === 'deterministic' || value === 'evidence') return value;
+  throw new Error("recall answer mode must be 'natural', 'deterministic', or 'evidence'");
 }
 
 function stripFences(text: string): string {
@@ -1337,8 +1477,13 @@ export async function recallQuestion(
     options.answerMode ?? deps.recallAnswerMode
   );
   const answerModeResult =
-    answerMode === 'deterministic' ? { answerMode } : {};
-  const retrieval = await retrieveQuestion(deps, question, namespaces, options);
+    answerMode === 'natural' ? {} : { answerMode };
+  const retrieval = await retrieveQuestion(
+    deps,
+    question,
+    namespaces,
+    answerMode === 'evidence' ? { ...options, explain: true } : options
+  );
   if (retrieval.query === null) {
     return {
       answer:
@@ -1373,6 +1518,21 @@ export async function recallQuestion(
       answer: deterministicRecallAnswer(
         retrieval.query,
         retrieval.bindings,
+        retrieval.rowTrust
+      ),
+      answerMode,
+      ...retrieval,
+    };
+  }
+  if (answerMode === 'evidence') {
+    if (retrieval.explanation === undefined) {
+      throw new Error('evidence recall requires explanation evidence');
+    }
+    return {
+      answer: evidenceRecallAnswer(
+        retrieval.query,
+        retrieval.bindings,
+        retrieval.explanation,
         retrieval.rowTrust
       ),
       answerMode,
