@@ -13,3 +13,6 @@ New interfaces are:
 Proposal-first extraction always targets accepted knowledge and performs no mutation.
 Existing callers that require tentative uncertainty should retain the established
 tentative claim review workflow.
+
+Version 0.46 adds a separate digest-bound reviewed apply operation; proposal generation
+itself remains non-mutating.

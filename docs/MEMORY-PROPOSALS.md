@@ -60,9 +60,9 @@ transition. The accepted extraction prompt skips hedged “may/might/maybe” cl
 uncertain knowledge, continue using `remember --trust tentative` and the existing
 `claims`/`accept`/`reject` lifecycle.
 
-Version 0.45 does not apply memory proposals. Direct `remember` remains available, and the
-proposal artifact is ready for a separate digest-bound apply boundary rather than silently
-reusing immediate mutation semantics.
+Version 0.45 itself does not apply memory proposals. Version 0.46 adds a separate explicit
+digest-bound application boundary; proposal generation remains non-mutating. See
+[reviewed personal memory application](MEMORY-APPLICATION.md).
 
 Secrets still fail locally before any LLM request or proposal artifact. Policy and
 identity metadata remain explicitly authored authority and cannot be extracted.

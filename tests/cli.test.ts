@@ -8,7 +8,8 @@ import {
   assertBoundedOutput,
   stringifyBoundedResult,
 } from '../src/safety.js';
-import { MemoryStore } from '../src/store/store.js';
+import { MemoryStore, knowledgeProgramDigest } from '../src/store/store.js';
+import { computeMemoryProposalDigest } from '../src/knowledge/memory-proposal.js';
 import { serializeClause } from '../src/engine/index.js';
 
 describe('CLI ingress limits', () => {
@@ -121,6 +122,60 @@ describe('CLI ingress limits', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/refusing to send sensitive memory text/i);
     expect(existsSync(join(home, 'memory', 'default.dl'))).toBe(false);
+  });
+
+  it('applies one reviewed accepted-memory proposal file idempotently', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-apply-memory-'));
+    const home = join(root, 'home');
+    const proposalFile = join(root, 'memory-proposal.json');
+    const payload = {
+      version: 1 as const,
+      baselineDigest: knowledgeProgramDigest(
+        ['default'],
+        new Map([['default', []]])
+      ),
+      namespace: 'default',
+      namespaces: ['default'],
+      sourceText: 'Rahul has a pet named Luna.',
+      validTimeMode: 'delete' as const,
+      addClauses: ['pet(rahul, luna).'],
+      removeClauses: [],
+    };
+    writeFileSync(
+      proposalFile,
+      JSON.stringify({
+        ...payload,
+        proposalDigest: computeMemoryProposalDigest(payload),
+      })
+    );
+    const apply = () =>
+      spawnSync(
+        process.execPath,
+        [
+          resolve('dist/cli.js'),
+          'apply-memory',
+          proposalFile,
+          '--op-id',
+          'cli-reviewed-memory',
+        ],
+        { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+      );
+
+    const first = apply();
+    expect(first.status).toBe(0);
+    expect(JSON.parse(first.stdout)).toMatchObject({
+      opId: 'cli-reviewed-memory',
+      sequence: 1,
+      added: [expect.any(Object)],
+      audit: { topology: { factCount: 1 } },
+    });
+    expect(JSON.parse(apply().stdout)).toEqual(JSON.parse(first.stdout));
+    const queried = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'query', 'pet(rahul, Name)'],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(JSON.parse(queried.stdout)).toEqual([{ Name: 'luna' }]);
   });
 
   it('rejects an invalid proof limit before evaluating an explanation', () => {
@@ -1223,7 +1278,7 @@ describe('CLI ingress limits', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(
-      /--op-id is available for assert, accept, reject, supersede, forget, import, checkpoint, and apply-rule-change/i
+      /--op-id is available for assert, accept, reject, supersede, forget, import, checkpoint, apply-rule-change, and apply-memory/i
     );
   });
 

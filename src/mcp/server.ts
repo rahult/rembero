@@ -33,6 +33,7 @@ import {
   recallTool,
   rememberTool,
   proposeMemoryTool,
+  applyMemoryProposalTool,
   resolveTentativeTool,
   reviewTentativeTool,
   supersedeFactsTool,
@@ -75,6 +76,7 @@ import {
   MAX_RULE_CHANGE_PROPOSAL_BYTES,
   RuleChangeCheckError,
 } from '../knowledge/rule-change.js';
+import { MAX_MEMORY_PROPOSAL_BYTES } from '../knowledge/memory-application.js';
 import {
   MAX_REPAIR_PLANS,
   MAX_REPAIR_SEARCH_STATES,
@@ -106,6 +108,7 @@ import type { EntityIdentityMode } from '../knowledge/identity.js';
 import {
   MAX_OPERATION_ID_BYTES,
   OperationConflictError,
+  MemoryChangeStaleError,
   RuleChangeStaleError,
 } from '../store/store.js';
 import {
@@ -353,6 +356,7 @@ function asError(e: unknown) {
     e instanceof OperationConflictError ||
     e instanceof IncompleteHistoryError ||
     e instanceof TrustMetadataError ||
+    e instanceof MemoryChangeStaleError ||
     e instanceof RuleChangeStaleError ||
     e instanceof RuleChangeCheckError
   ) {
@@ -443,7 +447,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.45.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.46.0' });
 
   server.registerTool(
     'remember',
@@ -549,6 +553,40 @@ export function createServer(deps: PipelineDeps): McpServer {
               graphSelector
             ),
             entityIdentity,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'apply_memory_proposal',
+    {
+      title: 'Apply a reviewed accepted-memory proposal',
+      description:
+        'Apply only an explicitly reviewed v1 proposal emitted by propose_memory. Revalidates proposal digest, exact current governed baseline, candidate rule audit, and no-new-integrity-violations policy under one mutation lock before a crash-safe idempotent memory_change journal commit. This is accepted-memory mutation authority: call only after human review.',
+      inputSchema: {
+        proposal: z
+          .string()
+          .max(MAX_MEMORY_PROPOSAL_BYTES)
+          .describe('Standalone proposal JSON or complete propose_memory JSON containing one'),
+        opId: z
+          .string()
+          .min(1)
+          .max(MAX_OPERATION_ID_BYTES)
+          .describe('Caller-stable idempotency key for this reviewed application'),
+        maxViolations: maxViolationsField,
+      },
+    },
+    async ({ proposal, opId, maxViolations }) => {
+      try {
+        return asContent(
+          applyMemoryProposalTool(resolvedDeps, {
+            proposal,
+            opId,
+            maxViolations,
           })
         );
       } catch (e) {

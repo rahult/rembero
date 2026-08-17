@@ -45,7 +45,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 
 The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `query`,
 `check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
-`supersede_facts`, `propose-memory`, `propose_memory`, `what-if`, `what_if`, `apply-rule-change`, `apply_rule_change`, `why-not`, `why_not`, `topology`,
+`supersede_facts`, `propose-memory`, `propose_memory`, `apply-memory`, `apply_memory_proposal`, `what-if`, `what_if`, `apply-rule-change`, `apply_rule_change`, `why-not`, `why_not`, `topology`,
 `knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
 `plan_query_repair`, `audit-rules`, `audit_rules`, `search`, `search_knowledge`,
 `browse`, `browse_knowledge_graph`, `connect`, `connect_knowledge_graph`, `bundle`, `export_knowledge_bundle`,
@@ -73,7 +73,7 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 - Never store secrets or transient details. When unsure whether to remember, ask.
 ```
 
-Tools exposed: `remember`, `propose_memory`, `recall`, `recall_explain`, `assert_facts`,
+Tools exposed: `remember`, `propose_memory`, `apply_memory_proposal`, `recall`, `recall_explain`, `assert_facts`,
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `apply_rule_change`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
@@ -133,6 +133,7 @@ and the async-hook lifecycle boundary.
 ```bash
 node dist/cli.js remember "Rahul's dentist is Dr Chen"
 node dist/cli.js propose-memory 'Mira now works at Initech.' # review, no write
+node dist/cli.js apply-memory memory-review.json --op-id reviewed-memory-v2
 node dist/cli.js recall   "Who is Rahul's dentist?"
 node dist/cli.js recall   "Who owns Atlas?" --schema-predicate-limit 48
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
@@ -383,6 +384,12 @@ Version 0.45 lets natural-language memory remain a proposal before accepted muta
 corrections into exact baseline-bound changes, evaluates temporal, integrity, and rule
 impact, and returns a content-addressed review artifact without writing. See
 [the personal memory proposal contract](docs/MEMORY-PROPOSALS.md).
+
+Version 0.46 applies only an explicitly reviewed accepted-memory proposal. Exact facts,
+rules, removals, and temporal archives commit together after current baseline, candidate
+audit, and no-new-integrity checks pass under one mutation lock. The replayable change
+retains provenance, fact history, recorded diffs, checkpoints, and idempotency. See
+[the reviewed memory-application contract](docs/MEMORY-APPLICATION.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

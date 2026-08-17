@@ -97,6 +97,10 @@ import {
   proposeRememberText,
   type ProposeRememberResult,
 } from '../knowledge/memory-proposal.js';
+import {
+  applyMemoryProposal,
+  type ApplyMemoryProposalResult,
+} from '../knowledge/memory-application.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -236,6 +240,22 @@ export function proposeMemoryTool(
         : { entityIdentity: args.entityIdentity }),
     }
   );
+}
+
+export function applyMemoryProposalTool(
+  deps: StoreToolDeps,
+  args: {
+    proposal: string;
+    opId: string;
+    maxViolations?: number;
+  }
+): ApplyMemoryProposalResult {
+  return applyMemoryProposal(deps.store, args.proposal, {
+    opId: args.opId,
+    ...(args.maxViolations === undefined
+      ? {}
+      : { maxViolations: args.maxViolations }),
+  });
 }
 
 export function recallTool(

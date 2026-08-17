@@ -62,6 +62,10 @@ import {
   RuleChangeCheckError,
 } from './knowledge/rule-change.js';
 import {
+  applyMemoryProposal,
+  MAX_MEMORY_PROPOSAL_BYTES,
+} from './knowledge/memory-application.js';
+import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
@@ -115,6 +119,7 @@ import {
   MemoryStore,
   IncompleteHistoryError,
   OperationConflictError,
+  MemoryChangeStaleError,
   RuleChangeStaleError,
   type ValidTimeMode,
 } from './store/store.js';
@@ -132,6 +137,7 @@ Usage:
   rembero serve                          Start the MCP server on stdio
   rembero remember <text>                Extract facts from text and store them
   rembero propose-memory <text>         Extract and preview accepted memory without writing
+  rembero apply-memory <file>            Apply one reviewed accepted-memory proposal
   rembero remember --batch               Auto-capture from Claude Stop-hook JSON on stdin
   rembero recall <question>              Answer a question from memory
   rembero recall-explain <question>      Recall with proofs, sources, and a graph
@@ -764,9 +770,9 @@ async function main(): Promise<void> {
   }
   if (
     operationId !== undefined &&
-    !['assert', 'accept', 'reject', 'supersede', 'forget', 'import', 'checkpoint', 'apply-rule-change'].includes(command ?? '')
+    !['assert', 'accept', 'reject', 'supersede', 'forget', 'import', 'checkpoint', 'apply-rule-change', 'apply-memory'].includes(command ?? '')
   ) {
-    throw new Error('--op-id is available for assert, accept, reject, supersede, forget, import, checkpoint, and apply-rule-change');
+    throw new Error('--op-id is available for assert, accept, reject, supersede, forget, import, checkpoint, apply-rule-change, and apply-memory');
   }
   if (
     args.trust !== undefined &&
@@ -1011,6 +1017,31 @@ async function main(): Promise<void> {
           at: args.at,
           integrityEnforcement,
           entityIdentity,
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'apply-memory': {
+      if (args.positional.length !== 1) {
+        throw new Error('apply-memory requires exactly one proposal JSON file');
+      }
+      if (operationId === undefined) throw new Error('apply-memory requires --op-id');
+      const file = resolve(args.positional[0]);
+      const stat = lstatSync(file);
+      if (stat.isSymbolicLink() || !stat.isFile()) {
+        throw new Error('refusing non-regular memory proposal file');
+      }
+      if (stat.size > MAX_MEMORY_PROPOSAL_BYTES) {
+        throw new Error(`memory proposal exceeds ${MAX_MEMORY_PROPOSAL_BYTES} bytes`);
+      }
+      const maxViolations = maxViolationsOption(args.maxViolations);
+      const result = applyMemoryProposal(
+        store,
+        readFileSync(file, 'utf8'),
+        {
+          opId: operationId,
+          ...(maxViolations === undefined ? {} : { maxViolations }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -1890,6 +1921,11 @@ main().catch((e: unknown) => {
   }
   if (e instanceof RuleChangeStaleError) {
     console.error(stringifyBoundedResult(e.toJSON(), 'CLI stale rule proposal'));
+    process.exitCode = 7;
+    return;
+  }
+  if (e instanceof MemoryChangeStaleError) {
+    console.error(stringifyBoundedResult(e.toJSON(), 'CLI stale memory proposal'));
     process.exitCode = 7;
     return;
   }

@@ -12,6 +12,9 @@ export {
   type RuleChangeCandidateView,
   type RuleChangeMutationRequest,
   type RuleChangeMutationResult,
+  type MemoryChangeTemporalArchive,
+  type MemoryChangeMutationRequest,
+  type MemoryChangeMutationResult,
   type MemoryHistoryAction,
   type MemoryHistoryEvent,
   type MemoryHistory,
@@ -31,9 +34,11 @@ export {
   MAX_RECORDED_SNAPSHOT_BATCH,
   MAX_SUPERSEDE_PATTERNS,
   MAX_RULE_CHANGE_RULES,
+  MAX_MEMORY_CHANGE_CLAUSES,
   knowledgeProgramDigest,
   OperationConflictError,
   RuleChangeStaleError,
+  MemoryChangeStaleError,
   IncompleteHistoryError,
   type AutoCaptureBatch,
   type AutoCaptureFact,
@@ -101,6 +106,13 @@ export {
   type MemoryChangeProposal,
   type ProposeRememberResult,
 } from './knowledge/memory-proposal.js';
+export {
+  parseMemoryProposal,
+  applyMemoryProposal,
+  MAX_MEMORY_PROPOSAL_BYTES,
+  type ApplyMemoryProposalOptions,
+  type ApplyMemoryProposalResult,
+} from './knowledge/memory-application.js';
 export {
   type QueryPromptVariant,
   transcriptExtractionSystemPrompt,

@@ -58,7 +58,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.45.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.46.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -87,6 +87,7 @@ describe('MCP explanation surfaces', () => {
           'list_checkpoints',
           'history',
           'propose_memory',
+          'apply_memory_proposal',
           'supersede_facts',
         ])
       );
@@ -1289,7 +1290,8 @@ describe('MCP explanation surfaces', () => {
         },
       });
       const text = recalled.content.find((item) => item.type === 'text');
-      expect(JSON.parse(text?.type === 'text' ? text.text : '')).toMatchObject({
+      const payload = JSON.parse(text?.type === 'text' ? text.text : '');
+      expect(payload).toMatchObject({
         status: 'answered',
         answerMode: 'deterministic',
         answer: 'Result for works_at(maya, Company): Company = acme.',
@@ -1385,7 +1387,8 @@ describe('MCP explanation surfaces', () => {
         arguments: { text: 'Mira now works at Initech.' },
       });
       const text = proposed.content.find((item) => item.type === 'text');
-      expect(JSON.parse(text?.type === 'text' ? text.text : '')).toMatchObject({
+      const payload = JSON.parse(text?.type === 'text' ? text.text : '');
+      expect(payload).toMatchObject({
         changed: true,
         proposal: {
           removeClauses: ['works_at(mira, acme).'],
@@ -1394,6 +1397,24 @@ describe('MCP explanation surfaces', () => {
       });
       expect(store.load('default').map(serializeClause)).toEqual([
         'works_at(mira, acme).',
+      ]);
+      const applied = await client.callTool({
+        name: 'apply_memory_proposal',
+        arguments: {
+          proposal: JSON.stringify(payload.proposal),
+          opId: 'mcp-reviewed-memory',
+        },
+      });
+      const appliedText = applied.content.find((item) => item.type === 'text');
+      expect(
+        JSON.parse(appliedText?.type === 'text' ? appliedText.text : '')
+      ).toMatchObject({
+        opId: 'mcp-reviewed-memory',
+        removed: [expect.any(Object)],
+        added: [expect.any(Object)],
+      });
+      expect(store.load('default').map(serializeClause)).toEqual([
+        'works_at(mira, initech).',
       ]);
     } finally {
       await client.close();

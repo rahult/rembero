@@ -564,6 +564,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    `propose_memory`, namespaces, packages, secret zero-call behavior, and existing output
    limits target reviewed accepted knowledge while tentative claims keep their own flow.
 
+## Phase 49 — Digest-bound reviewed personal memory application  *(v0.46)*
+
+1. **Complete — exact mixed-clause authority**: one reviewed artifact may atomically add
+   facts/rules, remove exact facts/rules, and add validated temporal archives without
+   wildcard re-evaluation or partial commits.
+2. **Complete — in-lock safety**: content and current program digests, exact presence,
+   candidate rule audit, and mandatory no-new-integrity enforcement are revalidated under
+   the cross-process mutation lock before crash-safe commit.
+3. **Complete — durable semantic lifecycle**: `memory_change` replays through sources,
+   fact retraction/supersession history, temporal lineage, recorded snapshots/diffs,
+   checkpoints, bundles, and original-sequence idempotency.
+4. **Complete — operational parity**: library, CLI `apply-memory`, MCP
+   `apply_memory_proposal`, package installs, tamper/stale/integrity/conflict errors, and a
+   competing-process race share one explicit human-authorized accepted-memory contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

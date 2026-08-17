@@ -23,6 +23,7 @@ import {
   recallExplainTool,
   rememberTool,
   proposeMemoryTool,
+  applyMemoryProposalTool,
   recallTool,
   supersedeFactsTool,
   whatIfTool,
@@ -512,6 +513,21 @@ describe('MCP tool handlers', () => {
     });
     expect(store.load('default').map(serializeClause)).toEqual([
       'works_at(mira, acme).',
+    ]);
+    const applied = applyMemoryProposalTool(
+      { store },
+      {
+        proposal: JSON.stringify(result.proposal),
+        opId: 'tool-reviewed-memory',
+      }
+    );
+    expect(applied).toMatchObject({
+      opId: 'tool-reviewed-memory',
+      removed: [expect.any(Object)],
+      added: [expect.any(Object)],
+    });
+    expect(store.load('default').map(serializeClause)).toEqual([
+      'works_at(mira, initech).',
     ]);
   });
 
