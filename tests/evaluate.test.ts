@@ -18,6 +18,7 @@ import {
   DEFAULT_MAX_PROOF_ENUMERATION_STEPS,
   DEFAULT_MAX_PROOFS_PER_ROW,
   isIntegrityConstraint,
+  materialize,
   materializeWithProof,
   literalMatches,
   MAX_PROOF_ENUMERATION_STEPS,
@@ -1460,6 +1461,16 @@ describe('evaluateWithProof', () => {
 });
 
 describe('materializeWithProof', () => {
+  it('can materialize the same bounded fixpoint without serializing proofs', () => {
+    const program = parseProgram(
+      'edge(a, b). edge(b, c). path(X, Y) :- edge(X, Y).'
+    );
+    expect(materialize(program)).toEqual(
+      materializeWithProof(program).map(({ proof: _proof, ...fact }) => fact)
+    );
+    expect(() => materialize(program, { maxFacts: 2 })).toThrow(EngineLimitError);
+  });
+
   it('returns base and derived facts with proofs', () => {
     const db = `
       edge(a, b).

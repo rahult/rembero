@@ -39,6 +39,10 @@ import {
   simulateKnowledge,
   type CounterfactualKnowledgeResult,
 } from '../knowledge/counterfactual.js';
+import {
+  explainWhyNot,
+  type ExplainWhyNotResult,
+} from '../knowledge/why-not.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -103,7 +107,8 @@ function recordedView(
   recordedSnapshot?: RecordedSnapshotMetadata;
 } {
   if (sequence === undefined) {
-    return { clauses: store.clausesFor(namespaces), sources: store.sourcesFor(namespaces) };
+    const snapshot = store.knowledgeSnapshot(namespaces);
+    return { clauses: snapshot.clauses, sources: snapshot.sources };
   }
   const snapshot = store.recordedSnapshot(namespaces, sequence);
   return {
@@ -536,6 +541,57 @@ export function whatIfTool(
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
     ...(trustMode === 'accepted' ? {} : { trustMode }),
   });
+}
+
+export function whyNotTool(
+  deps: StoreToolDeps,
+  args: {
+    query: string;
+    namespaces?: string[] | '*';
+    proofLimit?: number;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+    maxFailures?: number;
+    maxDiagnosticDepth?: number;
+    maxCandidatesPerFailure?: number;
+    maxEvidenceFacts?: number;
+  }
+): ExplainWhyNotResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  assertBoundedInput(args.query, 'why-not query');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = explainWhyNot(
+    recorded.clauses,
+    args.query,
+    recorded.sources,
+    {
+      ...(args.proofLimit === undefined
+        ? {}
+        : { maxProofsPerRow: args.proofLimit }),
+      ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(trustMode === 'accepted' ? {} : { trustMode }),
+      ...(args.maxFailures === undefined ? {} : { maxFailures: args.maxFailures }),
+      ...(args.maxDiagnosticDepth === undefined
+        ? {}
+        : { maxDiagnosticDepth: args.maxDiagnosticDepth }),
+      ...(args.maxCandidatesPerFailure === undefined
+        ? {}
+        : { maxCandidatesPerFailure: args.maxCandidatesPerFailure }),
+      ...(args.maxEvidenceFacts === undefined
+        ? {}
+        : { maxEvidenceFacts: args.maxEvidenceFacts }),
+    }
+  );
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
 }
 
 export function forgetTool(

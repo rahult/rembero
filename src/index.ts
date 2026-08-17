@@ -170,6 +170,27 @@ export {
   type CounterfactualIntegrityViolation,
 } from './knowledge/counterfactual.js';
 export {
+  explainWhyNot,
+  DEFAULT_MAX_WHY_NOT_FAILURES,
+  MAX_WHY_NOT_FAILURES,
+  DEFAULT_MAX_WHY_NOT_DEPTH,
+  MAX_WHY_NOT_DEPTH,
+  DEFAULT_MAX_WHY_NOT_CANDIDATES,
+  MAX_WHY_NOT_CANDIDATES,
+  DEFAULT_MAX_WHY_NOT_EVIDENCE,
+  MAX_WHY_NOT_EVIDENCE,
+  type WhyNotReason,
+  type WhyNotStatus,
+  type WhyNotObservedFact,
+  type WhyNotRuleAttempt,
+  type WhyNotFailure,
+  type WhyNotGraphNode,
+  type WhyNotGraphEdge,
+  type WhyNotGraph,
+  type ExplainWhyNotOptions,
+  type ExplainWhyNotResult,
+} from './knowledge/why-not.js';
+export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,
   MAX_TENTATIVE_CLAUSE_BYTES,

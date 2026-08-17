@@ -387,6 +387,67 @@ describe('CLI ingress limits', () => {
     ]);
   });
 
+  it('explains rule blockers and sourced nearby facts without an LLM', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-why-not-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'works_at(mira, initech). colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+      { opId: 'employment-source' }
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'why-not',
+        'colleague(mira, rahul)',
+        '--failure-limit',
+        '16',
+        '--diagnostic-depth',
+        '6',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'blocked',
+      failures: [
+        {
+          reason: 'rules_blocked',
+          rules: [
+            {
+              failures: [
+                {
+                  reason: 'missing_fact',
+                  goal: 'works_at(rahul, initech)',
+                  nearby: [
+                    {
+                      fact: 'works_at(mira, initech).',
+                      explanation: {
+                        rows: [{ proofs: [{ sources: [{ opId: 'employment-source' }] }] }],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      graph: {
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ kind: 'failure', reason: 'missing_fact' }),
+        ]),
+      },
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

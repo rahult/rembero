@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.23.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.24.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -58,6 +58,7 @@ describe('MCP explanation surfaces', () => {
           'check_integrity',
           'conflict_views',
           'what_if',
+          'why_not',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -94,6 +95,29 @@ describe('MCP explanation surfaces', () => {
       expect(store.clausesFor(['default']).some((clause) =>
         clause.head.args.some((term) => term.type === 'atom' && term.value === 'carol')
       )).toBe(false);
+
+      const whyNot = await client.callTool({
+        name: 'why_not',
+        arguments: {
+          query: 'employee(carol)',
+          maxFailures: 8,
+          maxCandidatesPerFailure: 2,
+        },
+      });
+      const whyNotText = whyNot.content.find((item) => item.type === 'text');
+      expect(JSON.parse(whyNotText?.type === 'text' ? whyNotText.text : '')).toMatchObject({
+        status: 'blocked',
+        failures: [
+          {
+            reason: 'missing_fact',
+            goal: 'employee(carol)',
+            nearby: [
+              { fact: 'employee(alice).' },
+              { fact: 'employee(bob).' },
+            ],
+          },
+        ],
+      });
 
       const asserted = await client.callTool({
         name: 'assert_facts',

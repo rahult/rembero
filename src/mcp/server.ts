@@ -30,6 +30,7 @@ import {
   reviewTentativeTool,
   supersedeFactsTool,
   whatIfTool,
+  whyNotTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -42,6 +43,12 @@ import {
   MAX_COUNTERFACTUAL_ASSUMPTIONS,
   MAX_COUNTERFACTUAL_RETRACTIONS,
 } from '../knowledge/counterfactual.js';
+import {
+  MAX_WHY_NOT_CANDIDATES,
+  MAX_WHY_NOT_DEPTH,
+  MAX_WHY_NOT_EVIDENCE,
+  MAX_WHY_NOT_FAILURES,
+} from '../knowledge/why-not.js';
 import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
@@ -89,6 +96,34 @@ const maxViolationsField = z
   .max(MAX_INTEGRITY_VIOLATIONS)
   .optional()
   .describe('Maximum complete integrity-violation rows returned across all constraints');
+const whyNotFailureLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_WHY_NOT_FAILURES)
+  .optional()
+  .describe('Maximum complete blocker nodes (default: 32)');
+const whyNotDepthField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_WHY_NOT_DEPTH)
+  .optional()
+  .describe('Maximum nested rule-diagnostic depth (default: 8)');
+const whyNotCandidateLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_WHY_NOT_CANDIDATES)
+  .optional()
+  .describe('Maximum nearby sourced facts per blocker (default: 4)');
+const whyNotEvidenceLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_WHY_NOT_EVIDENCE)
+  .optional()
+  .describe('Maximum distinct nearby facts carrying proof evidence (default: 16)');
 const conflictFocusField = z
   .string()
   .min(1)
@@ -252,7 +287,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.23.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.24.0' });
 
   server.registerTool(
     'remember',
@@ -711,6 +746,58 @@ export function createServer(deps: PipelineDeps): McpServer {
             trustMode,
             graphSelector,
             recordedSequence,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'why_not',
+    {
+      title: 'Explain why a query is blocked',
+      description:
+        'Deterministically explain an empty Datalog query by following conjunction bindings and rule alternatives to missing facts, present negated facts, false comparisons, recursive cycles, or aggregate output mismatches. Includes sourced nearby facts and a blocker graph; no LLM is used.',
+      inputSchema: {
+        query: boundedText(),
+        namespaces: namespacesField,
+        proofLimit: proofLimitField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+        maxFailures: whyNotFailureLimitField,
+        maxDiagnosticDepth: whyNotDepthField,
+        maxCandidatesPerFailure: whyNotCandidateLimitField,
+        maxEvidenceFacts: whyNotEvidenceLimitField,
+      },
+    },
+    async ({
+      query,
+      namespaces,
+      proofLimit,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+      maxFailures,
+      maxDiagnosticDepth,
+      maxCandidatesPerFailure,
+      maxEvidenceFacts,
+    }) => {
+      try {
+        return asContent(
+          whyNotTool(resolvedDeps, {
+            query,
+            namespaces,
+            proofLimit,
+            entityIdentity,
+            trustMode,
+            recordedSequence,
+            maxFailures,
+            maxDiagnosticDepth,
+            maxCandidatesPerFailure,
+            maxEvidenceFacts,
           })
         );
       } catch (e) {

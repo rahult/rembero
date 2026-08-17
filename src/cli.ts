@@ -23,6 +23,12 @@ import { rememberText, recallQuestion } from './llm/pipeline.js';
 import { MAX_RECALL_SCHEMA_PREDICATES } from './llm/schema.js';
 import { MAX_INTEGRITY_VIOLATIONS } from './knowledge/integrity.js';
 import {
+  MAX_WHY_NOT_CANDIDATES,
+  MAX_WHY_NOT_DEPTH,
+  MAX_WHY_NOT_EVIDENCE,
+  MAX_WHY_NOT_FAILURES,
+} from './knowledge/why-not.js';
+import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
@@ -54,6 +60,7 @@ import {
   resolveTentativeTool,
   reviewTentativeTool,
   whatIfTool,
+  whyNotTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -91,6 +98,7 @@ Usage:
   rembero check                          Check explicit integrity constraints with evidence
   rembero conflicts [focus]              Group conflicts by authored focus with evidence
   rembero what-if <query>                Preview fact changes with proofs and integrity impact
+  rembero why-not <query>                Explain deterministic blockers for a query
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -108,7 +116,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -120,6 +128,10 @@ Options:
       --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
       --assume <facts>     Ground facts to add in a what-if simulation; repeatable
       --without <pattern> Ground fact pattern to remove in a what-if simulation; repeatable
+      --failure-limit <n> Why-not blocker limit (default: 32; max: ${MAX_WHY_NOT_FAILURES})
+      --diagnostic-depth <n> Why-not rule depth (default: 8; max: ${MAX_WHY_NOT_DEPTH})
+      --candidate-limit <n> Nearby facts per blocker (default: 4; max: ${MAX_WHY_NOT_CANDIDATES})
+      --evidence-limit <n> Sourced nearby facts overall (default: 16; max: ${MAX_WHY_NOT_EVIDENCE})
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -171,6 +183,10 @@ interface ParsedArgs {
   patterns: string[];
   assumptions: string[];
   without: string[];
+  failureLimit?: string;
+  diagnosticDepth?: string;
+  candidateLimit?: string;
+  evidenceLimit?: string;
   at?: string;
 }
 
@@ -252,6 +268,18 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--without') {
       parsed.without.push(valueAfter(i, arg));
+      i += 1;
+    } else if (arg === '--failure-limit') {
+      parsed.failureLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--diagnostic-depth') {
+      parsed.diagnosticDepth = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--candidate-limit') {
+      parsed.candidateLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--evidence-limit') {
+      parsed.evidenceLimit = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
@@ -549,6 +577,7 @@ async function main(): Promise<void> {
       'check',
       'conflicts',
       'what-if',
+      'why-not',
       'list',
     ].includes(command ?? '')
   ) {
@@ -566,6 +595,14 @@ async function main(): Promise<void> {
   if (args.without.length > 0 && command !== 'what-if') {
     throw new Error('--without is available only for what-if');
   }
+  if (
+    [args.failureLimit, args.diagnosticDepth, args.candidateLimit, args.evidenceLimit].some(
+      (value) => value !== undefined
+    ) &&
+    command !== 'why-not'
+  ) {
+    throw new Error('why-not diagnostic limits are available only for why-not');
+  }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
   }
@@ -579,10 +616,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -810,6 +847,60 @@ async function main(): Promise<void> {
           namespaces,
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(maxViolations === undefined ? {} : { maxViolations }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'why-not': {
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const result = whyNotTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          query: text,
+          namespaces,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+          ...(args.failureLimit === undefined
+            ? {}
+            : {
+                maxFailures: integerOption(
+                  args.failureLimit,
+                  0,
+                  'why-not failure limit'
+                ),
+              }),
+          ...(args.diagnosticDepth === undefined
+            ? {}
+            : {
+                maxDiagnosticDepth: integerOption(
+                  args.diagnosticDepth,
+                  0,
+                  'why-not diagnostic depth'
+                ),
+              }),
+          ...(args.candidateLimit === undefined
+            ? {}
+            : {
+                maxCandidatesPerFailure: integerOption(
+                  args.candidateLimit,
+                  0,
+                  'why-not candidate limit'
+                ),
+              }),
+          ...(args.evidenceLimit === undefined
+            ? {}
+            : {
+                maxEvidenceFacts: integerOption(
+                  args.evidenceLimit,
+                  0,
+                  'why-not evidence limit'
+                ),
+              }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

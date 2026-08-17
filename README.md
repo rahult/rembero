@@ -44,7 +44,8 @@ Configuration is via environment variables (a `.env` file in the working directo
 
 The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `query`,
 `check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
-`supersede_facts`, `what-if`, `what_if`, `forget`, `list_memories`) work with no API key at all—only
+`supersede_facts`, `what-if`, `what_if`, `why-not`, `why_not`, `forget`, `list_memories`)
+work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
 
 ## Use from Claude Code (MCP)
@@ -69,7 +70,7 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
-`what_if`, `checkpoint_journal`, `list_checkpoints`, and `list_memories`.
+`what_if`, `why_not`, `checkpoint_journal`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -145,6 +146,7 @@ node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
 node dist/cli.js what-if  'colleague(mira, Who)' \
   --without 'works_at(rahul, _)' --assume 'works_at(rahul, acme).'
+node dist/cli.js why-not  'colleague(mira, rahul)' # missing premises + nearby evidence
 node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete support
 node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
@@ -222,6 +224,14 @@ then returns before/after rows, changed proof evidence, introduced or resolved i
 violations, and hypothetical provenance in the explanation graph. It never calls an LLM
 or writes a namespace, source, or journal entry. See
 [the counterfactual-impact contract](docs/COUNTERFACTUAL-IMPACT.md).
+
+Version 0.24 explains deterministic failure rather than returning an opaque empty row
+set. `why-not` follows conjunction bindings and every matching rule branch to missing
+facts, present negated facts, false comparisons, recursive cycles, or aggregate output
+mismatches. Nearby facts retain proofs and durable sources; a separate blocker graph
+connects the query, attempted rules, failures, and observations. Empty `recall-explain`
+results include the same `whyNot` evidence. See
+[the why-not explanation contract](docs/WHY-NOT-EXPLANATIONS.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

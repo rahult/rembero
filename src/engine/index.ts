@@ -45,6 +45,7 @@ export {
   type ExplainedQueryBindings,
   type EvaluateOptions,
   type MaterializedFactWithProof,
+  type MaterializedFact,
   type ProofStep,
   type QueryProof,
   DEFAULT_MAX_PROOF_ENUMERATION_STEPS,
@@ -54,11 +55,13 @@ export {
   MAX_PROOF_ENUMERATION_STEPS,
   MAX_PROOFS_PER_ROW,
   evaluate,
+  comparisonMatches,
   evaluateQuerySpec,
   evaluateQuerySpecWithProof,
   evaluateWithProof,
   literalMatches,
   materializeWithProof,
+  materialize,
 } from './evaluate.js';
 export { ParseError } from './lexer.js';
 export { parseProgram, parseQuery, parseQuerySpec } from './parser.js';

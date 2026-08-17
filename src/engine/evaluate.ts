@@ -81,6 +81,12 @@ export interface MaterializedFactWithProof {
   proof: DerivationProof;
 }
 
+export interface MaterializedFact {
+  predicate: string;
+  values: (string | number)[];
+  derived: boolean;
+}
+
 export class EngineLimitError extends Error {
   constructor(message: string) {
     super(message);
@@ -473,6 +479,15 @@ function checkComparison(goal: Comparison, env: Bindings): boolean {
     );
   }
   return comparisonHolds(goal.op, left, right);
+}
+
+/** Evaluate one comparison against an explicit binding environment with engine-identical safety. */
+export function comparisonMatches(
+  goal: Comparison,
+  bindings: Bindings = {}
+): boolean {
+  assertGoalNumericSafety(goal);
+  return checkComparison(goal, bindings);
 }
 
 function relationCandidates(
@@ -1709,5 +1724,25 @@ export function materializeWithProof(
     }
   }
 
+  return facts;
+}
+
+/** Materialize the bounded fixpoint without paying proof serialization cost. */
+export function materialize(
+  clauses: Clause[],
+  options: EvaluateOptions = {}
+): MaterializedFact[] {
+  const lookup = relationLookupContext(options);
+  const { db } = deriveDatabase(clauses, options, lookup);
+  const facts: MaterializedFact[] = [];
+  for (const relation of db.values()) {
+    for (const entry of relation.tuples.values()) {
+      facts.push({
+        predicate: entry.predicate,
+        values: entry.tuple.map(groundValue),
+        derived: entry.derived,
+      });
+    }
+  }
   return facts;
 }

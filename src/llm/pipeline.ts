@@ -31,6 +31,10 @@ import {
   type ExplainKnowledgeResult,
   type SourcedQueryProof,
 } from '../knowledge/graph.js';
+import {
+  explainWhyNot,
+  type ExplainWhyNotResult,
+} from '../knowledge/why-not.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   canonicalizeKnowledge,
@@ -123,6 +127,7 @@ export interface RecallResult {
   query: string | null;
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
+  whyNot?: ExplainWhyNotResult;
   rowTrust?: KnowledgeTrust[];
   queryReviews?: RecallQueryReview[];
   pruning?: RecallPruningReport;
@@ -135,6 +140,7 @@ export interface RetrievalResult {
   query: string | null;
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
+  whyNot?: ExplainWhyNotResult;
   rowTrust?: KnowledgeTrust[];
   queryReviews?: RecallQueryReview[];
   pruning?: RecallPruningReport;
@@ -845,8 +851,11 @@ export async function retrieveQuestion(
   const recorded = options.recordedSequence === undefined
     ? undefined
     : deps.store.recordedSnapshot(namespaces, options.recordedSequence);
-  const literalClauses = recorded?.clauses ?? deps.store.clausesFor(namespaces);
-  const literalSources = recorded?.sources ?? deps.store.sourcesFor(namespaces);
+  const current = recorded === undefined
+    ? deps.store.knowledgeSnapshot(namespaces)
+    : undefined;
+  const literalClauses = recorded?.clauses ?? current!.clauses;
+  const literalSources = recorded?.sources ?? current!.sources;
   const recordedSnapshot = recorded === undefined
     ? undefined
     : {
@@ -925,6 +934,7 @@ export async function retrieveQuestion(
     query: string | null;
     bindings: Record<string, string>[];
     explanation?: ExplainKnowledgeResult;
+    whyNot?: ExplainWhyNotResult;
     rowTrust?: KnowledgeTrust[];
     queryReview?: RecallQueryReview;
   }
@@ -969,6 +979,15 @@ export async function retrieveQuestion(
           }
         );
         const bindings = explanation.rows.map((row) => row.bindings);
+        const whyNot = options.explain && bindings.length === 0
+          ? explainWhyNot(literalClauses, queryText, literalSources, {
+              ...(options.proofLimit === undefined
+                ? {}
+                : { maxProofsPerRow: options.proofLimit }),
+              ...(entityIdentity === undefined ? {} : { entityIdentity }),
+              ...(trustMode === 'accepted' ? {} : { trustMode }),
+            })
+          : undefined;
         return {
           outcome: bindings.length > 0 ? 'answered' : 'empty',
           query: queryText,
@@ -977,6 +996,7 @@ export async function retrieveQuestion(
             ? { rowTrust: explanationRowTrust(explanation) }
             : {}),
           ...(options.explain ? { explanation } : {}),
+          ...(whyNot === undefined ? {} : { whyNot }),
         };
       }
       const bindings = evaluateQuerySpec(clauses, query).map((binding: Bindings) =>

@@ -276,6 +276,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    duplicate assumptions, unmatched removals, namespace semantics, input bounds, library,
    CLI, MCP, and packaged-install behavior are explicit and tested.
 
+## Phase 27 — Deterministic why-not explanations  *(v0.24)*
+
+1. **Complete — complete bounded branch diagnosis**: empty relational and aggregate
+   queries retain every eliminated conjunction binding and follow matching rule branches
+   to missing facts, present negated facts, false comparisons, recursion, or output mismatch.
+2. **Complete — sourced nearby evidence and blocker graph**: same-signature facts are
+   ranked deterministically by grounded argument agreement, keep ordinary proof/source
+   graphs, and connect to query, rule, and failure nodes without persisting a second graph.
+3. **Complete — recall and interface parity**: current and recorded library, CLI, MCP,
+   canonical identity, tentative trust, recursive, aggregate, and empty recall-explain
+   paths share fail-closed depth, frontier, evidence, proof, and output limits.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

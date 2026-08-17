@@ -36,9 +36,10 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, assertTentativeFacts, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, isAggregateRule, parseProgram, parseQuery, parseQuerySpec, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, assertTentativeFacts, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
+        "if (materialize(parseProgram('base(a). derived(X) :- base(X).')).filter((fact) => fact.derived).length !== 1) throw new Error('public proof-free materialization API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
         "if (arithmetic.length !== 1 || arithmetic[0]?.X?.value !== 'a') throw new Error('public arithmetic API failed'); " +
         "const indexedProgram = parseProgram([...Array.from({ length: 100 }, (_, i) => `related(person_${i}, topic_${i % 7}).`), 'selected(person_99).', 'relevant(X, Y) :- selected(X), related(X, Y).'].join('\\n')); " +
@@ -53,6 +54,8 @@ try {
         "if (integrity.status !== 'violations' || integrity.violationCount !== 1) throw new Error('public integrity API failed'); " +
         "const conflicts = inspectConflicts(parseProgram('active(mira). suspended(mira). :- active(Person), suspended(Person).'), new Map(), { focus: 'mira' }); " +
         "if (conflicts.clusterCount !== 1 || conflicts.clusters[0]?.focus !== 'mira' || !conflicts.clusters[0]?.graph.nodes.some((node) => node.kind === 'conflict')) throw new Error('public conflict view API failed'); " +
+        "const whyNot = explainWhyNot(parseProgram('employee(bob). eligible(X) :- employee(X), badge(X).'), 'eligible(bob)'); " +
+        "if (whyNot.status !== 'blocked' || whyNot.failures[0]?.rules[0]?.failures[0]?.reason !== 'missing_fact') throw new Error('public why-not API failed'); " +
         "const aggregateRules = parseProgram('member(red, alice). member(red, bob). team_size(Team, Count) :- count(*) as Count where member(Team, Person).'); " +
         "const aggregateRuleRows = evaluate(aggregateRules, parseQuery('team_size(Team, Count)')); " +
         "if (!isAggregateRule(aggregateRules[2]) || aggregateRuleRows[0]?.Count?.value !== 2) throw new Error('public aggregate rule API failed'); " +
@@ -185,6 +188,20 @@ try {
   );
   if (acceptedTrust[0]?.State !== 'active') {
     throw new Error('packaged tentative trust acceptance failed');
+  }
+  const whyNotTrust = JSON.parse(
+    run(
+      process.execPath,
+      [installedCli, 'why-not', 'status(mira, paused)'],
+      { cwd: directory, env: trustEnv }
+    )
+  );
+  if (
+    whyNotTrust.status !== 'blocked' ||
+    whyNotTrust.failures?.[0]?.reason !== 'missing_fact' ||
+    whyNotTrust.failures?.[0]?.nearby?.[0]?.fact !== 'status(mira, active).'
+  ) {
+    throw new Error('packaged why-not explanation failed');
   }
   const simulatedTrust = JSON.parse(
     run(
@@ -534,7 +551,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

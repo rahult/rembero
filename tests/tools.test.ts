@@ -25,6 +25,7 @@ import {
   recallTool,
   supersedeFactsTool,
   whatIfTool,
+  whyNotTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -484,6 +485,40 @@ describe('MCP tool handlers', () => {
       },
     });
     expect(store.clausesFor(['default'])).toHaveLength(2);
+  });
+
+  it('explains current and recorded query blockers through the tool boundary', () => {
+    store.assert('default', 'status(mira, active).', { opId: 'before' });
+    store.replace('default', ['status(mira, _)'], 'status(mira, paused).', {
+      opId: 'after',
+    });
+
+    expect(
+      whyNotTool({ store }, { query: 'status(mira, active)' })
+    ).toMatchObject({
+      status: 'blocked',
+      failures: [
+        {
+          reason: 'missing_fact',
+          nearby: [
+            {
+              fact: 'status(mira, paused).',
+              explanation: { rows: [{ proofs: [{ sources: [{ opId: 'after' }] }] }] },
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      whyNotTool(
+        { store },
+        { query: 'status(mira, active)', recordedSequence: 1 }
+      )
+    ).toMatchObject({
+      status: 'satisfied',
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+      explanation: { rows: [{ proofs: [{ sources: [{ opId: 'before' }] }] }] },
+    });
   });
 
   it('query and explain read deterministic recorded snapshots with past sources', () => {

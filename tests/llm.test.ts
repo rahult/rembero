@@ -1440,6 +1440,43 @@ describe('recallQuestion', () => {
     expect(llm.calls[1].at(-1)?.content).toContain('empty result is valid evidence');
   });
 
+  it('adds deterministic rule blockers to an empty recall-explain result', async () => {
+    const llm = new ScriptedLlm([
+      '?- colleague(rahul, zoe).',
+      '?- colleague(rahul, zoe).',
+    ]);
+    const result = await retrieveQuestion(
+      { store, llm },
+      'Is Zoe a colleague of Rahul?',
+      ['default'],
+      { explain: true }
+    );
+
+    expect(result).toMatchObject({
+      status: 'no_match',
+      explanation: { rows: [] },
+      whyNot: {
+        status: 'blocked',
+        failures: [
+          {
+            reason: 'rules_blocked',
+            rules: [
+              {
+                failures: [
+                  {
+                    reason: 'missing_fact',
+                    goal: 'works_at(zoe, acme)',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(llm.calls).toHaveLength(2);
+  });
+
   it('accepts structurally unanswerable as the fallback response and skips phrasing', async () => {
     const llm = new ScriptedLlm(['?- works_at(zoe, X).', '?- unanswerable.']);
     const result = await recallQuestion({ store, llm }, 'Why does Zoe work there?');
