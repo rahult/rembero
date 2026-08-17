@@ -289,6 +289,59 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('rotates and lists journal checkpoints without changing recorded CLI reads', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-checkpoint-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('default', 'item(a).', { opId: 'first' });
+    store.assert('default', 'item(b).', { opId: 'second' });
+    const run = (args: string[]) =>
+      spawnSync(process.execPath, [resolve('dist/cli.js'), ...args], {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      });
+
+    const preview = run([
+      'checkpoint',
+      '--dry-run',
+      '--op-id',
+      'cli-checkpoint',
+      '--at',
+      '2026-08-17T02:00:00.000Z',
+    ]);
+    expect(JSON.parse(preview.stdout)).toMatchObject({
+      rotated: true,
+      sequence: 2,
+    });
+    expect(existsSync(join(home, 'memory', 'journal.log'))).toBe(true);
+
+    const compacted = run([
+      'checkpoint',
+      '--op-id',
+      'cli-checkpoint',
+      '--at',
+      '2026-08-17T02:00:00.000Z',
+    ]);
+    expect(compacted.status).toBe(0);
+    expect(JSON.parse(compacted.stdout)).toMatchObject({
+      rotated: true,
+      sequence: 2,
+      segmentCount: 1,
+    });
+    expect(JSON.parse(run(['checkpoints']).stdout)).toMatchObject({
+      count: 1,
+      checkpoints: [{ sequence: 2 }],
+    });
+    expect(
+      JSON.parse(
+        run(['query', 'item(Value)', '--as-of-sequence', '1']).stdout
+      )
+    ).toMatchObject({
+      bindings: [{ Value: 'a' }],
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');
@@ -429,7 +482,7 @@ describe('CLI ingress limits', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(
-      /--op-id is available for assert, accept, reject, supersede, forget, and import/i
+      /--op-id is available for assert, accept, reject, supersede, forget, import, and checkpoint/i
     );
   });
 

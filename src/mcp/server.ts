@@ -16,10 +16,12 @@ import {
   conflictViewsTool,
   assertFactsTool,
   assertTentativeTool,
+  checkpointJournalTool,
   explainQueryTool,
   forgetTool,
   historyTool,
   listMemoriesTool,
+  listCheckpointsTool,
   queryTool,
   recallExplainTool,
   recallTool,
@@ -245,7 +247,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.21.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.22.0' });
 
   server.registerTool(
     'remember',
@@ -847,6 +849,49 @@ export function createServer(deps: PipelineDeps): McpServer {
             ),
           })
         );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'checkpoint_journal',
+    {
+      title: 'Checkpoint journal',
+      description:
+        'Rotate the active append-only journal into an immutable SHA-256 verified segment and publish an exact namespace/source checkpoint without changing global recorded sequences.',
+      inputSchema: {
+        opId: operationIdField,
+        at: validTimeInstantField,
+        dryRun: z.boolean().optional(),
+      },
+    },
+    async ({ opId, at, dryRun }) => {
+      try {
+        return asContent(
+          checkpointJournalTool(
+            { store: resolvedDeps.store },
+            { opId, at, dryRun }
+          )
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'list_checkpoints',
+    {
+      title: 'List journal checkpoints',
+      description:
+        'List validated immutable journal checkpoint artifacts and their global sequence boundaries.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return asContent(listCheckpointsTool({ store: resolvedDeps.store }));
       } catch (e) {
         return asError(e);
       }

@@ -6,13 +6,17 @@ store; it is not a second database or an approximate retrieval index.
 
 ## Authoritative axis
 
-The snapshot coordinate is the global append position in `journal.log`:
+The snapshot coordinate is the global append position in the logical journal:
 
 - sequence `0` is the empty state before the first journal entry;
 - sequence `n` includes mutations through journal line `n`;
 - non-mutation audit entries still consume a position, so the coordinate never changes;
 - timestamps do not order snapshots. They remain descriptive valid-time metadata and may
   be caller supplied.
+
+Since version 0.22, that logical journal may span ordered immutable segments plus the
+active `journal.log` tail. Rotation never renumbers an entry. Missing, reordered, or
+content-tampered segments fail closed before a snapshot is returned.
 
 Use `history <pattern> --json` to discover relevant journal sequences, then pass
 `--as-of-sequence <n>` to `recall`, `recall-explain`, `query`, `explain`, `check`, or

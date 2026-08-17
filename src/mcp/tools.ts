@@ -20,6 +20,8 @@ import type {
   MemoryHistory,
   MemorySource,
   MemoryStore,
+  JournalCheckpointArtifact,
+  JournalCompactionResult,
   RecordedSnapshotMetadata,
   SupersedeResult,
 } from '../store/store.js';
@@ -524,6 +526,24 @@ export function historyTool(
     namespaces,
     ...(args.limit === undefined ? {} : { limit: args.limit }),
   });
+}
+
+export function checkpointJournalTool(
+  deps: StoreToolDeps,
+  args: { opId?: string; at?: string; dryRun?: boolean }
+): JournalCompactionResult {
+  return deps.store.compactJournal({
+    ...(args.opId === undefined ? {} : { opId: args.opId }),
+    ...(args.at === undefined ? {} : { at: validTimeInstant(args.at) }),
+    ...(args.dryRun === undefined ? {} : { dryRun: args.dryRun }),
+  });
+}
+
+export function listCheckpointsTool(
+  deps: StoreToolDeps
+): { checkpoints: JournalCheckpointArtifact[]; count: number } {
+  const checkpoints = deps.store.listJournalCheckpoints();
+  return { checkpoints, count: checkpoints.length };
 }
 
 export interface PredicateGroup {

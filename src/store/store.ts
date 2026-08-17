@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { redactSensitiveText } from '../safety.js';
 import {
   type Clause,
@@ -50,6 +50,11 @@ const HEADER = '% rembero memory — one Datalog clause per line; edit by hand i
 const MAX_JOURNAL_BYTES = 16 * 1024 * 1024;
 const MAX_CAPTURE_ERROR_BYTES = 1024 * 1024;
 const MAX_JOURNAL_ENTRIES = 100_000;
+export const MAX_JOURNAL_SEGMENTS = 64;
+export const MAX_TOTAL_JOURNAL_ENTRIES = 1_000_000;
+export const MAX_CHECKPOINT_BYTES = 32 * 1024 * 1024;
+const JOURNAL_SEGMENT_RE = /^journal-(\d{12})-(\d{12})-([a-f0-9]{64})\.jsonl$/;
+const JOURNAL_CHECKPOINT_RE = /^checkpoint-(\d{12})-([a-f0-9]{64})\.json$/;
 const MAX_PENDING_MUTATION_BYTES = 256 * 1024;
 export const MAX_HISTORY_EVENTS = 1_000;
 export const MAX_OPERATION_ID_BYTES = 256;
@@ -85,7 +90,8 @@ export type IdempotentMutationOperation =
   | 'assert'
   | 'retract'
   | 'supersede'
-  | 'resolve_tentative';
+  | 'resolve_tentative'
+  | 'checkpoint';
 
 export class OperationConflictError extends Error {
   readonly code = 'operation_conflict';
@@ -166,6 +172,44 @@ export interface RecordedSnapshotMetadata {
 export interface RecordedKnowledgeSnapshot extends RecordedSnapshotMetadata {
   clauses: Clause[];
   sources: Map<string, MemorySource[]>;
+}
+
+export interface JournalCheckpointNamespace {
+  namespace: string;
+  clauses: string[];
+  sources: Array<{ key: string; values: MemorySource[] }>;
+}
+
+export interface JournalCheckpointArtifact {
+  version: 1;
+  sequence: number;
+  createdAt: string;
+  opId: string;
+  atProvided: boolean;
+  segment: {
+    file: string;
+    startSequence: number;
+    endSequence: number;
+    entries: number;
+    bytes: number;
+    sha256: string;
+  };
+  namespaces: JournalCheckpointNamespace[];
+  stateDigest: string;
+}
+
+export interface JournalCompactionOptions {
+  opId?: string;
+  at?: Date;
+  dryRun?: boolean;
+}
+
+export interface JournalCompactionResult {
+  rotated: boolean;
+  sequence: number;
+  activeEntries: number;
+  segmentCount: number;
+  checkpoint?: JournalCheckpointArtifact;
 }
 
 export class IncompleteHistoryError extends Error {
@@ -273,6 +317,20 @@ interface JournalEntry {
   op: string;
   namespace: string;
   [key: string]: unknown;
+}
+
+interface JournalFileContents {
+  text: string;
+  bytes: number;
+  sha256: string;
+  entries: JournalEntry[];
+}
+
+interface JournalSegmentDescriptor extends JournalFileContents {
+  file: string;
+  path: string;
+  startSequence: number;
+  endSequence: number;
 }
 
 interface PendingMutation {
@@ -479,6 +537,127 @@ export class MemoryStore {
     return randomUUID();
   }
 
+  listJournalCheckpoints(): JournalCheckpointArtifact[] {
+    return this.withLock('journal', () => {
+      const segments = this.journalSegmentsUnlocked();
+      const checkpoints = this.journalCheckpointsUnlocked();
+      this.assertCheckpointReplayUnlocked(checkpoints, segments);
+      return checkpoints.map((checkpoint) => structuredClone(checkpoint));
+    });
+  }
+
+  compactJournal(
+    options: JournalCompactionOptions = {}
+  ): JournalCompactionResult {
+    const explicitOpId = options.opId !== undefined;
+    const opId = validateOperationId(options.opId ?? this.createOperationId());
+    const at = validDate(options.at ?? new Date(), 'checkpoint timestamp');
+    return this.withMutationLock(() =>
+      this.withLock('journal', () => {
+        this.recoverPendingMutationUnlocked();
+        let segments = this.journalSegmentsUnlocked();
+        let checkpoints = this.journalCheckpointsUnlocked();
+        this.assertCheckpointReplayUnlocked(checkpoints, segments);
+        const checkpointBySegment = new Map(
+          checkpoints.map((checkpoint) => [checkpoint.segment.file, checkpoint])
+        );
+
+        for (const segment of segments) {
+          if (checkpointBySegment.has(segment.file)) continue;
+          const recovered = this.checkpointArtifact(
+            segment,
+            `recovered-${segment.sha256.slice(0, 32)}`,
+            new Date(segment.entries.at(-1)?.ts ?? at),
+            false
+          );
+          if (!options.dryRun) this.writeCheckpointUnlocked(recovered);
+          checkpointBySegment.set(segment.file, recovered);
+        }
+        checkpoints = [...checkpointBySegment.values()].sort(
+          (left, right) => left.sequence - right.sequence
+        );
+
+        const prior = explicitOpId
+          ? checkpoints.find((checkpoint) => checkpoint.opId === opId)
+          : undefined;
+        if (prior !== undefined) {
+          if (
+            prior.atProvided !== (options.at !== undefined) ||
+            (options.at !== undefined && prior.createdAt !== at.toISOString())
+          ) {
+            throw new OperationConflictError('checkpoint', '*', opId);
+          }
+          return {
+            rotated: true,
+            sequence: prior.sequence,
+            activeEntries: 0,
+            segmentCount:
+              checkpoints.findIndex(
+                (checkpoint) => checkpoint.opId === prior.opId
+              ) + 1,
+            checkpoint: structuredClone(prior),
+          };
+        }
+
+        const active = this.activeJournalUnlocked();
+        const previousEnd = segments.at(-1)?.endSequence ?? 0;
+        if (active.entries.length === 0) {
+          return {
+            rotated: false,
+            sequence: previousEnd,
+            activeEntries: 0,
+            segmentCount: segments.length,
+          };
+        }
+        if (segments.length >= MAX_JOURNAL_SEGMENTS) {
+          throw new Error(`journal segments would exceed ${MAX_JOURNAL_SEGMENTS}`);
+        }
+
+        const startSequence = previousEnd + 1;
+        const endSequence = previousEnd + active.entries.length;
+        const file = `journal-${String(startSequence).padStart(12, '0')}-${String(
+          endSequence
+        ).padStart(12, '0')}-${active.sha256}.jsonl`;
+        const segment: JournalSegmentDescriptor = {
+          ...active,
+          file,
+          path: join(this.journalSegmentsPath(), file),
+          startSequence,
+          endSequence,
+        };
+        const checkpoint = this.checkpointArtifact(
+          segment,
+          opId,
+          at,
+          options.at !== undefined
+        );
+        const result: JournalCompactionResult = {
+          rotated: true,
+          sequence: endSequence,
+          activeEntries: 0,
+          segmentCount: segments.length + 1,
+          checkpoint,
+        };
+        if (options.dryRun) return result;
+
+        this.ensurePrivateDirectory(this.journalSegmentsPath(), 'journal segments');
+        if (existsSync(segment.path)) {
+          throw new Error(`journal segment '${file}' already exists`);
+        }
+        renameSync(this.journalPath(), segment.path);
+        try {
+          this.writeCheckpointUnlocked(checkpoint);
+        } catch (error) {
+          // The immutable segment remains authoritative and readable. A later
+          // compaction repairs its missing checkpoint deterministically.
+          throw error;
+        }
+        segments = [...segments, segment];
+        return { ...result, segmentCount: segments.length };
+      })
+    );
+  }
+
   private withLock<T>(name: string, operation: () => T): T {
     if (this.heldLocks.has(name)) return operation();
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
@@ -662,6 +841,25 @@ export class MemoryStore {
     return join(this.root, 'journal.log');
   }
 
+  private journalSegmentsPath(): string {
+    return join(this.root, '.journal-segments');
+  }
+
+  private journalCheckpointsPath(): string {
+    return join(this.root, '.journal-checkpoints');
+  }
+
+  private ensurePrivateDirectory(path: string, label: string): void {
+    if (!existsSync(path)) {
+      mkdirSync(path, { recursive: true, mode: 0o700 });
+      return;
+    }
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error(`refusing invalid ${label} directory ${path}`);
+    }
+  }
+
   private captureErrorPath(): string {
     return join(this.root, 'capture-errors.log');
   }
@@ -684,14 +882,10 @@ export class MemoryStore {
   private appendJournalUnlocked(entry: JournalEntry): void {
     const line = `${JSON.stringify(entry)}\n`;
     const path = this.journalPath();
-    let current = '';
-    if (existsSync(path)) {
-      const stat = lstatSync(path);
-      if (stat.isSymbolicLink()) throw new Error(`refusing symbolic-link journal ${path}`);
-      if (stat.size > MAX_JOURNAL_BYTES) {
-        throw new Error(`journal.log exceeds ${MAX_JOURNAL_BYTES} bytes`);
-      }
-      current = readFileSync(path, 'utf8');
+    const active = this.activeJournalUnlocked();
+    const current = active.text;
+    if (active.entries.length >= MAX_JOURNAL_ENTRIES) {
+      throw new Error(`journal.log would exceed ${MAX_JOURNAL_ENTRIES} entries`);
     }
     const currentBytes = Buffer.byteLength(current, 'utf8');
     const nextBytes = currentBytes + Buffer.byteLength(line, 'utf8');
@@ -708,19 +902,18 @@ export class MemoryStore {
     }
   }
 
-  private readJournalUnlocked(): JournalEntry[] {
-    const path = this.journalPath();
-    let text: string;
-    try {
-      const stat = statSync(path);
-      if (stat.size > MAX_JOURNAL_BYTES) {
-        throw new Error(`journal.log exceeds ${MAX_JOURNAL_BYTES} bytes`);
-      }
-      text = readFileSync(path, 'utf8');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw error;
+  private readJournalFileUnlocked(
+    path: string,
+    label: string
+  ): JournalFileContents {
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error(`refusing invalid ${label} ${path}`);
     }
+    if (stat.size > MAX_JOURNAL_BYTES) {
+      throw new Error(`${label} exceeds ${MAX_JOURNAL_BYTES} bytes`);
+    }
+    const text = readFileSync(path, 'utf8');
     const entries: JournalEntry[] = [];
     for (const [index, line] of text.split('\n').entries()) {
       if (line.trim() === '') continue;
@@ -728,7 +921,7 @@ export class MemoryStore {
       try {
         entry = JSON.parse(line);
       } catch {
-        throw new Error(`failed to read journal.log line ${index + 1}`);
+        throw new Error(`failed to read ${label} line ${index + 1}`);
       }
       if (
         typeof entry !== 'object' ||
@@ -738,14 +931,331 @@ export class MemoryStore {
         typeof (entry as Record<string, unknown>).op !== 'string' ||
         typeof (entry as Record<string, unknown>).namespace !== 'string'
       ) {
-        throw new Error(`failed to read journal.log line ${index + 1}`);
+        throw new Error(`failed to read ${label} line ${index + 1}`);
       }
       entries.push(entry as JournalEntry);
       if (entries.length > MAX_JOURNAL_ENTRIES) {
-        throw new Error(`journal.log exceeds ${MAX_JOURNAL_ENTRIES} entries`);
+        throw new Error(`${label} exceeds ${MAX_JOURNAL_ENTRIES} entries`);
       }
     }
+    return {
+      text,
+      bytes: Buffer.byteLength(text, 'utf8'),
+      sha256: createHash('sha256').update(text).digest('hex'),
+      entries,
+    };
+  }
+
+  private journalSegmentsUnlocked(): JournalSegmentDescriptor[] {
+    const directory = this.journalSegmentsPath();
+    if (!existsSync(directory)) return [];
+    this.ensurePrivateDirectory(directory, 'journal segments');
+    const directoryEntries = readdirSync(directory);
+    const unexpected = directoryEntries.find(
+      (name) => !JOURNAL_SEGMENT_RE.test(name) && !name.includes('.tmp-')
+    );
+    if (unexpected !== undefined) {
+      throw new Error(`unexpected journal segment artifact '${unexpected}'`);
+    }
+    const names = directoryEntries.filter((name) => JOURNAL_SEGMENT_RE.test(name)).sort();
+    if (names.length > MAX_JOURNAL_SEGMENTS) {
+      throw new Error(`journal segments exceed ${MAX_JOURNAL_SEGMENTS}`);
+    }
+    const segments = names.map((file): JournalSegmentDescriptor => {
+      const match = file.match(JOURNAL_SEGMENT_RE)!;
+      const startSequence = Number(match[1]);
+      const endSequence = Number(match[2]);
+      const expectedDigest = match[3];
+      if (
+        !Number.isSafeInteger(startSequence) ||
+        !Number.isSafeInteger(endSequence) ||
+        startSequence < 1 ||
+        endSequence < startSequence
+      ) {
+        throw new Error(`journal segment '${file}' has an invalid sequence range`);
+      }
+      const path = join(directory, file);
+      const contents = this.readJournalFileUnlocked(path, `journal segment ${file}`);
+      if (contents.sha256 !== expectedDigest) {
+        throw new Error(`journal segment '${file}' failed SHA-256 validation`);
+      }
+      if (contents.entries.length !== endSequence - startSequence + 1) {
+        throw new Error(`journal segment '${file}' has an inconsistent entry count`);
+      }
+      return { file, path, startSequence, endSequence, ...contents };
+    });
+    let expectedStart = 1;
+    for (const segment of segments) {
+      if (segment.startSequence !== expectedStart) {
+        throw new Error(
+          `journal segment chain is incomplete at sequence ${expectedStart}`
+        );
+      }
+      expectedStart = segment.endSequence + 1;
+    }
+    return segments;
+  }
+
+  private activeJournalUnlocked(): JournalFileContents {
+    const path = this.journalPath();
+    try {
+      return this.readJournalFileUnlocked(path, 'journal.log');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return {
+          text: '',
+          bytes: 0,
+          sha256: createHash('sha256').update('').digest('hex'),
+          entries: [],
+        };
+      }
+      throw error;
+    }
+  }
+
+  private readJournalUnlocked(): JournalEntry[] {
+    const segments = this.journalSegmentsUnlocked();
+    const active = this.activeJournalUnlocked();
+    const entries = [
+      ...segments.flatMap((segment) => segment.entries),
+      ...active.entries,
+    ];
+    if (entries.length > MAX_TOTAL_JOURNAL_ENTRIES) {
+      throw new Error(
+        `journal history exceeds ${MAX_TOTAL_JOURNAL_ENTRIES} entries`
+      );
+    }
     return entries;
+  }
+
+  private checkpointFileName(sequence: number, digest: string): string {
+    return `checkpoint-${String(sequence).padStart(12, '0')}-${digest}.json`;
+  }
+
+  private checkpointNamespacesAt(sequence: number): JournalCheckpointNamespace[] {
+    return this.listNamespaces().map((namespace) => {
+      const snapshot = this.recordedSnapshot([namespace], sequence);
+      return {
+        namespace,
+        clauses: snapshot.clauses.map(serializeClause),
+        sources: [...snapshot.sources]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, values]) => ({
+            key,
+            values: values.map((source) => ({ ...source })),
+          })),
+      };
+    });
+  }
+
+  private assertCheckpointReplayUnlocked(
+    checkpoints: JournalCheckpointArtifact[],
+    segments: JournalSegmentDescriptor[]
+  ): void {
+    const byFile = new Map(segments.map((segment) => [segment.file, segment]));
+    for (const checkpoint of checkpoints) {
+      const segment = byFile.get(checkpoint.segment.file);
+      if (
+        segment === undefined ||
+        segment.sha256 !== checkpoint.segment.sha256 ||
+        segment.startSequence !== checkpoint.segment.startSequence ||
+        segment.endSequence !== checkpoint.segment.endSequence
+      ) {
+        throw new Error(
+          `journal checkpoint at sequence ${checkpoint.sequence} has no matching segment`
+        );
+      }
+      const replayed = this.checkpointNamespacesAt(checkpoint.sequence);
+      const replayDigest = createHash('sha256')
+        .update(JSON.stringify(replayed))
+        .digest('hex');
+      if (
+        replayDigest !== checkpoint.stateDigest ||
+        JSON.stringify(replayed) !== JSON.stringify(checkpoint.namespaces)
+      ) {
+        throw new Error(
+          `journal checkpoint at sequence ${checkpoint.sequence} does not match replay`
+        );
+      }
+    }
+  }
+
+  private checkpointArtifact(
+    segment: JournalSegmentDescriptor,
+    opId: string,
+    at: Date,
+    atProvided: boolean
+  ): JournalCheckpointArtifact {
+    const namespaces = this.checkpointNamespacesAt(segment.endSequence);
+    return {
+      version: 1,
+      sequence: segment.endSequence,
+      createdAt: at.toISOString(),
+      opId,
+      atProvided,
+      segment: {
+        file: segment.file,
+        startSequence: segment.startSequence,
+        endSequence: segment.endSequence,
+        entries: segment.entries.length,
+        bytes: segment.bytes,
+        sha256: segment.sha256,
+      },
+      namespaces,
+      stateDigest: createHash('sha256')
+        .update(JSON.stringify(namespaces))
+        .digest('hex'),
+    };
+  }
+
+  private readCheckpointUnlocked(path: string): JournalCheckpointArtifact {
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error(`refusing invalid journal checkpoint ${path}`);
+    }
+    if (stat.size > MAX_CHECKPOINT_BYTES) {
+      throw new Error(`journal checkpoint exceeds ${MAX_CHECKPOINT_BYTES} bytes`);
+    }
+    let value: unknown;
+    try {
+      value = JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      throw new Error(`failed to read journal checkpoint ${path}`);
+    }
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new Error(`journal checkpoint ${path} has an invalid shape`);
+    }
+    const checkpoint = value as JournalCheckpointArtifact;
+    if (
+      checkpoint.version !== 1 ||
+      !Number.isSafeInteger(checkpoint.sequence) ||
+      checkpoint.sequence < 1 ||
+      typeof checkpoint.createdAt !== 'string' ||
+      typeof checkpoint.opId !== 'string' ||
+      typeof checkpoint.atProvided !== 'boolean' ||
+      typeof checkpoint.segment !== 'object' ||
+      checkpoint.segment === null ||
+      !Array.isArray(checkpoint.namespaces) ||
+      typeof checkpoint.stateDigest !== 'string'
+    ) {
+      throw new Error(`journal checkpoint ${path} has an invalid shape`);
+    }
+    assertIsoTimestamp(checkpoint.createdAt, 'journal checkpoint createdAt');
+    validateOperationId(checkpoint.opId);
+    const segment = checkpoint.segment;
+    if (
+      typeof segment.file !== 'string' ||
+      !Number.isSafeInteger(segment.startSequence) ||
+      !Number.isSafeInteger(segment.endSequence) ||
+      !Number.isSafeInteger(segment.entries) ||
+      !Number.isSafeInteger(segment.bytes) ||
+      typeof segment.sha256 !== 'string' ||
+      segment.endSequence !== checkpoint.sequence ||
+      segment.entries !== segment.endSequence - segment.startSequence + 1 ||
+      segment.bytes < 0 ||
+      !/^[a-f0-9]{64}$/.test(segment.sha256)
+    ) {
+      throw new Error(`journal checkpoint ${path} has invalid segment metadata`);
+    }
+    const fileName = basename(path);
+    const fileMatch = fileName.match(JOURNAL_CHECKPOINT_RE);
+    if (
+      fileMatch === null ||
+      Number(fileMatch[1]) !== checkpoint.sequence ||
+      fileMatch[2] !== segment.sha256
+    ) {
+      throw new Error(`journal checkpoint ${path} has inconsistent identity`);
+    }
+    for (const namespace of checkpoint.namespaces) {
+      if (
+        typeof namespace !== 'object' ||
+        namespace === null ||
+        typeof namespace.namespace !== 'string' ||
+        !Array.isArray(namespace.clauses) ||
+        !namespace.clauses.every((clause) => typeof clause === 'string') ||
+        !Array.isArray(namespace.sources)
+      ) {
+        throw new Error(`journal checkpoint ${path} has invalid namespace state`);
+      }
+      this.filePath(namespace.namespace);
+      for (const clause of namespace.clauses) {
+        const parsed = parseProgram(clause);
+        if (parsed.length !== 1) {
+          throw new Error(`journal checkpoint ${path} has invalid clause state`);
+        }
+      }
+      for (const source of namespace.sources) {
+        if (
+          typeof source !== 'object' ||
+          source === null ||
+          typeof source.key !== 'string' ||
+          !Array.isArray(source.values)
+        ) {
+          throw new Error(`journal checkpoint ${path} has invalid source state`);
+        }
+      }
+    }
+    const stateDigest = createHash('sha256')
+      .update(JSON.stringify(checkpoint.namespaces))
+      .digest('hex');
+    if (stateDigest !== checkpoint.stateDigest) {
+      throw new Error(`journal checkpoint ${path} failed state digest validation`);
+    }
+    return checkpoint;
+  }
+
+  private journalCheckpointsUnlocked(): JournalCheckpointArtifact[] {
+    const directory = this.journalCheckpointsPath();
+    if (!existsSync(directory)) return [];
+    this.ensurePrivateDirectory(directory, 'journal checkpoints');
+    const directoryEntries = readdirSync(directory);
+    const unexpected = directoryEntries.find(
+      (name) => !JOURNAL_CHECKPOINT_RE.test(name) && !name.includes('.tmp-')
+    );
+    if (unexpected !== undefined) {
+      throw new Error(`unexpected journal checkpoint artifact '${unexpected}'`);
+    }
+    const checkpoints = directoryEntries
+      .filter((name) => JOURNAL_CHECKPOINT_RE.test(name))
+      .sort()
+      .map((name) => this.readCheckpointUnlocked(join(directory, name)));
+    let previousSequence = 0;
+    for (const checkpoint of checkpoints) {
+      if (checkpoint.sequence <= previousSequence) {
+        throw new Error('journal checkpoints are not strictly increasing');
+      }
+      previousSequence = checkpoint.sequence;
+    }
+    return checkpoints;
+  }
+
+  private writeCheckpointUnlocked(checkpoint: JournalCheckpointArtifact): void {
+    const directory = this.journalCheckpointsPath();
+    this.ensurePrivateDirectory(directory, 'journal checkpoints');
+    const file = this.checkpointFileName(
+      checkpoint.sequence,
+      checkpoint.segment.sha256
+    );
+    const target = join(directory, file);
+    const text = `${JSON.stringify(checkpoint, null, 2)}\n`;
+    if (Buffer.byteLength(text, 'utf8') > MAX_CHECKPOINT_BYTES) {
+      throw new Error(`journal checkpoint exceeds ${MAX_CHECKPOINT_BYTES} bytes`);
+    }
+    if (existsSync(target)) {
+      const existing = this.readCheckpointUnlocked(target);
+      if (JSON.stringify(existing) !== JSON.stringify(checkpoint)) {
+        throw new Error(`journal checkpoint '${file}' already exists with other content`);
+      }
+      return;
+    }
+    const tmp = `${target}.tmp-${process.pid}-${randomUUID()}`;
+    try {
+      writeFileSync(tmp, text, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      renameSync(tmp, target);
+    } catch (error) {
+      this.unlinkIfPresent(tmp);
+      throw error;
+    }
   }
 
   private readCaptureErrorsUnlocked(): JournalEntry[] {

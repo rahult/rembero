@@ -66,6 +66,8 @@ try {
         "if (tentativeExplain.rows[0]?.proofs[0]?.trust !== 'tentative' || reviewTentativeClaims(trustStore).length !== 1) throw new Error('public tentative review API failed'); " +
         "resolveTentativeFacts(trustStore, 'default', 'status(mira, active).', 'accept', { opId: 'accepted' }); " +
         "if (explainKnowledge(trustStore.clausesFor(['default']), 'status(mira, State)', trustStore.sourcesFor(['default'])).rows[0]?.bindings?.State !== 'active') throw new Error('public tentative promotion API failed'); " +
+        "const checkpoint = trustStore.compactJournal({ opId: 'package-checkpoint', at: new Date('2026-08-17T02:00:00.000Z') }); " +
+        "if (checkpoint.sequence !== 2 || trustStore.listJournalCheckpoints().length !== 1 || trustStore.recordedSnapshot(['default'], 1).clauses.length !== 1) throw new Error('public journal checkpoint API failed'); " +
         "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed'); " +
         "const identity = canonicalizeKnowledge(parseProgram(\"rembero_alias('Mira Patel', mira). rembero_entity_position(works_at, 2, 0). works_at('Mira Patel', acme).\")); " +
         "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed'); " +
@@ -181,6 +183,29 @@ try {
   );
   if (acceptedTrust[0]?.State !== 'active') {
     throw new Error('packaged tentative trust acceptance failed');
+  }
+  const checkpointOutput = JSON.parse(
+    run(
+      process.execPath,
+      [
+        installedCli,
+        'checkpoint',
+        '--op-id',
+        'package-checkpoint',
+        '--at',
+        '2026-08-17T02:00:00.000Z',
+      ],
+      { cwd: directory, env: trustEnv }
+    )
+  );
+  const checkpointList = JSON.parse(
+    run(process.execPath, [installedCli, 'checkpoints'], {
+      cwd: directory,
+      env: trustEnv,
+    })
+  );
+  if (checkpointOutput.sequence !== 2 || checkpointList.count !== 1) {
+    throw new Error('packaged journal checkpoint failed');
   }
   const extensionPath = run(process.execPath, [installedCli, 'sqlite-build'], {
     cwd: directory,
@@ -488,7 +513,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

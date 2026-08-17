@@ -44,10 +44,12 @@ import {
   conflictViewsTool,
   assertFactsTool,
   assertTentativeTool,
+  checkpointJournalTool,
   explainQueryTool,
   forgetTool,
   historyTool,
   listMemoriesTool,
+  listCheckpointsTool,
   queryTool,
   resolveTentativeTool,
   reviewTentativeTool,
@@ -89,6 +91,8 @@ Usage:
   rembero conflicts [focus]              Group conflicts by authored focus with evidence
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
+  rembero checkpoint                     Rotate the active journal into a verified segment
+  rembero checkpoints                    List immutable journal checkpoints
   rembero list                           List stored memories
   rembero review                         Review recent auto-captured facts
   rembero init-hooks                     Install the opt-in Claude Stop hook
@@ -113,7 +117,8 @@ Options:
       --trust <mode>        Writes: accepted/tentative; reads: accepted/include_tentative
       --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
       --at <ISO>           Canonical UTC valid-until instant for supersede
-      --op-id <id>        Stable idempotency key for assert/accept/reject/supersede/forget/import
+      --dry-run            Preview checkpoint metadata without rotating journal.log
+      --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
       --as-of-sequence <n> Read the knowledge view after global journal entry n (0 = empty)
       --graph-result <n>  Export the complete support graph for result row n
       --graph-support <node-id>  Export the support closure for one graph node
@@ -137,6 +142,7 @@ interface ParsedArgs {
   batch: boolean;
   json: boolean;
   remove: boolean;
+  dryRun: boolean;
   dailyCap?: string;
   tailBytes?: string;
   days?: string;
@@ -168,6 +174,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     batch: false,
     json: false,
     remove: false,
+    dryRun: false,
     patterns: [],
   };
   const valueAfter = (index: number, flag: string): string => {
@@ -193,6 +200,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.json = true;
     } else if (arg === '--remove') {
       parsed.remove = true;
+    } else if (arg === '--dry-run') {
+      parsed.dryRun = true;
     } else if (arg === '--daily-cap') {
       parsed.dailyCap = valueAfter(i, arg);
       i += 1;
@@ -499,6 +508,7 @@ async function main(): Promise<void> {
     'forget',
     'import',
     'review',
+    'checkpoint',
   ].includes(command ?? '');
   const graphCommand = ['recall-explain', 'explain', 'check', 'conflicts'].includes(command ?? '');
   if (graphSelector !== undefined && !writeCommand && !graphCommand) {
@@ -508,9 +518,9 @@ async function main(): Promise<void> {
   }
   if (
     operationId !== undefined &&
-    !['assert', 'accept', 'reject', 'supersede', 'forget', 'import'].includes(command ?? '')
+    !['assert', 'accept', 'reject', 'supersede', 'forget', 'import', 'checkpoint'].includes(command ?? '')
   ) {
-    throw new Error('--op-id is available for assert, accept, reject, supersede, forget, and import');
+    throw new Error('--op-id is available for assert, accept, reject, supersede, forget, import, and checkpoint');
   }
   if (
     args.trust !== undefined &&
@@ -535,8 +545,11 @@ async function main(): Promise<void> {
   if (args.patterns.length > 0 && command !== 'supersede') {
     throw new Error('--pattern is available only for supersede');
   }
-  if (args.at !== undefined && command !== 'supersede') {
-    throw new Error('--at is available only for supersede');
+  if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
+    throw new Error('--at is available only for supersede or checkpoint');
+  }
+  if (args.dryRun && command !== 'checkpoint') {
+    throw new Error('--dry-run is available only for checkpoint');
   }
   if (command === 'supersede' && args.validTimeMode !== undefined) {
     throw new Error(
@@ -850,6 +863,27 @@ async function main(): Promise<void> {
         );
         if (event.sourceText) console.log(`  source: ${event.sourceText}`);
       }
+      return;
+    }
+    case 'checkpoint': {
+      const result = checkpointJournalTool(
+        { store },
+        {
+          opId: operationId,
+          at: args.at,
+          dryRun: args.dryRun,
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'checkpoints': {
+      console.log(
+        stringifyBoundedResult(
+          listCheckpointsTool({ store }),
+          'CLI result'
+        )
+      );
       return;
     }
     case 'export': {

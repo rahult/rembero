@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.21.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.22.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -60,6 +60,8 @@ describe('MCP explanation surfaces', () => {
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
+          'checkpoint_journal',
+          'list_checkpoints',
           'history',
           'supersede_facts',
         ])
@@ -171,6 +173,32 @@ describe('MCP explanation surfaces', () => {
           resolvedTentativeText?.type === 'text' ? resolvedTentativeText.text : ''
         )
       ).toMatchObject({ action: 'accept', resolved: 1, added: ['tentative_note(atlas).'] });
+
+      const checkpointed = await client.callTool({
+        name: 'checkpoint_journal',
+        arguments: {
+          opId: 'mcp-checkpoint',
+          at: '2026-08-17T02:00:00.000Z',
+        },
+      });
+      const checkpointedText = checkpointed.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          checkpointedText?.type === 'text' ? checkpointedText.text : ''
+        )
+      ).toMatchObject({ rotated: true, segmentCount: 1 });
+      const checkpoints = await client.callTool({
+        name: 'list_checkpoints',
+        arguments: {},
+      });
+      const checkpointsText = checkpoints.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(checkpointsText?.type === 'text' ? checkpointsText.text : '')
+      ).toMatchObject({ count: 1, checkpoints: [{ opId: 'mcp-checkpoint' }] });
 
       await client.callTool({
         name: 'assert_facts',

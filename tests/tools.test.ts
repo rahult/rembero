@@ -11,10 +11,12 @@ import {
   assertFactsTool,
   assertTentativeTool,
   checkIntegrityTool,
+  checkpointJournalTool,
   conflictViewsTool,
   explainQueryTool,
   forgetTool,
   listMemoriesTool,
+  listCheckpointsTool,
   queryTool,
   resolveTentativeTool,
   reviewTentativeTool,
@@ -491,6 +493,46 @@ describe('MCP tool handlers', () => {
       proofs: [{ sources: [{ opId: 'past-source', text: 'Mira worked at Acme.' }] }],
     });
     expect(explained.recordedSnapshot?.sequence).toBe(1);
+  });
+
+  it('checkpoints the active journal without changing tool snapshot sequences', () => {
+    store.assert('default', 'item(a).', { opId: 'checkpoint-a' });
+    store.assert('default', 'item(b).', { opId: 'checkpoint-b' });
+    expect(
+      checkpointJournalTool(
+        { store },
+        {
+          opId: 'tool-checkpoint',
+          at: '2026-08-17T02:00:00.000Z',
+          dryRun: true,
+        }
+      )
+    ).toMatchObject({ rotated: true, sequence: 2, segmentCount: 1 });
+    const checkpoint = checkpointJournalTool(
+      { store },
+      {
+        opId: 'tool-checkpoint',
+        at: '2026-08-17T02:00:00.000Z',
+      }
+    );
+    expect(checkpoint).toMatchObject({
+      rotated: true,
+      sequence: 2,
+      checkpoint: { opId: 'tool-checkpoint' },
+    });
+    expect(listCheckpointsTool({ store })).toMatchObject({
+      count: 1,
+      checkpoints: [{ sequence: 2 }],
+    });
+    expect(
+      queryTool(
+        { store },
+        { query: 'item(Value)', recordedSequence: 1 }
+      )
+    ).toMatchObject({
+      bindings: [{ Value: 'a' }],
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
   });
 
   it('recomputes aggregate-derived facts from the selected recorded snapshot', () => {

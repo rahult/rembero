@@ -69,7 +69,7 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
-and `list_memories`.
+`checkpoint_journal`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -150,6 +150,8 @@ node dist/cli.js forget   'dentist(rahul, _)'
 node dist/cli.js forget   'dentist(rahul, _)' --op-id forget-123 # retry-safe
 node dist/cli.js history  'works_at(mira, _)' --json
 node dist/cli.js query    'works_at(mira, X)' --as-of-sequence 17 # exact recorded past
+node dist/cli.js checkpoint --op-id backup-2026-08-17 # rotate the active journal safely
+node dist/cli.js checkpoints                           # inspect verified boundaries
 node dist/cli.js list
 node dist/cli.js review --namespace personal           # inspect ambient captures
 node dist/cli.js review --namespace personal --forget 2 # explicit prune by number
@@ -205,6 +207,12 @@ explicit `.dl` declarations and journal entries but are excluded from reasoning 
 default. Opt-in reads label their proofs, sources, and graph claims; deterministic
 accept/reject operations preserve recorded-time and integrity authority. See
 [the knowledge-trust contract](docs/TRUSTED-KNOWLEDGE.md).
+
+Version 0.22 removes the active journal's long-running growth bottleneck without deleting
+history. `checkpoint` atomically rotates `journal.log` into an immutable, content-addressed
+segment and publishes an exact clause/source checkpoint. Recorded sequence numbers remain
+global across every segment and the active tail; reads reject missing, reordered, or
+tampered artifacts. See [the journal-checkpoint contract](docs/JOURNAL-CHECKPOINTS.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
@@ -290,7 +298,9 @@ optional integrity validation and commit observe the same snapshot. Journaled mu
 operation IDs; facts captured through `remember` retain their source statement for later
 explanation. Cross-process writers are serialized so background capture cannot overwrite
 a simultaneous manual mutation. Credential-like source text is redacted before
-journaling, and journal capacity is checked before mutation. Opt-in supersessions atomically
+journaling, and active journal capacity is checked before mutation. Immutable checkpoint
+segments reset that active-file capacity while preserving the complete recorded sequence.
+Opt-in supersessions atomically
 close old facts, add their `_until` archives and replacements, and record exact source
 lineage without changing explicit `forget`. See
 [the explainable graph contract](docs/EXPLAINABLE-KNOWLEDGE-GRAPH.md).

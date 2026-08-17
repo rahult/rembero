@@ -252,6 +252,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    or reject exact tentative facts with batch atomicity, retry-safe operation IDs,
    integrity-gated promotion, journaled trust actions, and bounded review output.
 
+## Phase 25 — Immutable journal checkpoints  *(v0.22)*
+
+1. **Complete — non-destructive active-log rotation**: the bounded active `journal.log`
+   rotates into ordered SHA-256-addressed segments without truncating history or changing
+   any global recorded sequence.
+2. **Complete — exact reviewable checkpoints**: every completed boundary records the
+   canonical clauses and durable source state for each namespace, then validates that
+   state against full deterministic replay before exposing it.
+3. **Complete — crash and interface safety**: mutation/journal locks serialize rotation,
+   interrupted segment publication is recoverable, dry runs never write, and library,
+   CLI, MCP, restart, tamper, missing-segment, and packaged-install paths are covered.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
