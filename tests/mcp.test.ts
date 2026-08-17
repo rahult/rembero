@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.22.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.23.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -57,6 +57,7 @@ describe('MCP explanation surfaces', () => {
           'recall_explain',
           'check_integrity',
           'conflict_views',
+          'what_if',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -66,6 +67,33 @@ describe('MCP explanation surfaces', () => {
           'supersede_facts',
         ])
       );
+
+      const simulated = await client.callTool({
+        name: 'what_if',
+        arguments: {
+          query: 'employee(Person)',
+          assume: 'employee(carol).',
+          without: ['employee(bob)'],
+        },
+      });
+      const simulatedText = simulated.content.find((item) => item.type === 'text');
+      expect(
+        JSON.parse(simulatedText?.type === 'text' ? simulatedText.text : '')
+      ).toMatchObject({
+        changed: true,
+        resultDelta: {
+          added: [{ bindings: { Person: 'carol' } }],
+          removed: [{ bindings: { Person: 'bob' } }],
+        },
+        integrityDelta: {
+          baseline: { status: 'violations', violationCount: 1 },
+          candidate: { status: 'consistent', violationCount: 0 },
+          resolved: [{ bindings: { X: 'bob' } }],
+        },
+      });
+      expect(store.clausesFor(['default']).some((clause) =>
+        clause.head.args.some((term) => term.type === 'atom' && term.value === 'carol')
+      )).toBe(false);
 
       const asserted = await client.callTool({
         name: 'assert_facts',

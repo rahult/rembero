@@ -53,6 +53,7 @@ import {
   queryTool,
   resolveTentativeTool,
   reviewTentativeTool,
+  whatIfTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -89,6 +90,7 @@ Usage:
   rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
   rembero check                          Check explicit integrity constraints with evidence
   rembero conflicts [focus]              Group conflicts by authored focus with evidence
+  rembero what-if <query>                Preview fact changes with proofs and integrity impact
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -116,6 +118,8 @@ Options:
       --entity-identity <mode>  Read projection: off (default) or canonical
       --trust <mode>        Writes: accepted/tentative; reads: accepted/include_tentative
       --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
+      --assume <facts>     Ground facts to add in a what-if simulation; repeatable
+      --without <pattern> Ground fact pattern to remove in a what-if simulation; repeatable
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -165,6 +169,8 @@ interface ParsedArgs {
   limit?: string;
   asOfSequence?: string;
   patterns: string[];
+  assumptions: string[];
+  without: string[];
   at?: string;
 }
 
@@ -176,6 +182,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     remove: false,
     dryRun: false,
     patterns: [],
+    assumptions: [],
+    without: [],
   };
   const valueAfter = (index: number, flag: string): string => {
     const value = argv[index + 1];
@@ -238,6 +246,12 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--pattern') {
       parsed.patterns.push(valueAfter(i, arg));
+      i += 1;
+    } else if (arg === '--assume') {
+      parsed.assumptions.push(valueAfter(i, arg));
+      i += 1;
+    } else if (arg === '--without') {
+      parsed.without.push(valueAfter(i, arg));
       i += 1;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
@@ -534,6 +548,7 @@ async function main(): Promise<void> {
       'explain',
       'check',
       'conflicts',
+      'what-if',
       'list',
     ].includes(command ?? '')
   ) {
@@ -544,6 +559,12 @@ async function main(): Promise<void> {
   }
   if (args.patterns.length > 0 && command !== 'supersede') {
     throw new Error('--pattern is available only for supersede');
+  }
+  if (args.assumptions.length > 0 && command !== 'what-if') {
+    throw new Error('--assume is available only for what-if');
+  }
+  if (args.without.length > 0 && command !== 'what-if') {
+    throw new Error('--without is available only for what-if');
   }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
@@ -767,6 +788,28 @@ async function main(): Promise<void> {
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(graphSelector === undefined ? {} : { graphSelector }),
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'what-if': {
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const maxViolations = maxViolationsOption(args.maxViolations);
+      const result = whatIfTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          query: text,
+          assume: args.assumptions.join('\n'),
+          without: args.without,
+          namespace: args.namespace,
+          namespaces,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(maxViolations === undefined ? {} : { maxViolations }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

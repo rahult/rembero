@@ -24,6 +24,7 @@ import {
   rememberTool,
   recallTool,
   supersedeFactsTool,
+  whatIfTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -456,6 +457,33 @@ describe('MCP tool handlers', () => {
     store.assert('default', 'f(a). f(b). g(X) :- f(X), X != a.');
     const result = queryTool({ store }, { query: 'g(X)' });
     expect(result.bindings).toEqual([{ X: 'b' }]);
+  });
+
+  it('simulates query and integrity impact without invoking a writer', () => {
+    store.assert(
+      'default',
+      'status(mira, active). :- status(Person, active), status(Person, paused).',
+      { opId: 'what-if-baseline' }
+    );
+    const result = whatIfTool(
+      { store },
+      {
+        query: 'status(mira, State)',
+        assume: 'status(mira, paused).',
+      }
+    );
+    expect(result).toMatchObject({
+      changed: true,
+      resultDelta: {
+        added: [{ bindings: { State: 'paused' } }],
+        removed: [],
+      },
+      integrityDelta: {
+        candidate: { status: 'violations', violationCount: 1 },
+        introduced: [{ bindings: { Person: 'mira' } }],
+      },
+    });
+    expect(store.clausesFor(['default'])).toHaveLength(2);
   });
 
   it('query and explain read deterministic recorded snapshots with past sources', () => {

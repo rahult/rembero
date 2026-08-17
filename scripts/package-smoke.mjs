@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, assertTentativeFacts, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, isAggregateRule, parseProgram, parseQuery, parseQuerySpec, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, assertTentativeFacts, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, isAggregateRule, parseProgram, parseQuery, parseQuerySpec, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -66,6 +66,8 @@ try {
         "if (tentativeExplain.rows[0]?.proofs[0]?.trust !== 'tentative' || reviewTentativeClaims(trustStore).length !== 1) throw new Error('public tentative review API failed'); " +
         "resolveTentativeFacts(trustStore, 'default', 'status(mira, active).', 'accept', { opId: 'accepted' }); " +
         "if (explainKnowledge(trustStore.clausesFor(['default']), 'status(mira, State)', trustStore.sourcesFor(['default'])).rows[0]?.bindings?.State !== 'active') throw new Error('public tentative promotion API failed'); " +
+        "const simulated = simulateKnowledge(trustStore, 'status(mira, State)', { assume: 'status(mira, paused).' }); " +
+        "if (!simulated.changed || simulated.resultDelta.added[0]?.bindings?.State !== 'paused' || trustStore.clausesFor(['default']).length !== 1) throw new Error('public counterfactual API failed'); " +
         "const checkpoint = trustStore.compactJournal({ opId: 'package-checkpoint', at: new Date('2026-08-17T02:00:00.000Z') }); " +
         "if (checkpoint.sequence !== 2 || trustStore.listJournalCheckpoints().length !== 1 || trustStore.recordedSnapshot(['default'], 1).clauses.length !== 1) throw new Error('public journal checkpoint API failed'); " +
         "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed'); " +
@@ -183,6 +185,25 @@ try {
   );
   if (acceptedTrust[0]?.State !== 'active') {
     throw new Error('packaged tentative trust acceptance failed');
+  }
+  const simulatedTrust = JSON.parse(
+    run(
+      process.execPath,
+      [
+        installedCli,
+        'what-if',
+        'status(mira, State)',
+        '--assume',
+        'status(mira, paused).',
+      ],
+      { cwd: directory, env: trustEnv }
+    )
+  );
+  if (
+    simulatedTrust.resultDelta?.added?.[0]?.bindings?.State !== 'paused' ||
+    simulatedTrust.candidate?.rows?.length !== 2
+  ) {
+    throw new Error('packaged counterfactual simulation failed');
   }
   const checkpointOutput = JSON.parse(
     run(
@@ -513,7 +534,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

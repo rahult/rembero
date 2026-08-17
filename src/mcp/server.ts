@@ -29,6 +29,7 @@ import {
   resolveTentativeTool,
   reviewTentativeTool,
   supersedeFactsTool,
+  whatIfTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -37,6 +38,10 @@ import {
 } from '../store/store.js';
 import { MAX_INTEGRITY_VIOLATIONS } from '../knowledge/integrity.js';
 import { MAX_CONFLICT_FOCUS_BYTES } from '../knowledge/conflicts.js';
+import {
+  MAX_COUNTERFACTUAL_ASSUMPTIONS,
+  MAX_COUNTERFACTUAL_RETRACTIONS,
+} from '../knowledge/counterfactual.js';
 import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
@@ -247,7 +252,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.22.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.23.0' });
 
   server.registerTool(
     'remember',
@@ -847,6 +852,60 @@ export function createServer(deps: PipelineDeps): McpServer {
               entityIdentity,
               graphSelector
             ),
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'what_if',
+    {
+      title: 'Simulate knowledge changes',
+      description:
+        'Read-only deterministic counterfactual: retract target-namespace fact patterns, assume ordinary ground facts, then compare query rows, proofs, provenance, graphs, and integrity violations with the unchanged baseline. No LLM is used and nothing is persisted.',
+      inputSchema: {
+        query: boundedText('Datalog query whose result impact should be explained'),
+        assume: boundedText(
+          `Ordinary ground Datalog facts to assume (maximum ${MAX_COUNTERFACTUAL_ASSUMPTIONS})`
+        ).optional(),
+        without: z
+          .array(boundedText('One positive ground-fact pattern'))
+          .max(MAX_COUNTERFACTUAL_RETRACTIONS)
+          .optional(),
+        namespace: namespaceField,
+        namespaces: namespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+      },
+    },
+    async ({
+      query,
+      assume,
+      without,
+      namespace,
+      namespaces,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      trustMode,
+    }) => {
+      try {
+        return asContent(
+          whatIfTool(resolvedDeps, {
+            query,
+            assume,
+            without,
+            namespace,
+            namespaces,
+            proofLimit,
+            maxViolations,
+            entityIdentity,
+            trustMode,
           })
         );
       } catch (e) {

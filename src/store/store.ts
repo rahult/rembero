@@ -174,6 +174,13 @@ export interface RecordedKnowledgeSnapshot extends RecordedSnapshotMetadata {
   sources: Map<string, MemorySource[]>;
 }
 
+export interface CurrentKnowledgeSnapshot {
+  namespaces: string[];
+  clauses: Clause[];
+  clausesByNamespace: Map<string, Clause[]>;
+  sources: Map<string, MemorySource[]>;
+}
+
 export interface JournalCheckpointNamespace {
   namespace: string;
   clauses: string[];
@@ -241,6 +248,8 @@ export interface MemorySource {
   namespace: string;
   opId: string;
   ts: string;
+  /** Present only on read-only counterfactual assumptions; never written to the journal. */
+  hypothetical?: true;
   text?: string;
   redacted?: boolean;
   temporal?: TemporalMemorySource;
@@ -3413,6 +3422,32 @@ export class MemoryStore {
   clausesFor(namespaces: string[] | '*'): Clause[] {
     const names = namespaces === '*' ? this.listNamespaces() : namespaces;
     return names.flatMap((ns) => this.load(ns));
+  }
+
+  /** One current clause/source view serialized against every supported store writer. */
+  knowledgeSnapshot(namespaces: string[] | '*'): CurrentKnowledgeSnapshot {
+    return this.withMutationLock(() => {
+      this.withLock('journal', () => this.recoverPendingMutationUnlocked());
+      const names = namespaces === '*' ? this.listNamespaces() : [...namespaces];
+      if (names.length > 32) {
+        throw new Error('knowledge snapshot namespace list exceeds 32 entries');
+      }
+      const clausesByNamespace = new Map<string, Clause[]>();
+      for (const namespace of names) {
+        this.filePath(namespace);
+        clausesByNamespace.set(namespace, structuredClone(this.load(namespace)));
+      }
+      const clauses = names.flatMap(
+        (namespace) => clausesByNamespace.get(namespace) ?? []
+      );
+      const sources = new Map(
+        [...this.sourcesFor(names)].map(([key, values]) => [
+          key,
+          values.map((source) => structuredClone(source)),
+        ])
+      );
+      return { namespaces: names, clauses, clausesByNamespace, sources };
+    });
   }
 
   /** Latest durable assertion source for every currently stored clause. */

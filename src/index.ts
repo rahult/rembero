@@ -15,6 +15,7 @@ export {
   type MemoryHistoryOptions,
   type RecordedSnapshotMetadata,
   type RecordedKnowledgeSnapshot,
+  type CurrentKnowledgeSnapshot,
   type JournalCheckpointNamespace,
   type JournalCheckpointArtifact,
   type JournalCompactionOptions,
@@ -157,6 +158,17 @@ export {
   type ConflictViewOptions,
   type ConflictViewResult,
 } from './knowledge/conflicts.js';
+export {
+  simulateKnowledge,
+  MAX_COUNTERFACTUAL_ASSUMPTIONS,
+  MAX_COUNTERFACTUAL_RETRACTIONS,
+  type CounterfactualKnowledgeOptions,
+  type CounterfactualKnowledgeResult,
+  type CounterfactualApplication,
+  type CounterfactualResultDelta,
+  type CounterfactualIntegrityDelta,
+  type CounterfactualIntegrityViolation,
+} from './knowledge/counterfactual.js';
 export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,

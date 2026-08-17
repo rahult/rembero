@@ -342,6 +342,51 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('previews counterfactual result and integrity changes without writing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-what-if-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'status(mira, active). :- status(Person, active), status(Person, paused).',
+      { opId: 'baseline' }
+    );
+    const journalBefore = readFileSync(join(home, 'memory', 'journal.log'), 'utf8');
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'what-if',
+        'status(mira, State)',
+        '--assume',
+        'status(mira, paused).',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      changed: true,
+      candidate: { rows: [{ bindings: { State: 'active' } }, { bindings: { State: 'paused' } }] },
+      resultDelta: { added: [{ bindings: { State: 'paused' } }] },
+      integrityDelta: {
+        candidate: { status: 'violations', violationCount: 1 },
+        introduced: [{ bindings: { Person: 'mira' } }],
+      },
+    });
+    expect(readFileSync(join(home, 'memory', 'journal.log'), 'utf8')).toBe(
+      journalBefore
+    );
+    expect(store.load('default').map(serializeClause)).toEqual([
+      'status(mira, active).',
+      ':- status(Person, active), status(Person, paused).',
+    ]);
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

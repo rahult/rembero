@@ -35,6 +35,10 @@ import {
   inspectConflicts,
   type ConflictViewResult,
 } from '../knowledge/conflicts.js';
+import {
+  simulateKnowledge,
+  type CounterfactualKnowledgeResult,
+} from '../knowledge/counterfactual.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -492,6 +496,46 @@ export function conflictViewsTool(
       ? {}
       : { recordedSnapshot: recorded.recordedSnapshot }),
   };
+}
+
+export function whatIfTool(
+  deps: StoreToolDeps,
+  args: {
+    query: string;
+    assume?: string;
+    without?: string[];
+    namespace?: string;
+    namespaces?: string[] | '*';
+    proofLimit?: number;
+    maxViolations?: number;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+  }
+): CounterfactualKnowledgeResult {
+  assertBoundedInput(args.query, 'counterfactual query');
+  if (args.assume !== undefined) {
+    assertBoundedInput(args.assume, 'counterfactual assumptions');
+  }
+  for (const [index, pattern] of (args.without ?? []).entries()) {
+    assertBoundedInput(pattern, `counterfactual retraction ${index + 1}`);
+  }
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  return simulateKnowledge(deps.store, args.query, {
+    ...(args.assume === undefined ? {} : { assume: args.assume }),
+    ...(args.without === undefined ? {} : { without: args.without }),
+    ...(args.namespace === undefined ? {} : { namespace: args.namespace }),
+    ...(args.namespaces === undefined ? {} : { namespaces: args.namespaces }),
+    ...(args.proofLimit === undefined
+      ? {}
+      : { maxProofsPerRow: args.proofLimit }),
+    ...(args.maxViolations === undefined
+      ? {}
+      : { maxViolations: args.maxViolations }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
+  });
 }
 
 export function forgetTool(

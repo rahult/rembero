@@ -264,6 +264,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    interrupted segment publication is recoverable, dry runs never write, and library,
    CLI, MCP, restart, tamper, missing-segment, and packaged-install paths are covered.
 
+## Phase 26 — Deterministic counterfactual impact  *(v0.23)*
+
+1. **Complete — fact-only read sandbox**: a caller can remove target-namespace ground
+   fact patterns and assume up to 64 ordinary ground facts over one consistent current
+   snapshot without invoking an LLM or any store writer.
+2. **Complete — result and evidence delta**: baseline and candidate queries share the
+   full bounded evaluator; added/removed bindings, changed proof evidence, durable and
+   explicitly hypothetical sources, rules, identity, trust, and graphs remain inspectable.
+3. **Complete — policy and interface delta**: introduced/resolved integrity violations,
+   duplicate assumptions, unmatched removals, namespace semantics, input bounds, library,
+   CLI, MCP, and packaged-install behavior are explicit and tested.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
