@@ -37,6 +37,12 @@ describe('MCP explanation surfaces', () => {
     );
     store.assert(
       'default',
+      `edge(a, b). edge(b, c).
+       reachable(X, Y) :- edge(X, Y).
+       reachable(X, Y) :- edge(X, Z), reachable(Z, Y).`
+    );
+    store.assert(
+      'default',
       `rembero_alias('Mira Patel', mira).
        rembero_entity_position(works_at, 2, 0).
        works_at('Mira Patel', acme).`,
@@ -51,7 +57,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.41.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.42.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -269,6 +275,41 @@ describe('MCP explanation surfaces', () => {
               },
             ],
           },
+        ],
+      });
+
+      const derivedConnection = await client.callTool({
+        name: 'connect_knowledge_graph',
+        arguments: { from: 'a', to: 'c', maxDepth: 2, includeDerived: true },
+      });
+      const derivedConnectionText = derivedConnection.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          derivedConnectionText?.type === 'text' ? derivedConnectionText.text : ''
+        )
+      ).toMatchObject({
+        status: 'connected',
+        shortestHops: 1,
+        includeDerived: true,
+        paths: [
+          {
+            entities: ['a', 'c'],
+            segments: [
+              expect.objectContaining({
+                predicate: 'reachable',
+                derived: true,
+                rule: 4,
+              }),
+            ],
+          },
+        ],
+        claimProofs: [
+          expect.objectContaining({
+            derived: true,
+            proof: expect.objectContaining({ predicate: 'reachable', rule: 4 }),
+          }),
         ],
       });
 

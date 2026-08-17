@@ -504,6 +504,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    `connect_knowledge_graph`, numeric endpoints, package installs, current/recorded tests,
    and existing 16 MiB output bounds share one read-only contract.
 
+## Phase 45 — Proof-carrying derived knowledge paths  *(v0.42)*
+
+1. **Complete — explicit opt-in semantic shortcuts**: bounded fixpoint materialization
+   may contribute rule-derived hyperedges to shortest-path discovery without changing the
+   default explicit-only graph or persisting inferred claims.
+2. **Complete — every selected hop is explained**: distinct path claims are re-evaluated
+   against the original view; sourced recursive, negated, aggregate, identity, and trust
+   proof trees plus only their used authored rules are returned and merged into the graph.
+3. **Complete — authority and resource parity**: current/recorded namespaces, canonical
+   aliases, tentative premises, 100,000-fact materialization, depth/path/claim bounds, and
+   fail-closed proof/output limits preserve the query engine's semantics.
+4. **Complete — operational parity**: library `includeDerived`, CLI `--include-derived`,
+   MCP `includeDerived`, packaged installs, and cross-interface regressions share the same
+   non-mutating proof-carrying contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

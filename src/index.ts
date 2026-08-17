@@ -311,6 +311,7 @@ export {
   type ConnectKnowledgeGraphOptions,
   type KnowledgeGraphPathSegment,
   type KnowledgeGraphPath,
+  type KnowledgePathClaimProof,
   type ConnectKnowledgeGraphSelection,
   type ConnectKnowledgeGraphResult,
 } from './knowledge/paths.js';

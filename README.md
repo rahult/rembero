@@ -164,6 +164,7 @@ node dist/cli.js audit-rules 'eligible' --direction upstream # proactive rule he
 node dist/cli.js search 'Doctor Chen' --kind fact # local lexical provenance search
 node dist/cli.js browse mira --browse-depth 2 # explicit entity neighborhood
 node dist/cli.js connect mira rahul --path-depth 4 # shortest explicit relationships
+node dist/cli.js connect mira rahul --include-derived # rule conclusions + proofs
 node dist/cli.js bundle > knowledge.json && node dist/cli.js verify-bundle knowledge.json
 node dist/cli.js test-knowledge checks.json # deterministic rule regression suite
 node dist/cli.js profile 'relevant(X, Y)' --compare-scan # deterministic work counters
@@ -353,6 +354,13 @@ knowledge entities. It returns ordered fact segments, argument positions, proven
 aliases, trust, and recorded-view evidence, and distinguishes a fully disconnected
 component from a depth-bounded miss. Equal shortest alternatives are complete or fail
 closed. See [the deterministic knowledge-path contract](docs/KNOWLEDGE-PATHS.md).
+
+Version 0.42 can opt those paths into rule-derived relationships without turning inferred
+edges into stored truth. `--include-derived` discovers semantic shortcuts through the
+bounded fixpoint, then attaches sourced proofs and only the rules actually used by every
+selected path claim. Recursion, negation, aggregates, aliases, tentative premises, and
+recorded views keep the ordinary explanation semantics. See
+[the proof-carrying knowledge-path contract](docs/KNOWLEDGE-PATHS.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

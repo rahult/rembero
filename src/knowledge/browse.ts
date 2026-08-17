@@ -89,7 +89,10 @@ export function knowledgeGraphEntityId(value: string | number): string {
   return `entity:${entityKey(value)}`;
 }
 
-function claimId(predicate: string, values: (string | number)[]): string {
+export function knowledgeGraphClaimId(
+  predicate: string,
+  values: (string | number)[]
+): string {
   return `claim:${JSON.stringify([
     predicate,
     values.map((value) => typedValue(value)),
@@ -203,7 +206,7 @@ function recordsFor(
         ? ('tentative' as const)
         : undefined;
     records.push({
-      id: claimId(clause.head.predicate, ground),
+      id: knowledgeGraphClaimId(clause.head.predicate, ground),
       key,
       clause,
       predicateKey: predKey(clause.head),

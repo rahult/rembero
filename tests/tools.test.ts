@@ -745,26 +745,60 @@ describe('MCP tool handlers', () => {
   it('connects entities through current and recorded explicit graph paths', () => {
     store.assert('default', 'works_at(mira, acme).', { opId: 'mira-source' });
     store.assert('default', 'works_at(rahul, acme).', { opId: 'rahul-source' });
+    store.assert(
+      'default',
+      'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+      { opId: 'colleague-rule' }
+    );
 
     expect(
       connectKnowledgeGraphTool(
         { store },
-        { from: 'mira', to: 'rahul', maxDepth: 2 }
+        { from: 'mira', to: 'rahul', maxDepth: 2, includeDerived: true }
       )
     ).toMatchObject({
       status: 'connected',
-      shortestHops: 2,
-      paths: [{ entities: ['mira', 'acme', 'rahul'] }],
+      shortestHops: 1,
+      includeDerived: true,
+      paths: expect.arrayContaining([
+        expect.objectContaining({
+          entities: ['mira', 'rahul'],
+          segments: [expect.objectContaining({ predicate: 'colleague', derived: true })],
+        }),
+      ]),
     });
     expect(
       connectKnowledgeGraphTool(
         { store },
-        { from: 'mira', to: 'rahul', maxDepth: 2, recordedSequence: 1 }
+        {
+          from: 'mira',
+          to: 'rahul',
+          maxDepth: 2,
+          includeDerived: true,
+          recordedSequence: 3,
+        }
+      )
+    ).toMatchObject({
+      status: 'connected',
+      shortestHops: 1,
+      includeDerived: true,
+      recordedSnapshot: { sequence: 3, journalEntries: 3 },
+    });
+    expect(
+      connectKnowledgeGraphTool(
+        { store },
+        {
+          from: 'mira',
+          to: 'rahul',
+          maxDepth: 2,
+          includeDerived: true,
+          recordedSequence: 1,
+        }
       )
     ).toMatchObject({
       status: 'no_path',
       searchComplete: true,
-      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+      recordedSnapshot: { sequence: 1, journalEntries: 3 },
     });
   });
 

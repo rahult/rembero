@@ -92,6 +92,269 @@ describe('deterministic personal knowledge graph paths', () => {
     ).toBe(false);
   });
 
+  it('traverses a derived shortcut only with its complete deterministic proof', () => {
+    const store = pathStore('derived');
+    store.assert('default', 'edge(a, b).', { opId: 'edge-a-b' });
+    store.assert('default', 'edge(b, c).', { opId: 'edge-b-c' });
+    store.assert(
+      'default',
+      `reachable(X, Y) :- edge(X, Y).
+       reachable(X, Y) :- edge(X, Z), reachable(Z, Y).
+       node(X) :- edge(X, Y).`,
+      { opId: 'reachability-rules' }
+    );
+    const clauses = store.clausesFor(['default']);
+    const sources = store.sourcesFor(['default']);
+
+    const explicit = connectKnowledgeGraph(clauses, sources, 'a', 'c', {
+      maxDepth: 2,
+    });
+    expect(explicit).toMatchObject({
+      status: 'connected',
+      shortestHops: 2,
+      selection: { includeDerived: false, materializedDerivedFacts: 0 },
+    });
+
+    const derived = connectKnowledgeGraph(clauses, sources, 'a', 'c', {
+      maxDepth: 2,
+      includeDerived: true,
+    });
+    expect(derived).toMatchObject({
+      status: 'connected',
+      shortestHops: 1,
+      includeDerived: true,
+      selection: {
+        includeDerived: true,
+        materializedDerivedFacts: 5,
+      },
+      paths: [
+        {
+          entities: ['a', 'c'],
+          segments: [
+            {
+              predicate: 'reachable',
+              derived: true,
+              rule: 2,
+            },
+          ],
+        },
+      ],
+      claimProofs: [
+        {
+          derived: true,
+          proof: {
+            predicate: 'reachable',
+            values: ['a', 'c'],
+            rule: 2,
+            because: [
+              {
+                predicate: 'edge',
+                values: ['a', 'b'],
+                sources: [expect.objectContaining({ opId: 'edge-a-b' })],
+              },
+              {
+                predicate: 'reachable',
+                values: ['b', 'c'],
+                rule: 1,
+                because: [
+                  {
+                    predicate: 'edge',
+                    values: ['b', 'c'],
+                    sources: [expect.objectContaining({ opId: 'edge-b-c' })],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      rules: expect.arrayContaining([
+        expect.objectContaining({
+          number: 2,
+          clause: 'reachable(X, Y) :- edge(X, Z), reachable(Z, Y).',
+        }),
+      ]),
+    });
+    expect(derived.graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'claim',
+          predicate: 'reachable',
+          values: ['a', 'c'],
+          derived: true,
+          rule: 2,
+        }),
+        expect.objectContaining({
+          kind: 'claim',
+          predicate: 'edge',
+          values: ['a', 'b'],
+          sources: [expect.objectContaining({ opId: 'edge-a-b' })],
+        }),
+      ])
+    );
+    expect(derived.graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'because' }),
+      ])
+    );
+    expect(derived.rules?.map(({ clause }) => clause)).not.toContain(
+      'node(X) :- edge(X, Y).'
+    );
+  });
+
+  it('carries tentative premises and closed-world absence through derived paths', () => {
+    const store = pathStore('derived-trust');
+    assertTentativeFacts(store, 'default', 'works_at(mira, acme).', {
+      opId: 'tentative-employment',
+    });
+    store.assert(
+      'default',
+      `works_at(rahul, acme).
+       colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
+       available(Person, Role) :- assigned(Person, Role), \\+ suspended(Person).`
+    );
+    store.assert('default', 'assigned(alice, admin).', {
+      opId: 'assignment-source',
+    });
+    const clauses = store.clausesFor(['default']);
+    const sources = store.sourcesFor(['default']);
+
+    expect(
+      connectKnowledgeGraph(clauses, sources, 'mira', 'rahul', {
+        includeDerived: true,
+      }).status
+    ).toBe('no_path');
+    const tentative = connectKnowledgeGraph(clauses, sources, 'mira', 'rahul', {
+      includeDerived: true,
+      trustMode: 'include_tentative',
+    });
+    expect(tentative).toMatchObject({
+      status: 'connected',
+      shortestHops: 1,
+      trustMode: 'include_tentative',
+    });
+    expect(tentative.paths).toHaveLength(2);
+    expect(
+      tentative.paths.every(
+        (path) =>
+          path.segments[0]?.predicate === 'colleague' &&
+          path.segments[0]?.derived === true
+      )
+    ).toBe(true);
+    expect(tentative.claimProofs).toHaveLength(2);
+    expect(
+      tentative.claimProofs?.every(({ proof }) => proof.trust === 'tentative')
+    ).toBe(true);
+    expect(tentative.claimProofs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          proof: expect.objectContaining({
+            because: expect.arrayContaining([
+              expect.objectContaining({
+                predicate: 'works_at',
+                values: ['mira', 'acme'],
+                trust: 'tentative',
+              }),
+            ]),
+          }),
+        }),
+      ])
+    );
+
+    const absence = connectKnowledgeGraph(clauses, sources, 'alice', 'admin', {
+      includeDerived: true,
+    });
+    expect(absence.paths.map((path) => path.segments[0].predicate)).toContain(
+      'available'
+    );
+    expect(absence.graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'absence',
+          predicate: 'suspended',
+          pattern: ['alice'],
+        }),
+      ])
+    );
+  });
+
+  it('retains aggregate contributor evidence on a derived path claim', () => {
+    const store = pathStore('derived-aggregate');
+    store.assert('default', 'member(red, alice). member(red, bob).', {
+      opId: 'membership-source',
+    });
+    store.assert(
+      'default',
+      'team_size(Team, Count) :- count(*) as Count where member(Team, Person).',
+      { opId: 'size-rule' }
+    );
+
+    const result = connectKnowledgeGraph(
+      store.clausesFor(['default']),
+      store.sourcesFor(['default']),
+      'red',
+      2,
+      { includeDerived: true }
+    );
+
+    expect(result).toMatchObject({
+      status: 'connected',
+      shortestHops: 1,
+      paths: [
+        {
+          entities: ['red', 2],
+          segments: [
+            expect.objectContaining({
+              predicate: 'team_size',
+              derived: true,
+              rule: 1,
+            }),
+          ],
+        },
+      ],
+      claimProofs: [
+        {
+          derived: true,
+          proof: {
+            predicate: 'team_size',
+            values: ['red', 2],
+            rule: 1,
+            aggregate: {
+              aggregated: true,
+              op: 'count',
+              value: 2,
+              contributors: [
+                {
+                  proofs: [
+                    expect.objectContaining({
+                      predicate: 'member',
+                      values: ['red', 'alice'],
+                      sources: [expect.objectContaining({ opId: 'membership-source' })],
+                    }),
+                  ],
+                },
+                {
+                  proofs: [
+                    expect.objectContaining({
+                      predicate: 'member',
+                      values: ['red', 'bob'],
+                      sources: [expect.objectContaining({ opId: 'membership-source' })],
+                    }),
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+    expect(result.graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'aggregate', op: 'count', value: 2 }),
+      ])
+    );
+  });
+
   it('distinguishes a depth-bounded miss from an exhausted disconnected component', () => {
     const clauses = parseProgram('link(a, b). link(b, c). link(c, d).');
     const bounded = connectKnowledgeGraph(clauses, new Map(), 'a', 'd', {
@@ -160,6 +423,65 @@ describe('deterministic personal knowledge graph paths', () => {
           predicate: 'knows',
           projectedFrom: "knows('Mira Patel', rahul).",
         }),
+        expect.objectContaining({
+          kind: 'entity',
+          value: 'mira',
+          aliases: [expect.objectContaining({ alias: 'Mira Patel' })],
+        }),
+      ])
+    );
+  });
+
+  it('derives paths through the same position-scoped canonical identity view', () => {
+    const store = pathStore('derived-identity');
+    store.assert(
+      'default',
+      `rembero_alias('Mira Patel', mira).
+       rembero_entity_position(works_at, 2, 0).
+       rembero_entity_position(colleague, 2, 0).
+       rembero_entity_position(colleague, 2, 1).
+       works_at('Mira Patel', acme).
+       works_at(rahul, acme).
+       colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.`,
+      { opId: 'derived-identity-source' }
+    );
+
+    const result = connectKnowledgeGraph(
+      store.clausesFor(['default']),
+      store.sourcesFor(['default']),
+      'Mira Patel',
+      'rahul',
+      { entityIdentity: 'canonical', includeDerived: true }
+    );
+
+    expect(result).toMatchObject({
+      status: 'connected',
+      shortestHops: 1,
+      selection: { resolvedFrom: 'mira', resolvedTo: 'rahul' },
+      paths: expect.arrayContaining([
+        expect.objectContaining({
+          entities: ['mira', 'rahul'],
+          segments: [
+            expect.objectContaining({ predicate: 'colleague', derived: true }),
+          ],
+        }),
+      ]),
+      claimProofs: expect.arrayContaining([
+        expect.objectContaining({
+          proof: expect.objectContaining({
+            because: expect.arrayContaining([
+              expect.objectContaining({
+                predicate: 'works_at',
+                values: ['mira', 'acme'],
+                projectedFrom: "works_at('Mira Patel', acme).",
+              }),
+            ]),
+          }),
+        }),
+      ]),
+    });
+    expect(result.graph.nodes).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           kind: 'entity',
           value: 'mira',

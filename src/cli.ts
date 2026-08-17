@@ -199,6 +199,7 @@ Options:
       --path-limit <n>    Complete shortest paths (default: 3; max: ${MAX_KNOWLEDGE_PATHS})
       --from-number       Interpret the connect start as a numeric term
       --to-number         Interpret the connect end as a numeric term
+      --include-derived   Let connect traverse rule-derived claims with proofs
       --include-passing-evidence  Include proofs/graphs for passing knowledge checks
       --compare-scan        Re-run profile with relation indexes disabled and prove equivalence
       --at <ISO>           Canonical UTC valid-until instant for supersede
@@ -272,6 +273,7 @@ interface ParsedArgs {
   pathLimit?: string;
   fromNumber: boolean;
   toNumber: boolean;
+  includeDerived: boolean;
   includePassingEvidence: boolean;
   compareScan: boolean;
   at?: string;
@@ -291,6 +293,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     focusNumber: false,
     fromNumber: false,
     toNumber: false,
+    includeDerived: false,
     includePassingEvidence: false,
     compareScan: false,
   };
@@ -419,6 +422,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.fromNumber = true;
     } else if (arg === '--to-number') {
       parsed.toNumber = true;
+    } else if (arg === '--include-derived') {
+      parsed.includeDerived = true;
     } else if (arg === '--include-passing-evidence') {
       parsed.includePassingEvidence = true;
     } else if (arg === '--compare-scan') {
@@ -830,7 +835,8 @@ async function main(): Promise<void> {
     (args.pathDepth !== undefined ||
       args.pathLimit !== undefined ||
       args.fromNumber ||
-      args.toNumber) &&
+      args.toNumber ||
+      args.includeDerived) &&
     command !== 'connect'
   ) {
     throw new Error('path options are available only for connect');
@@ -1409,6 +1415,7 @@ async function main(): Promise<void> {
                   'knowledge graph claim limit'
                 ),
               }),
+          ...(args.includeDerived ? { includeDerived: true } : {}),
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
       );

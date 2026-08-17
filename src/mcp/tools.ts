@@ -855,6 +855,7 @@ export function connectKnowledgeGraphTool(
     maxDepth?: number;
     maxPaths?: number;
     maxClaims?: number;
+    includeDerived?: boolean;
     namespaces?: string[] | '*';
     entityIdentity?: EntityIdentityMode;
     trustMode?: TrustViewMode;
@@ -881,6 +882,9 @@ export function connectKnowledgeGraphTool(
       ...(args.maxDepth === undefined ? {} : { maxDepth: args.maxDepth }),
       ...(args.maxPaths === undefined ? {} : { maxPaths: args.maxPaths }),
       ...(args.maxClaims === undefined ? {} : { maxClaims: args.maxClaims }),
+      ...(args.includeDerived === undefined
+        ? {}
+        : { includeDerived: args.includeDerived }),
       ...(entityIdentity === undefined ? {} : { entityIdentity }),
       ...(trustMode === 'accepted' ? {} : { trustMode }),
     }

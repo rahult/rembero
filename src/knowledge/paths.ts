@@ -1,21 +1,34 @@
-import { EngineLimitError, type Clause } from '../engine/index.js';
+import {
+  EngineLimitError,
+  materialize,
+  serializeTerm,
+  type Clause,
+  type Term,
+} from '../engine/index.js';
 import type { MemorySource } from '../store/store.js';
 import {
   browseKnowledgeGraph,
+  knowledgeGraphClaimId,
   knowledgeGraphEntityId,
   DEFAULT_BROWSE_GRAPH_CLAIMS,
   MAX_BROWSE_ENTITY_FOCUS_BYTES,
   MAX_BROWSE_GRAPH_CLAIMS,
   MAX_BROWSE_GRAPH_DEPTH,
+  MAX_BROWSE_GRAPH_FACTS,
 } from './browse.js';
-import type {
+import {
+  explainKnowledge,
+  type ExplanationRule,
   EntityGraphNode,
   ExplanationGraph,
   ExplanationGraphEdge,
   ExplanationGraphNode,
+  type SourcedDerivationProof,
+  type SourcedProofStep,
 } from './graph.js';
 import {
   canonicalizeKnowledge,
+  literalKnowledge,
   type EntityIdentityMode,
   type EntityResolver,
 } from './identity.js';
@@ -30,6 +43,8 @@ export interface ConnectKnowledgeGraphOptions {
   maxDepth?: number;
   maxPaths?: number;
   maxClaims?: number;
+  /** Opt in to rule-derived materialized facts, each returned with a proof. */
+  includeDerived?: boolean;
   entityIdentity?: EntityIdentityMode;
   trustMode?: TrustViewMode;
 }
@@ -43,6 +58,8 @@ export interface KnowledgeGraphPathSegment {
   to: string | number;
   fromPosition: number;
   toPosition: number;
+  derived: boolean;
+  rule?: number;
 }
 
 export interface KnowledgeGraphPath {
@@ -66,6 +83,14 @@ export interface ConnectKnowledgeGraphSelection {
   exploredClaims: number;
   exploredEntities: number;
   frontierExhausted: boolean;
+  includeDerived: boolean;
+  materializedDerivedFacts: number;
+}
+
+export interface KnowledgePathClaimProof {
+  claimId: string;
+  derived: boolean;
+  proof: SourcedDerivationProof;
 }
 
 export interface ConnectKnowledgeGraphResult {
@@ -75,9 +100,14 @@ export interface ConnectKnowledgeGraphResult {
   searchComplete: boolean;
   paths: KnowledgeGraphPath[];
   graph: ExplanationGraph;
+  /** Present only when rule-derived traversal was requested. */
+  claimProofs?: KnowledgePathClaimProof[];
+  /** Rule numbering used by the claim proofs. */
+  rules?: ExplanationRule[];
   selection: ConnectKnowledgeGraphSelection;
   skippedNonGroundFacts: number;
   trustMode?: TrustViewMode;
+  includeDerived?: true;
 }
 
 function boundedInteger(
@@ -191,7 +221,9 @@ function shortestNodePaths(
 function pathFor(
   nodeIds: string[],
   nodes: ReadonlyMap<string, ExplanationGraphNode>,
-  positions: ReadonlyMap<string, number>
+  positions: ReadonlyMap<string, number>,
+  derivedClaims: ReadonlyMap<string, boolean>,
+  claimRules: ReadonlyMap<string, number>
 ): KnowledgeGraphPath {
   const entities: (string | number)[] = [];
   const segments: KnowledgeGraphPathSegment[] = [];
@@ -221,9 +253,67 @@ function pathFor(
       to: target.value,
       fromPosition,
       toPosition,
+      derived: derivedClaims.get(claim.id) ?? false,
+      ...(claimRules.get(claim.id) === undefined
+        ? {}
+        : { rule: claimRules.get(claim.id) }),
     });
   }
   return { hops: segments.length, nodeIds, entities, segments };
+}
+
+function termFor(value: string | number): Term {
+  return typeof value === 'number'
+    ? { type: 'num', value }
+    : { type: 'atom', value };
+}
+
+function factClause(predicate: string, values: (string | number)[]): Clause {
+  return {
+    head: { predicate, args: values.map(termFor) },
+    body: [],
+  };
+}
+
+function groundQuery(predicate: string, values: (string | number)[]): string {
+  return values.length === 0
+    ? predicate
+    : `${predicate}(${values.map((value) => serializeTerm(termFor(value))).join(', ')})`;
+}
+
+function mergeProofGraph(
+  graph: ExplanationGraph,
+  nodes: Map<string, ExplanationGraphNode>,
+  edges: Map<string, ExplanationGraphEdge>
+): void {
+  const inputTargets = new Set(
+    graph.edges.filter((edge) => edge.kind === 'input').map((edge) => edge.to)
+  );
+  const topResults = new Set(
+    graph.nodes
+      .filter((node) => node.kind === 'result' && !inputTargets.has(node.id))
+      .map((node) => node.id)
+  );
+  for (const node of graph.nodes) {
+    if (!topResults.has(node.id)) nodes.set(node.id, node);
+  }
+  for (const edge of graph.edges) {
+    if (!topResults.has(edge.from) && !topResults.has(edge.to)) {
+      edges.set(edge.id, edge);
+    }
+  }
+}
+
+function collectProofRules(
+  proof: SourcedProofStep,
+  rules: Set<number>
+): void {
+  if ('negated' in proof) return;
+  if (proof.rule !== undefined) rules.add(proof.rule);
+  for (const child of proof.because ?? []) collectProofRules(child, rules);
+  for (const contributor of proof.aggregate?.contributors ?? []) {
+    for (const child of contributor.proofs) collectProofRules(child, rules);
+  }
 }
 
 /** Find every bounded shortest path between two entities over explicit ground facts. */
@@ -255,8 +345,11 @@ export function connectKnowledgeGraph(
     'knowledge graph claim limit'
   );
   const trustMode = options.trustMode ?? 'accepted';
+  const knowledgeView = options.entityIdentity === 'canonical'
+    ? canonicalizeKnowledge(clauses, sourceIndex, trustMode)
+    : literalKnowledge(clauses, sourceIndex, trustMode);
   const resolver = options.entityIdentity === 'canonical'
-    ? canonicalizeKnowledge(clauses, sourceIndex, trustMode).resolver
+    ? knowledgeView.resolver
     : undefined;
   const resolvedFrom =
     typeof from === 'string' && resolver !== undefined ? resolver.resolve(from) : from;
@@ -264,14 +357,34 @@ export function connectKnowledgeGraph(
     typeof to === 'string' && resolver !== undefined ? resolver.resolve(to) : to;
   const fromNodeId = knowledgeGraphEntityId(resolvedFrom);
   const toNodeId = knowledgeGraphEntityId(resolvedTo);
-  const browsed = browseKnowledgeGraph(clauses, sourceIndex, {
-    focus: from,
+  let traversalClauses = clauses;
+  let traversalSources = sourceIndex;
+  let traversalFocus = from;
+  const derivedClaims = new Map<string, boolean>();
+  let materializedDerivedFacts = 0;
+  if (options.includeDerived === true) {
+    const facts = materialize(knowledgeView.clauses, {
+      maxFacts: MAX_BROWSE_GRAPH_FACTS,
+    });
+    traversalClauses = facts.map((fact) => factClause(fact.predicate, fact.values));
+    traversalSources = knowledgeView.sources;
+    traversalFocus = resolvedFrom;
+    for (const fact of facts) {
+      const id = knowledgeGraphClaimId(fact.predicate, fact.values);
+      derivedClaims.set(id, fact.derived);
+      if (fact.derived) materializedDerivedFacts++;
+    }
+  }
+  const browsed = browseKnowledgeGraph(traversalClauses, traversalSources, {
+    focus: traversalFocus,
     depth: maxDepth,
     maxClaims,
-    ...(options.entityIdentity === undefined
+    ...(options.includeDerived === true || options.entityIdentity === undefined
       ? {}
       : { entityIdentity: options.entityIdentity }),
-    ...(trustMode === 'accepted' ? {} : { trustMode }),
+    ...(options.includeDerived === true || trustMode === 'accepted'
+      ? {}
+      : { trustMode }),
   });
   const nodes = new Map(browsed.graph.nodes.map((node) => [node.id, node]));
   const positions = new Map<string, number>();
@@ -289,8 +402,53 @@ export function connectKnowledgeGraph(
     toNodeId,
     maxPaths
   );
-  const paths = nodePaths.map((nodeIds) => pathFor(nodeIds, nodes, positions));
   const selectedNodeIds = new Set(nodePaths.flat());
+  const selectedClaimIds = [...new Set(
+    nodePaths.flatMap((nodeIds) =>
+      nodeIds.filter((_nodeId, index) => index % 2 === 1)
+    )
+  )].sort();
+  const claimProofs: KnowledgePathClaimProof[] = [];
+  const claimRules = new Map<string, number>();
+  const ruleCatalog = new Map<number, ExplanationRule>();
+  const usedRuleNumbers = new Set<number>();
+  const proofNodes = new Map<string, ExplanationGraphNode>();
+  const proofEdges = new Map<string, ExplanationGraphEdge>();
+  if (options.includeDerived === true) {
+    for (const claimId of selectedClaimIds) {
+      const claim = nodes.get(claimId);
+      if (claim?.kind !== 'claim') {
+        throw new Error('knowledge graph path claim is missing from traversal graph');
+      }
+      const explained = explainKnowledge(
+        clauses,
+        groundQuery(claim.predicate, claim.values),
+        sourceIndex,
+        {
+          ...(options.entityIdentity === undefined
+            ? {}
+            : { entityIdentity: options.entityIdentity }),
+          ...(trustMode === 'accepted' ? {} : { trustMode }),
+        }
+      );
+      const proof = explained.rows[0]?.proofs[0];
+      if (proof === undefined || 'aggregated' in proof || 'negated' in proof) {
+        throw new Error('materialized path claim did not produce a derivation proof');
+      }
+      claimProofs.push({
+        claimId,
+        derived: derivedClaims.get(claimId) ?? false,
+        proof,
+      });
+      if (proof.rule !== undefined) claimRules.set(claimId, proof.rule);
+      for (const rule of explained.rules) ruleCatalog.set(rule.number, rule);
+      collectProofRules(proof, usedRuleNumbers);
+      mergeProofGraph(explained.graph, proofNodes, proofEdges);
+    }
+  }
+  const paths = nodePaths.map((nodeIds) =>
+    pathFor(nodeIds, nodes, positions, derivedClaims, claimRules)
+  );
   const graphNodes: ExplanationGraphNode[] = paths.length === 0
     ? [endpointNode(resolvedFrom, resolver), endpointNode(resolvedTo, resolver)]
     : browsed.graph.nodes.filter((node) => selectedNodeIds.has(node.id));
@@ -300,10 +458,16 @@ export function connectKnowledgeGraph(
         (edge) => selectedNodeIds.has(edge.from) && selectedNodeIds.has(edge.to)
       );
   const graph: ExplanationGraph = {
-    nodes: [...new Map(graphNodes.map((node) => [node.id, node])).values()].sort(
+    nodes: [...new Map([
+      ...graphNodes.map((node) => [node.id, node] as const),
+      ...proofNodes.entries(),
+    ]).values()].sort(
       (left, right) => left.id.localeCompare(right.id)
     ),
-    edges: graphEdges.sort((left, right) => left.id.localeCompare(right.id)),
+    edges: [...new Map([
+      ...graphEdges.map((edge) => [edge.id, edge] as const),
+      ...proofEdges.entries(),
+    ]).values()].sort((left, right) => left.id.localeCompare(right.id)),
   };
   const connected = paths.length > 0;
   return {
@@ -312,6 +476,15 @@ export function connectKnowledgeGraph(
     searchComplete: connected || browsed.selection.frontierExhausted,
     paths,
     graph,
+    ...(options.includeDerived === true
+      ? {
+          claimProofs,
+          rules: [...usedRuleNumbers]
+            .sort((left, right) => left - right)
+            .map((number) => ruleCatalog.get(number)!)
+            .filter((rule) => rule !== undefined),
+        }
+      : {}),
     selection: {
       from,
       resolvedFrom,
@@ -326,8 +499,11 @@ export function connectKnowledgeGraph(
       exploredClaims: browsed.selection.selectedClaims,
       exploredEntities: browsed.selection.selectedEntities,
       frontierExhausted: browsed.selection.frontierExhausted,
+      includeDerived: options.includeDerived === true,
+      materializedDerivedFacts,
     },
     skippedNonGroundFacts: browsed.skippedNonGroundFacts,
     ...(trustMode === 'accepted' ? {} : { trustMode }),
+    ...(options.includeDerived === true ? { includeDerived: true as const } : {}),
   };
 }

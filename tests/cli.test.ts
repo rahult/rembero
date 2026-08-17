@@ -703,7 +703,8 @@ describe('CLI ingress limits', () => {
     const store = new MemoryStore(join(home, 'memory'));
     store.assert(
       'default',
-      'works_at(mira, acme). works_at(rahul, acme). lives_in(rahul, melbourne).',
+      `works_at(mira, acme). works_at(rahul, acme). lives_in(rahul, melbourne).
+       colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.`,
       { opId: 'connection-source' }
     );
 
@@ -718,6 +719,7 @@ describe('CLI ingress limits', () => {
         '2',
         '--path-limit',
         '3',
+        '--include-derived',
       ],
       {
         encoding: 'utf8',
@@ -728,17 +730,21 @@ describe('CLI ingress limits', () => {
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
       status: 'connected',
-      shortestHops: 2,
+      shortestHops: 1,
       searchComplete: true,
-      paths: [
-        {
-          entities: ['mira', 'acme', 'rahul'],
+      includeDerived: true,
+      paths: expect.arrayContaining([
+        expect.objectContaining({
+          entities: ['mira', 'rahul'],
           segments: [
-            expect.objectContaining({ predicate: 'works_at' }),
-            expect.objectContaining({ predicate: 'works_at' }),
+            expect.objectContaining({
+              predicate: 'colleague',
+              derived: true,
+              rule: 1,
+            }),
           ],
-        },
-      ],
+        }),
+      ]),
       graph: {
         nodes: expect.arrayContaining([
           expect.objectContaining({

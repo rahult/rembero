@@ -432,7 +432,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.41.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.42.0' });
 
   server.registerTool(
     'remember',
@@ -923,15 +923,19 @@ export function createServer(deps: PipelineDeps): McpServer {
   server.registerTool(
     'connect_knowledge_graph',
     {
-      title: 'Find explicit personal knowledge paths',
+      title: 'Find proof-aware personal knowledge paths',
       description:
-        'Find every bounded shortest path between two atom or numeric entities through explicit stored ground facts. Returns ordered claim segments, a provenance-bearing path graph, aliases, trust, and recorded-view metadata. A no_path result distinguishes complete component exhaustion from a depth-bounded search; no LLM or graph sidecar is used.',
+        'Find every bounded shortest path between two atom or numeric entities. Explicit ground facts are the default; includeDerived opts into bounded rule conclusions and attaches a complete sourced proof to every selected claim. Returns ordered segments, a proof/provenance graph, aliases, trust, and recorded-view metadata. A no_path result distinguishes component exhaustion from a depth-bounded search; no LLM, persisted inference, or graph sidecar is used.',
       inputSchema: {
         from: pathEndpointField,
         to: pathEndpointField,
         maxDepth: pathDepthField,
         maxPaths: pathLimitField,
         maxClaims: browseClaimLimitField,
+        includeDerived: z
+          .boolean()
+          .optional()
+          .describe('Traverse rule-derived facts only when each returned claim carries a proof'),
         namespaces: namespacesField,
         entityIdentity: entityIdentityField,
         trustMode: trustViewField,
@@ -944,6 +948,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       maxDepth,
       maxPaths,
       maxClaims,
+      includeDerived,
       namespaces,
       entityIdentity,
       trustMode,
@@ -957,6 +962,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             maxDepth,
             maxPaths,
             maxClaims,
+            includeDerived,
             namespaces,
             entityIdentity,
             trustMode,
