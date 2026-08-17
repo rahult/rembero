@@ -32,7 +32,8 @@ counterfactual engine. The result includes:
 - raw validated extracted clauses and retraction patterns;
 - exact effective additions, duplicates, removals, and unmatched removals;
 - candidate integrity results with introduced/resolved violation identities;
-- full rule-audit/topology impact when text proposes a general rule; and
+- full rule-audit/topology impact when text proposes a general rule;
+- optional baseline/candidate knowledge checks and semantic coverage deltas; and
 - a SHA-256 content-addressed proposal only when the effective candidate changes.
 
 ## Proposal identity
@@ -43,6 +44,9 @@ removed clauses, and identity projection mode. `proposalDigest` covers every fie
 
 The artifact contains personal source text and should be protected like the memory store.
 Any edit invalidates its digest.
+
+Version 0.49 can bind a normalized JSON v1 check/coverage suite into that digest. See
+[regression-gated reviewed memory](MEMORY-CHECK-GATES.md).
 
 ## Corrections and time
 

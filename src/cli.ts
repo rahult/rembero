@@ -64,6 +64,7 @@ import {
 import {
   applyMemoryProposal,
   MAX_MEMORY_PROPOSAL_BYTES,
+  MemoryChangeCheckError,
 } from './knowledge/memory-application.js';
 import {
   IntegrityViolationError,
@@ -833,9 +834,10 @@ async function main(): Promise<void> {
   if (
     args.checkSuitePath !== undefined &&
     command !== 'what-if' &&
-    command !== 'health'
+    command !== 'health' &&
+    command !== 'propose-memory'
   ) {
-    throw new Error('--check-suite is available only for what-if or health');
+    throw new Error('--check-suite is available only for propose-memory, what-if, or health');
   }
   if (
     [args.failureLimit, args.diagnosticDepth, args.candidateLimit, args.evidenceLimit].some(
@@ -1010,6 +1012,20 @@ async function main(): Promise<void> {
       return;
     }
     case 'propose-memory': {
+      let checkSuite: string | undefined;
+      if (args.checkSuitePath !== undefined) {
+        const file = resolve(args.checkSuitePath);
+        const stat = lstatSync(file);
+        if (stat.isSymbolicLink() || !stat.isFile()) {
+          throw new Error('refusing non-regular memory proposal check suite file');
+        }
+        if (stat.size > MAX_KNOWLEDGE_CHECK_SUITE_BYTES) {
+          throw new Error(
+            `memory proposal check suite exceeds ${MAX_KNOWLEDGE_CHECK_SUITE_BYTES} bytes`
+          );
+        }
+        checkSuite = readFileSync(file, 'utf8');
+      }
       const result = await proposeMemoryTool(
         {
           store,
@@ -1024,6 +1040,7 @@ async function main(): Promise<void> {
           namespaces,
           validTimeMode: validTimeModeOption(args.validTimeMode),
           at: args.at,
+          checkSuite,
           integrityEnforcement,
           entityIdentity,
         }
@@ -1980,6 +1997,11 @@ main().catch((e: unknown) => {
   }
   if (e instanceof RuleChangeCheckError) {
     console.error(stringifyBoundedResult(e.toJSON(), 'CLI rule change check failure'));
+    process.exitCode = 2;
+    return;
+  }
+  if (e instanceof MemoryChangeCheckError) {
+    console.error(stringifyBoundedResult(e.toJSON(), 'CLI memory change check failure'));
     process.exitCode = 2;
     return;
   }

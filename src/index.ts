@@ -110,6 +110,7 @@ export {
   parseMemoryProposal,
   applyMemoryProposal,
   MAX_MEMORY_PROPOSAL_BYTES,
+  MemoryChangeCheckError,
   type ApplyMemoryProposalOptions,
   type ApplyMemoryProposalResult,
 } from './knowledge/memory-application.js';

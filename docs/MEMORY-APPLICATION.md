@@ -32,8 +32,9 @@ Application owns the global mutation, target namespace, and journal locks while 
 4. requires every reviewed removal to remain present and every addition to remain absent;
 5. reconstructs and validates any exact `_until` archive lineage;
 6. builds and fully audits the candidate facts/rules;
-7. enforces mandatory `no_new_violations` across exactly the governed namespaces; and
-8. commits one namespace replacement and one `memory_change` journal event using the
+7. re-runs any proposal-bound knowledge checks and semantic coverage requirement;
+8. enforces mandatory `no_new_violations` across exactly the governed namespaces; and
+9. commits one namespace replacement and one `memory_change` journal event using the
    existing crash-recovery marker protocol.
 
 Any stale, tampered, parse, stratification, resource, integrity, or output failure occurs
@@ -63,6 +64,8 @@ lock. The winner commits; every later proposal sees a changed digest and returns
 
 The CLI uses exit `7` for stale proposals, `3` for integrity rejection, and `4` for
 operation conflicts. MCP returns the same structured error codes.
+
+Version 0.49 adds `memory_change_checks_failed` with CLI exit `2`; no mutation occurs.
 
 Tentative uncertainty retains its separate `claims`/`accept`/`reject` authority flow.
 Memory proposals are reviewed transitions into accepted knowledge and cannot author

@@ -77,7 +77,10 @@ import {
   MAX_RULE_CHANGE_PROPOSAL_BYTES,
   RuleChangeCheckError,
 } from '../knowledge/rule-change.js';
-import { MAX_MEMORY_PROPOSAL_BYTES } from '../knowledge/memory-application.js';
+import {
+  MAX_MEMORY_PROPOSAL_BYTES,
+  MemoryChangeCheckError,
+} from '../knowledge/memory-application.js';
 import {
   MAX_REPAIR_PLANS,
   MAX_REPAIR_SEARCH_STATES,
@@ -358,6 +361,7 @@ function asError(e: unknown) {
     e instanceof IncompleteHistoryError ||
     e instanceof TrustMetadataError ||
     e instanceof MemoryChangeStaleError ||
+    e instanceof MemoryChangeCheckError ||
     e instanceof RuleChangeStaleError ||
     e instanceof RuleChangeCheckError
   ) {
@@ -448,7 +452,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.48.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.49.0' });
 
   server.registerTool(
     'remember',
@@ -515,6 +519,11 @@ export function createServer(deps: PipelineDeps): McpServer {
         namespaces: namespacesField,
         validTimeMode: z.enum(['delete', 'archive_until']).optional(),
         at: validTimeInstantField,
+        checkSuite: z
+          .string()
+          .max(MAX_KNOWLEDGE_CHECK_SUITE_BYTES)
+          .optional()
+          .describe('Optional JSON v1 checks and semantic coverage required by the proposal'),
         integrityMode: integrityModeField,
         integrityNamespaces: integrityNamespacesField,
         proofLimit: proofLimitField,
@@ -529,6 +538,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       namespaces,
       validTimeMode,
       at,
+      checkSuite,
       integrityMode,
       integrityNamespaces,
       proofLimit,
@@ -544,6 +554,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             namespaces,
             validTimeMode,
             at,
+            checkSuite,
             integrityEnforcement: requestedIntegrity(
               resolvedDeps.integrityEnforcement,
               integrityMode,

@@ -10,6 +10,7 @@ import {
 } from '../src/knowledge/memory-proposal.js';
 import {
   applyMemoryProposal,
+  MemoryChangeCheckError,
   parseMemoryProposal,
 } from '../src/knowledge/memory-application.js';
 import { IntegrityViolationError } from '../src/knowledge/enforcement.js';
@@ -61,7 +62,19 @@ describe('digest-bound reviewed personal memory application', () => {
     const proposal = await proposalFor(
       store,
       'pet(rahul, luna).',
-      'Rahul has a pet named Luna.'
+      'Rahul has a pet named Luna.',
+      {
+        checkSuite: {
+          version: 1,
+          checks: [
+            {
+              name: 'pet stored',
+              query: 'pet(rahul, luna)',
+              expect: { kind: 'nonempty' },
+            },
+          ],
+        },
+      }
     );
 
     const applied = applyMemoryProposal(store, proposal, {
@@ -78,6 +91,7 @@ describe('digest-bound reviewed personal memory application', () => {
       opId: 'reviewed-memory-1',
       sequence: 1,
       audit: { topology: { factCount: 1, ruleCount: 0 } },
+      checks: { status: 'passed', passedCount: 1 },
     });
     expect(store.load('default').map(serializeClause)).toEqual([
       'pet(rahul, luna).',
@@ -235,6 +249,29 @@ describe('digest-bound reviewed personal memory application', () => {
       applyMemoryProposal(policyStore, unsafe, { opId: 'unsafe-memory' })
     ).toThrow(IntegrityViolationError);
     expect(policyStore.load('default')).toHaveLength(2);
+
+    const checkStore = new MemoryStore(rootFor('checks'));
+    const failing = await proposalFor(
+      checkStore,
+      'item(a).',
+      'Remember item A.',
+      {
+        checkSuite: {
+          version: 1,
+          checks: [
+            {
+              name: 'item must remain absent',
+              query: 'item(a)',
+              expect: { kind: 'empty' },
+            },
+          ],
+        },
+      }
+    );
+    expect(() =>
+      applyMemoryProposal(checkStore, failing, { opId: 'failed-memory-check' })
+    ).toThrow(MemoryChangeCheckError);
+    expect(checkStore.load('default')).toEqual([]);
   });
 
   it('serializes competing memory proposals and conflicts on operation-id reuse', async () => {

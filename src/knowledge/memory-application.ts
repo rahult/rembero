@@ -24,6 +24,11 @@ import {
   isEntityMetadataPredicate,
 } from './identity.js';
 import { isTrustMetadataPredicate } from './trust.js';
+import {
+  parseKnowledgeCheckSuite,
+  runKnowledgeChecks,
+  type KnowledgeCheckSuiteResult,
+} from './checks.js';
 
 export const MAX_MEMORY_PROPOSAL_BYTES = 2 * 1024 * 1024;
 
@@ -37,6 +42,22 @@ export interface ApplyMemoryProposalOptions {
 
 export interface ApplyMemoryProposalResult extends MemoryChangeMutationResult {
   audit: RuleAuditResult;
+  checks?: KnowledgeCheckSuiteResult;
+}
+
+export class MemoryChangeCheckError extends Error {
+  readonly code = 'memory_change_checks_failed';
+
+  constructor(readonly result: KnowledgeCheckSuiteResult) {
+    super(
+      `memory proposal failed ${result.failedCount} knowledge check(s) or its coverage requirement`
+    );
+    this.name = 'MemoryChangeCheckError';
+  }
+
+  toJSON(): Record<string, unknown> {
+    return { error: this.code, message: this.message, result: this.result };
+  }
 }
 
 function canonicalClauseList(value: unknown, label: string): string[] {
@@ -101,7 +122,7 @@ function parsedProposal(value: unknown): MemoryChangeProposal {
     'addClauses',
     'removeClauses',
   ];
-  const optional = ['at', 'entityIdentity'];
+  const optional = ['at', 'entityIdentity', 'checkSuite'];
   const allowed = new Set([...required, ...optional]);
   if (
     required.some((key) => !(key in record)) ||
@@ -149,6 +170,12 @@ function parsedProposal(value: unknown): MemoryChangeProposal {
   }
   if (record.entityIdentity !== undefined && record.entityIdentity !== 'canonical') {
     throw new Error("memory proposal entityIdentity must be 'canonical'");
+  }
+  if (record.checkSuite !== undefined) {
+    if (typeof record.checkSuite !== 'string') {
+      throw new Error('memory proposal checkSuite must be a string');
+    }
+    parseKnowledgeCheckSuite(record.checkSuite);
   }
   const addClauses = canonicalClauseList(record.addClauses, 'memory proposal addClauses');
   const removeClauses = canonicalClauseList(
@@ -230,6 +257,7 @@ export function applyMemoryProposal(
     throw new Error('memory proposal application requires an explicit operation id');
   }
   const archives = temporalArchives(proposal);
+  let checks: KnowledgeCheckSuiteResult | undefined;
   const mutation = store.applyMemoryChange(
     proposal.namespace,
     {
@@ -249,6 +277,19 @@ export function applyMemoryProposal(
             ? {}
             : { entityIdentity: proposal.entityIdentity }),
         });
+        if (proposal.checkSuite !== undefined) {
+          checks = runKnowledgeChecks(
+            candidate.clauses,
+            new Map(),
+            proposal.checkSuite,
+            {
+              ...(proposal.entityIdentity === undefined
+                ? {}
+                : { entityIdentity: proposal.entityIdentity }),
+            }
+          );
+          if (checks.status !== 'passed') throw new MemoryChangeCheckError(checks);
+        }
       },
     },
     {
@@ -281,5 +322,17 @@ export function applyMemoryProposal(
       ? {}
       : { entityIdentity: proposal.entityIdentity }),
   });
-  return { ...mutation, audit };
+  if (proposal.checkSuite !== undefined) {
+    checks = runKnowledgeChecks(
+      committed.clauses,
+      committed.sources,
+      proposal.checkSuite,
+      {
+        ...(proposal.entityIdentity === undefined
+          ? {}
+          : { entityIdentity: proposal.entityIdentity }),
+      }
+    );
+  }
+  return { ...mutation, audit, ...(checks === undefined ? {} : { checks }) };
 }

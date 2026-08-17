@@ -133,6 +133,7 @@ and the async-hook lifecycle boundary.
 ```bash
 node dist/cli.js remember "Rahul's dentist is Dr Chen"
 node dist/cli.js propose-memory 'Mira now works at Initech.' # review, no write
+node dist/cli.js propose-memory 'Mira now works at Initech.' --check-suite checks.json
 node dist/cli.js apply-memory memory-review.json --op-id reviewed-memory-v2
 node dist/cli.js recall   "Who is Rahul's dentist?"
 node dist/cli.js recall   "Who owns Atlas?" --schema-predicate-limit 48
@@ -403,6 +404,11 @@ Version 0.48 composes integrity, rule audit/topology, tentative review debt, ide
 metadata, provenance completeness, and optional checks/coverage over one immutable current
 or recorded snapshot. Stable findings produce healthy/review/violations status without an
 LLM or semantic guessing. See [the knowledge-health contract](docs/KNOWLEDGE-HEALTH.md).
+
+Version 0.49 can bind portable regression checks and semantic coverage into a personal
+memory proposal. Preview compares baseline/candidate results; reviewed apply re-runs the
+normalized suite under the mutation lock and rejects failures before writing. See
+[the reviewed memory check-gate contract](docs/MEMORY-CHECK-GATES.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

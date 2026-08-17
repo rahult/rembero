@@ -58,7 +58,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.48.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.49.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -1397,7 +1397,19 @@ describe('MCP explanation surfaces', () => {
     try {
       const proposed = await client.callTool({
         name: 'propose_memory',
-        arguments: { text: 'Mira now works at Initech.' },
+        arguments: {
+          text: 'Mira now works at Initech.',
+          checkSuite: JSON.stringify({
+            version: 1,
+            checks: [
+              {
+                name: 'new employer',
+                query: 'works_at(mira, initech)',
+                expect: { kind: 'nonempty' },
+              },
+            ],
+          }),
+        },
       });
       const text = proposed.content.find((item) => item.type === 'text');
       const payload = JSON.parse(text?.type === 'text' ? text.text : '');
@@ -1406,7 +1418,9 @@ describe('MCP explanation surfaces', () => {
         proposal: {
           removeClauses: ['works_at(mira, acme).'],
           addClauses: ['works_at(mira, initech).'],
+          checkSuite: expect.any(String),
         },
+        checkDelta: { candidate: { status: 'passed' } },
       });
       expect(store.load('default').map(serializeClause)).toEqual([
         'works_at(mira, acme).',
@@ -1425,6 +1439,7 @@ describe('MCP explanation surfaces', () => {
         opId: 'mcp-reviewed-memory',
         removed: [expect.any(Object)],
         added: [expect.any(Object)],
+        checks: { status: 'passed' },
       });
       expect(store.load('default').map(serializeClause)).toEqual([
         'works_at(mira, initech).',

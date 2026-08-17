@@ -609,6 +609,19 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    package installs, current/recorded, check suites, view modes, meaningful exit codes,
    and fail-closed finding/detail/output bounds share one read-only contract.
 
+## Phase 52 — Regression-gated reviewed personal memory  *(v0.49)*
+
+1. **Complete — suite-bound review evidence**: optional portable JSON v1 checks and
+   semantic coverage execute on baseline/candidate memory and expose fixed/regressed names,
+   coverage movement, and pass/fail transitions.
+2. **Complete — content-bound expectations**: normalized suite text is embedded in and
+   covered by the memory proposal digest, so altering any expectation invalidates review.
+3. **Complete — in-lock regression gate**: apply re-runs the bound suite on the complete
+   candidate under the mutation lock and rejects all row or coverage failures before write.
+4. **Complete — operational parity**: library, CLI `--check-suite`, MCP, package installs,
+   structured failure/exit status, durable post-commit evidence, and existing suite bounds
+   compose with stale, audit, and integrity gates.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

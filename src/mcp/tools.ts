@@ -214,6 +214,7 @@ export function proposeMemoryTool(
     namespaces?: string[] | '*';
     validTimeMode?: 'delete' | 'archive_until';
     at?: string;
+    checkSuite?: string;
     integrityEnforcement?: IntegrityEnforcementOptions;
     entityIdentity?: EntityIdentityMode;
   }
@@ -236,6 +237,7 @@ export function proposeMemoryTool(
         ? {}
         : { validTimeMode: args.validTimeMode }),
       ...(at === undefined ? {} : { at }),
+      ...(args.checkSuite === undefined ? {} : { checkSuite: args.checkSuite }),
       ...(args.integrityEnforcement === undefined
         ? {}
         : { integrityEnforcement: args.integrityEnforcement }),

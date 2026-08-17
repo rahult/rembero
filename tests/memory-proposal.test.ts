@@ -35,7 +35,20 @@ describe('proposal-first natural-language memory', () => {
 
     const result = await proposeRememberText(
       { store, llm },
-      'Rahul works at Acme and lives in Melbourne.'
+      'Rahul works at Acme and lives in Melbourne.',
+      'default',
+      {
+        checkSuite: {
+          version: 1,
+          checks: [
+            {
+              name: 'Rahul employer',
+              query: 'works_at(rahul, acme)',
+              expect: { kind: 'nonempty' },
+            },
+          ],
+        },
+      }
     );
 
     expect(result).toMatchObject({
@@ -70,6 +83,12 @@ describe('proposal-first natural-language memory', () => {
           'lives_in(rahul, melbourne).',
         ],
         removeClauses: [],
+        checkSuite: expect.any(String),
+      },
+      checkDelta: {
+        baseline: { status: 'failed' },
+        candidate: { status: 'passed' },
+        fixed: ['Rahul employer'],
       },
     });
     const { proposalDigest, ...payload } = result.proposal!;

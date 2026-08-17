@@ -16,10 +16,15 @@ import {
   captureCounterfactualBaseline,
   evaluateCounterfactualKnowledgeView,
   type CounterfactualApplication,
+  type CounterfactualCheckDelta,
   type CounterfactualIntegrityDelta,
   type CounterfactualRuleAuditDelta,
 } from './counterfactual.js';
 import type { EntityIdentityMode } from './identity.js';
+import {
+  parseKnowledgeCheckSuite,
+  type KnowledgeCheckSuite,
+} from './checks.js';
 
 export const MEMORY_PROPOSAL_VERSION = 1;
 
@@ -27,6 +32,8 @@ export interface ProposeRememberOptions
   extends Omit<RememberOptions, 'trust'> {
   /** Complete knowledge view used for consequence and integrity evaluation. */
   namespaces?: string[] | '*';
+  /** Optional deterministic regression and semantic coverage suite. */
+  checkSuite?: KnowledgeCheckSuite | string;
 }
 
 export interface MemoryChangeProposal {
@@ -41,6 +48,7 @@ export interface MemoryChangeProposal {
   addClauses: string[];
   removeClauses: string[];
   entityIdentity?: EntityIdentityMode;
+  checkSuite?: string;
 }
 
 export interface ProposeRememberResult {
@@ -50,6 +58,7 @@ export interface ProposeRememberResult {
   application: CounterfactualApplication;
   integrityDelta: CounterfactualIntegrityDelta;
   ruleAuditDelta?: CounterfactualRuleAuditDelta;
+  checkDelta?: CounterfactualCheckDelta;
   proposal?: MemoryChangeProposal;
 }
 
@@ -173,6 +182,9 @@ export async function proposeRememberText(
             maxViolations: configuredIntegrity.maxViolations,
             relationIndex: configuredIntegrity.relationIndex,
           }),
+      ...(options.checkSuite === undefined
+        ? {}
+        : { checkSuite: options.checkSuite }),
     }
   );
   const addClauses = [
@@ -191,6 +203,7 @@ export async function proposeRememberText(
       ...(impact.ruleAuditDelta === undefined
         ? {}
         : { ruleAuditDelta: impact.ruleAuditDelta }),
+      ...(impact.checkDelta === undefined ? {} : { checkDelta: impact.checkDelta }),
     };
   }
   const payload: Omit<MemoryChangeProposal, 'proposalDigest'> = {
@@ -207,6 +220,9 @@ export async function proposeRememberText(
     addClauses,
     removeClauses,
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(options.checkSuite === undefined
+      ? {}
+      : { checkSuite: JSON.stringify(parseKnowledgeCheckSuite(options.checkSuite)) }),
   };
   return {
     changed: true,
@@ -217,6 +233,7 @@ export async function proposeRememberText(
     ...(impact.ruleAuditDelta === undefined
       ? {}
       : { ruleAuditDelta: impact.ruleAuditDelta }),
+    ...(impact.checkDelta === undefined ? {} : { checkDelta: impact.checkDelta }),
     proposal: {
       ...payload,
       proposalDigest: computeMemoryProposalDigest(payload),
