@@ -135,9 +135,10 @@ export function queryGenSystemPrompt(
       ? `
 - Treat schema examples as syntax evidence only, never as the answer. Do not copy an example constant unless the question names it.
 - Bind every entity named in the question as a lowercase or quoted constant, even when the natural-language name is capitalized. Datalog variables represent requested unknown answers, not capitalized words.
+- Every relational query containing variables MUST use "select Answer where goals" (or "select Answer1, Answer2 where goals"). List only variables whose values answer the question. Variables used merely to join, compare, or constrain goals must stay out of select.
 - A named entity may be absent from the examples and is still a valid constant. If the predicate exists, query that entity and let an empty result show that no fact matches.
 - Questions beginning with does, is, are, was, were, or can are normally yes/no questions. When their relation and arguments are all named, emit a ground query with zero variables and every named argument fixed.
-- Pattern examples: "Does Alex work at Globex?" becomes ?- works_at(alex, globex). "Where does Nia work?" becomes ?- works_at(nia, Company). The first has no requested unknown; the second has exactly one.
+- Pattern examples: "Does Alex work at Globex?" becomes ?- works_at(alex, globex). "Where does Nia work?" becomes ?- select Company where works_at(nia, Company). "Which city does Nia's dentist live in?" becomes ?- select City where dentist(nia, Dentist), lives_in(Dentist, City). The first has no requested unknown; the others explicitly exclude helper variables.
 - A why/reason question is unanswerable unless the schema has a predicate that stores a cause or reason. A related fact does not explain why it is true.
 - Prefer the predicate whose meaning directly matches the question, including a derived predicate when one is available.
 - When a shown derived-rule head directly names the requested relation, query that head predicate. Never inline its body: helper variables used inside the rule are not requested answer columns.
@@ -146,7 +147,7 @@ export function queryGenSystemPrompt(
       : '';
   return `You translate a question into one Datalog query over the schema below.
 Output exactly one relational or scalar-aggregate query line.
-Relational form: ?- goal1, goal2, ... .
+Projected relational form: ?- select Answer1, Answer2 where goal1, goal2, ... . A ground yes/no query with no variables remains ?- goal1, goal2, ... .
 Scalar aggregate forms: ?- count(*) as Count where goal1, goal2, ... .; ?- sum(Value) as Total where ... .; ?- min(Value) as Minimum where ... .; ?- max(Value) as Maximum where ... .
 Use uppercase variables for the unknowns the question asks about. Positive goals must use predicates that appear in the schema, with matching arity. Comparisons =, !=, <, >, <=, >= are allowed. Numeric comparison operands may use +, -, *, /, unary signs, and parentheses with standard precedence; every variable must first be bound by an earlier positive goal. Example: "more than 5 years older than Dana" becomes ?- age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5. Arithmetic is filter-only: never put an expression in a fact, relation argument, rule head, or aggregate input.
 The schema may separate locally ranked predicate details from an additional name/arity-only catalog. Every predicate shown in either section is available to query. Samples are shown only for the ranked slice and remain syntax evidence, not an exhaustive list of facts.

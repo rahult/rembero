@@ -67,6 +67,8 @@ These cases exercise the bounded query-review path as well as final evidence sco
 Version 0.20 adds a reusable aggregate-predicate case, bringing the deterministic corpus
 to 25 cases. Version 0.21 adds one explicitly tentative recall case, bringing it to 26;
 that case runs with `include_tentative` while every other case retains the accepted view.
+Version 0.47 corrects three labels that had treated dentist/year helper bindings as answer
+columns and scores explicit relational projection from the authoritative selected variables.
 
 ## Recall metrics
 
@@ -106,8 +108,8 @@ models produced the exact expected mutations in this run.
 
 ### Recall
 
-Measured on 2026-08-17 AEST with the v0.39 grounded prompt and deterministic schema
-ranker. All 26 current cases ran among 100 distractor predicates with no schema-budget
+Measured on 2026-08-17 AEST with the v0.47 grounded projection prompt and deterministic
+schema ranker. All 26 current cases ran among 100 distractor predicates with no schema-budget
 exhaustion or transport errors:
 
 | Model | Cases | Accuracy | Precision | Recall | F1 | Answerability | Budget exhausted |
@@ -115,11 +117,11 @@ exhaustion or transport errors:
 | `openai/gpt-5.6-luna` | 26 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
 | `google/gemini-3.7-flash` | 26 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
 | `anthropic/claude-sonnet-5` | 26 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
-| `openai/gpt-5.4-mini` | 26 | 92.3% | 92.0% | 92.0% | 92.0% | **100.0%** | **0** |
+| `openai/gpt-5.4-mini` | 26 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
 
-GPT-5.4 Mini exposed helper variables while inlining the `colleague` and `grandparent`
-rule bodies. See [model compatibility](MODEL-COMPATIBILITY.md) for the recommendation,
-observed catalog prices, latency, and evidence boundary.
+Explicit projection removed the prior helper-variable failures for GPT-5.4 Mini. See
+[model compatibility](MODEL-COMPATIBILITY.md) for the combined recall/extraction
+recommendation, observed catalog prices, latency, and evidence boundary.
 
 The earlier pre-0.4, pre-scale baseline comparison was:
 

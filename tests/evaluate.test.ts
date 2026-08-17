@@ -113,6 +113,58 @@ describe('evaluate: facts and joins', () => {
   });
 });
 
+describe('evaluate: explicit relational projection', () => {
+  const db = `
+    edge(a, x1).
+    edge(a, x2).
+    edge(x1, z).
+    edge(x2, z).
+    edge(x2, y).
+  `;
+
+  it('returns only selected variables in selected order and deduplicates projected rows', () => {
+    const result = runSpec(
+      db,
+      'select End where edge(a, Mid), edge(Mid, End)'
+    );
+    expect(result).toEqual([
+      { End: { type: 'atom', value: 'z' } },
+      { End: { type: 'atom', value: 'y' } },
+    ]);
+    expect(
+      runSpec(
+        db,
+        'select End, Mid where edge(a, Mid), edge(Mid, End)'
+      )[0]
+    ).toEqual({
+      End: { type: 'atom', value: 'z' },
+      Mid: { type: 'atom', value: 'x1' },
+    });
+  });
+
+  it('applies row limits after projection rather than helper-variable expansion', () => {
+    expect(
+      runSpec(
+        db,
+        'select End where edge(a, Mid), edge(Mid, End)',
+        { maxRows: 1 }
+      )
+    ).toEqual([{ End: { type: 'atom', value: 'z' } }]);
+  });
+
+  it('merges complete alternative proof vectors for one projected row', () => {
+    const result = explainSpec(
+      db,
+      'select End where edge(a, Mid), edge(Mid, End)',
+      { maxProofsPerRow: 2 }
+    );
+    expect(result[0].bindings).toEqual({ End: { type: 'atom', value: 'z' } });
+    expect(result[0].proofs).toHaveLength(2);
+    expect(result[0].alternativeProofs).toHaveLength(1);
+    expect(result[0].alternativeProofs?.[0]).toHaveLength(2);
+  });
+});
+
 describe('evaluate: rules', () => {
   it('derives via a non-recursive rule with a comparison', () => {
     const db = `

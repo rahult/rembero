@@ -5,10 +5,12 @@ import {
   type Goal,
   type Literal,
   type QuerySpec,
+  type ScalarExpression,
   type Term,
   EngineLimitError,
   evaluateQuerySpec,
   isComparison,
+  isArithmeticExpression,
   isAggregateRule,
   isIntegrityConstraint,
   isNegation,
@@ -670,9 +672,20 @@ function validateQuerySpec(
   aggregatePredicates: ReadonlyMap<
     string,
     ReadonlyArray<{ op: AggregateOperator; outputPosition: number }>
-  >
+  >,
+  requireProjection: boolean
 ): void {
   validateQueryPredicates(query.goals, known, question);
+  if (
+    requireProjection &&
+    query.kind === 'relational' &&
+    query.project === undefined &&
+    relationalVariableNames(query.goals).size > 1
+  ) {
+    throw new Error(
+      'grounded relational queries with multiple variables must use select to declare answer columns'
+    );
+  }
   const requested = Object.entries(AGGREGATE_INTENT).find(([, pattern]) =>
     pattern.test(question)
   )?.[0];
@@ -696,6 +709,37 @@ function validateQuerySpec(
       `${query.op} aggregation requires the question to explicitly request that aggregate`
     );
   }
+}
+
+function expressionVariableNames(
+  expression: ScalarExpression,
+  names: Set<string>
+): void {
+  if (!isArithmeticExpression(expression)) {
+    if (expression.type === 'var') names.add(expression.name);
+    return;
+  }
+  if (expression.kind === 'unary') {
+    expressionVariableNames(expression.operand, names);
+    return;
+  }
+  expressionVariableNames(expression.left, names);
+  expressionVariableNames(expression.right, names);
+}
+
+function relationalVariableNames(goals: Goal[]): Set<string> {
+  const names = new Set<string>();
+  for (const goal of goals) {
+    if (isComparison(goal)) {
+      expressionVariableNames(goal.left, names);
+      expressionVariableNames(goal.right, names);
+      continue;
+    }
+    for (const term of (isNegation(goal) ? goal.not.args : goal.args)) {
+      if (term.type === 'var') names.add(term.name);
+    }
+  }
+  return names;
 }
 
 const UNANSWERABLE_RE = new RegExp(`^(\\?-)?\\s*${UNANSWERABLE}\\s*\\.?$`);
@@ -1034,7 +1078,8 @@ export async function retrieveQuestion(
         parsed,
         selection.availablePredicates,
         question,
-        aggregatePredicates
+        aggregatePredicates,
+        options.queryPromptVariant !== 'baseline'
       );
       return entityIdentity === 'canonical'
         ? view.resolver.canonicalizeQuery(parsed).query

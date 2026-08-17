@@ -380,6 +380,7 @@ function expressionVariables(expression: ScalarExpression, add: (name: string) =
 
 function queryVariables(query: QuerySpec): string[] {
   if (query.kind === 'aggregate') return [query.as];
+  if (query.project !== undefined) return [...query.project];
   const result: string[] = [];
   const seen = new Set<string>();
   const add = (name: string) => {

@@ -10,6 +10,7 @@ import {
   type AggregateQuerySpec,
   type AggregateRuleSpec,
   type QuerySpec,
+  type RelationalQuerySpec,
   type ScalarExpression,
   type Term,
   type UnaryArithmeticOp,
@@ -382,6 +383,49 @@ function allQueryVariables(goals: Goal[]): Set<string> {
   return new Set(goals.flatMap(goalVars));
 }
 
+function tryParseProjectedQuery(ts: TokenStream): RelationalQuerySpec | null {
+  if (
+    ts.peek().kind !== 'atom' ||
+    ts.peek().text !== 'select' ||
+    ts.peek(1).kind !== 'var'
+  ) {
+    return null;
+  }
+  ts.next();
+  const project: string[] = [];
+  while (true) {
+    const variable = ts.expect('var');
+    if (project.includes(variable.text)) {
+      throw new ParseError(
+        `projected variable ${variable.text} appears more than once`,
+        variable.line
+      );
+    }
+    project.push(variable.text);
+    if (ts.peek().kind !== ',') break;
+    ts.next();
+    if (ts.peek().kind !== 'var') {
+      throw new ParseError('expected another projected variable', ts.peek().line);
+    }
+  }
+  const where = ts.expect('atom');
+  if (where.text !== 'where') {
+    throw new ParseError(`expected 'where' but found '${where.text}'`, where.line);
+  }
+  const goals = parseGoalList(ts);
+  finishQuery(ts);
+  checkQuery(goals);
+  const positive = positiveQueryBindings(goals);
+  for (const variable of project) {
+    if (!positive.has(variable)) {
+      throw new ParseError(
+        `projected variable ${variable} must be bound by a positive query relation`
+      );
+    }
+  }
+  return { kind: 'relational', project, goals };
+}
+
 function tryParseAggregateQuery(
   ts: TokenStream,
   finish = true,
@@ -519,6 +563,9 @@ export function parseQuerySpec(input: string): QuerySpec {
   const ts = new TokenStream(tokenize(input));
   if (ts.peek().kind === '?-') ts.next();
   if (ts.peek().kind === 'eof') throw new ParseError('empty query');
+
+  const projected = tryParseProjectedQuery(ts);
+  if (projected !== null) return projected;
 
   const aggregate = tryParseAggregateQuery(ts);
   if (aggregate !== null) return aggregate;

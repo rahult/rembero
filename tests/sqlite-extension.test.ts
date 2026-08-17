@@ -163,6 +163,15 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
           },
         ],
       });
+      expect(
+        database.datalogPlan(
+          'select X where employee(X), suspended(Helper)'
+        )
+      ).toMatchObject({
+        mode: 'portable',
+        inputKind: 'relational_query',
+        result: { variables: ['X'] },
+      });
       expect(plan.nativeSql).toBeUndefined();
     } finally {
       database.close();

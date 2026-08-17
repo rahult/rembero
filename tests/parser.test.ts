@@ -323,6 +323,37 @@ describe('parseQuerySpec', () => {
     });
   });
 
+  it('parses explicit ordered relational projection without stealing select predicates', () => {
+    const projected = parseQuerySpec(
+      '?- select Grandchild where parent(alice, Parent), parent(Parent, Grandchild).'
+    );
+    expect(projected).toEqual({
+      kind: 'relational',
+      project: ['Grandchild'],
+      goals: parseQuery('parent(alice, Parent), parent(Parent, Grandchild)'),
+    });
+    expect(serializeQuerySpec(projected)).toBe(
+      'select Grandchild where parent(alice, Parent), parent(Parent, Grandchild)'
+    );
+    expect(parseQuerySpec('select(X)')).toEqual({
+      kind: 'relational',
+      goals: parseQuery('select(X)'),
+    });
+  });
+
+  it('requires unique projected variables bound by positive relations', () => {
+    expect(() =>
+      parseQuerySpec('select X, X where edge(X, Y)')
+    ).toThrow(/more than once/i);
+    expect(() =>
+      parseQuerySpec('select Missing where edge(X, Y)')
+    ).toThrow(/bound by a positive/i);
+    expect(() =>
+      parseQuerySpec('select X where edge(a, b), X = a')
+    ).toThrow(/positive query relation/i);
+    expect(() => parseQuerySpec('select X edge(X, Y)')).toThrow(/where/i);
+  });
+
   it('parses and serializes scalar aggregate queries canonically', () => {
     const count = parseQuerySpec(
       '?- count(*) as Count where works_at(Person, acme).'

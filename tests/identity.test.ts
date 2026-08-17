@@ -58,6 +58,14 @@ describe('explicit entity identity', () => {
     expect(query.rewrites).toMatchObject([
       { predicate: 'works_at', position: 0, original: 'Mira Patel', canonical: 'mira' },
     ]);
+    const projected = view.resolver.canonicalizeQuery(
+      parseQuerySpec(
+        "select Company where works_at('Mira Patel', Company), located_in(Company, City)"
+      )
+    );
+    expect(serializeQuerySpec(projected.query)).toBe(
+      'select Company where works_at(mira, Company), located_in(Company, City)'
+    );
   });
 
   it('preserves aggregate rule semantics through canonical projection', () => {

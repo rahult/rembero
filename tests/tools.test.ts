@@ -487,6 +487,13 @@ describe('MCP tool handlers', () => {
     store.assert('default', 'f(a). f(b). g(X) :- f(X), X != a.');
     const result = queryTool({ store }, { query: 'g(X)' });
     expect(result.bindings).toEqual([{ X: 'b' }]);
+    store.assert('default', 'edge(a, b). edge(b, c).');
+    expect(
+      queryTool(
+        { store },
+        { query: 'select End where edge(a, Mid), edge(Mid, End)' }
+      ).bindings
+    ).toEqual([{ End: 'c' }]);
   });
 
   it('proposes accepted natural-language memory without invoking a writer', async () => {

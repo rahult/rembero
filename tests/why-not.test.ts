@@ -19,6 +19,23 @@ function sourceStore(label: string): MemoryStore {
 }
 
 describe('deterministic why-not explanations', () => {
+  it('preserves explicit answer projection while diagnosing helper-bound goals', () => {
+    const result = explainWhyNot(
+      parseProgram('edge(a, b).'),
+      'select End where edge(a, Mid), edge(Mid, End)'
+    );
+
+    expect(result).toMatchObject({
+      status: 'blocked',
+      evaluatedQuery: 'select End where edge(a, Mid), edge(Mid, End)',
+    });
+    expect(result.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: 'missing_fact' }),
+      ])
+    );
+  });
+
   it('reports a missing fact with the closest sourced evidence and blocker graph', () => {
     const store = sourceStore('missing');
     store.assert('default', 'works_at(mira, initech).', {

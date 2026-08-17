@@ -153,6 +153,7 @@ node dist/cli.js remember 'Mira is now terminated' --integrity-mode no_new_viola
 node dist/cli.js explain  'path(a, X)' --proof-limit 4 # inspect every bounded proof path
 node dist/cli.js query    'dentist(rahul, X)'        # raw Datalog, no LLM call
 node dist/cli.js query    'employee(X), \+ suspended(X)' # closed-world negation
+node dist/cli.js query    'select City where dentist(rahul, D), lives_in(D, City)'
 node dist/cli.js query    'age(X, A), age(dana, D), A > D + 5' # numeric arithmetic filter
 node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
@@ -390,6 +391,12 @@ rules, removals, and temporal archives commit together after current baseline, c
 audit, and no-new-integrity checks pass under one mutation lock. The replayable change
 retains provenance, fact history, recorded diffs, checkpoints, and idempotency. See
 [the reviewed memory-application contract](docs/MEMORY-APPLICATION.md).
+
+Version 0.47 gives relational answers explicit column authority. `select Answer where ...`
+keeps helper join variables out of bindings, deduplicates and limits after projection, and
+merges alternative proofs beneath the projected answer. Grounded recall now uses this form
+for every variable-bearing query. See
+[the relational projection contract](docs/RELATIONAL-PROJECTION.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

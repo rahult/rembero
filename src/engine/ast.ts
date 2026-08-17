@@ -81,6 +81,8 @@ export type AggregateOperator = 'count' | 'sum' | 'min' | 'max';
 
 export interface RelationalQuerySpec {
   kind: 'relational';
+  /** Explicit ordered output variables; omission preserves legacy all-variable results. */
+  project?: string[];
   goals: Goal[];
 }
 
@@ -216,7 +218,11 @@ export function serializeClause(clause: Clause): string {
 
 export function serializeQuerySpec(query: QuerySpec): string {
   const goals = query.goals.map(serializeGoal).join(', ');
-  if (query.kind === 'relational') return goals;
+  if (query.kind === 'relational') {
+    return query.project === undefined
+      ? goals
+      : `select ${query.project.join(', ')} where ${goals}`;
+  }
   return `${query.op}(${query.input}) as ${query.as} where ${goals}`;
 }
 

@@ -335,7 +335,7 @@ export class EntityResolver {
     return {
       query:
         query.kind === 'relational'
-          ? { kind: 'relational', goals: goals.map((result) => result.goal) }
+          ? { ...query, goals: goals.map((result) => result.goal) }
           : { ...query, goals: goals.map((result) => result.goal) },
       rewrites: goals.flatMap((result) => result.rewrites),
     };

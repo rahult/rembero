@@ -579,6 +579,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    `apply_memory_proposal`, package installs, tamper/stale/integrity/conflict errors, and a
    competing-process race share one explicit human-authorized accepted-memory contract.
 
+## Phase 50 — Explicit deterministic relational projection  *(v0.47)*
+
+1. **Complete — answer-column authority**: `select X, Y where goals` declares ordered
+   result variables separately from helper variables while legacy all-variable and ground
+   relational queries remain backward compatible.
+2. **Complete — correct projected relation semantics**: deduplication and row bounds apply
+   after projection; alternative derivations merge beneath one answer row without losing
+   complete proof enumeration or exposing internal joins.
+3. **Complete — grounded recall integration**: variable-bearing natural-language queries
+   must select only requested unknowns, preventing valid inlined rule bodies from turning
+   helper variables into plausible answer columns.
+4. **Complete — engine and interface parity**: parser/serializer, identity, proofs,
+   why-not, checks, profiles, CLI/MCP, SQLite portable execution/planning, package installs,
+   and model eval normalization share the same projection contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

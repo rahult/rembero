@@ -64,6 +64,13 @@ describe('recall eval corpus', () => {
       RECALL_EVAL_CASES.filter((test) => test.tags.includes('aggregate-rule'))
     ).toHaveLength(1);
     expect(
+      RECALL_EVAL_CASES.filter((test) => test.tags.includes('projected-answer'))
+    ).toEqual([
+      expect.objectContaining({ id: 'dentist_city_join', expectedRows: [["'New York'"]] }),
+      expect.objectContaining({ id: 'numeric_comparison', expectedRows: [['chen'], ['rahul']] }),
+      expect.objectContaining({ id: 'arithmetic_offset', expectedRows: [['chen'], ['rahul']] }),
+    ]);
+    expect(
       RECALL_EVAL_CASES.filter((test) => test.tags.includes('tentative'))
     ).toEqual([
       expect.objectContaining({ trustMode: 'include_tentative' }),

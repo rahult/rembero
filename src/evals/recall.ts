@@ -128,8 +128,8 @@ export const RECALL_EVAL_CASES: RecallEvalCase[] = [
     id: 'dentist_city_join',
     question: "Which city does Rahul's dentist live in?",
     expectedQuery: 'required',
-    expectedRows: [['dr_chen', "'New York'"]],
-    tags: ['join', 'quoted-atom'],
+    expectedRows: [["'New York'"]],
+    tags: ['join', 'quoted-atom', 'projected-answer'],
   },
   {
     id: 'project_language',
@@ -191,21 +191,15 @@ export const RECALL_EVAL_CASES: RecallEvalCase[] = [
     id: 'numeric_comparison',
     question: 'Who was born before 1990?',
     expectedQuery: 'required',
-    expectedRows: [
-      ['chen', '1978'],
-      ['rahul', '1985'],
-    ],
-    tags: ['comparison', 'multi-answer'],
+    expectedRows: [['chen'], ['rahul']],
+    tags: ['comparison', 'multi-answer', 'projected-answer'],
   },
   {
     id: 'arithmetic_offset',
     question: 'Who was born more than 5 years before Mira?',
     expectedQuery: 'required',
-    expectedRows: [
-      ['chen', '1978', '1994'],
-      ['rahul', '1985', '1994'],
-    ],
-    tags: ['comparison', 'arithmetic', 'join', 'multi-answer'],
+    expectedRows: [['chen'], ['rahul']],
+    tags: ['comparison', 'arithmetic', 'join', 'multi-answer', 'projected-answer'],
   },
   {
     id: 'ground_true',
@@ -346,6 +340,14 @@ export function bindingRows(bindings: Record<string, string>[], query: string): 
   const spec = parseQuerySpec(query);
   if (spec.kind === 'aggregate') {
     return bindings.map((binding) => (spec.as in binding ? [binding[spec.as]] : []));
+  }
+  if (spec.project !== undefined) {
+    const project = spec.project;
+    return bindings.map((binding) =>
+      project
+        .filter((variable) => variable in binding)
+        .map((variable) => binding[variable])
+    );
   }
   const order: string[] = [];
   const seen = new Set<string>();

@@ -1202,7 +1202,8 @@ function queryBindingsWithProofRefs(
   query: Goal[],
   maxRows: number,
   predicateStrata: Map<string, number>,
-  lookup: RelationLookupContext
+  lookup: RelationLookupContext,
+  project?: readonly string[]
 ): QueryRowRef[] {
   const results: QueryRowRef[] = [];
   const seen = new Set<string>();
@@ -1210,8 +1211,7 @@ function queryBindingsWithProofRefs(
   const stratumOf = (key: string) => predicateStrata.get(key) ?? 0;
 
   for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf, lookup)) {
-    const bindings: Bindings = {};
-    for (const [name, term] of Object.entries(solution.env)) bindings[name] = term;
+    const bindings = projectedBindings(solution.env, project);
     const key = rowKey(bindings);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1220,6 +1220,22 @@ function queryBindingsWithProofRefs(
   }
 
   return results;
+}
+
+function projectedBindings(
+  bindings: Bindings,
+  project: readonly string[] | undefined
+): Bindings {
+  if (project === undefined) return { ...bindings };
+  const selected: Bindings = {};
+  for (const name of project) {
+    const value = bindings[name];
+    if (value === undefined) {
+      throw new EngineSafetyError(`projected variable ${name} was not bound`);
+    }
+    selected[name] = value;
+  }
+  return selected;
 }
 
 function aggregateInputRows(
@@ -1494,7 +1510,8 @@ function queryBindingsWithAlternativeProofs(
   maxProofDepth: number,
   maxProofNodes: number,
   maxAggregateProofRows: number,
-  lookup: RelationLookupContext
+  lookup: RelationLookupContext,
+  project?: readonly string[]
 ): ProofRowAccumulator[] {
   if (maxRows <= 0) return [];
   const rows: ProofRowAccumulator[] = [];
@@ -1518,8 +1535,7 @@ function queryBindingsWithAlternativeProofs(
 
   for (const solution of solveGoals(query, 0, {}, [], fromDb, stratumOf, lookup)) {
     consumeEnumerationStep(context.budget);
-    const bindings: Bindings = {};
-    for (const [name, term] of Object.entries(solution.env)) bindings[name] = term;
+    const bindings = projectedBindings(solution.env, project);
     const key = rowKey(bindings);
     let row = rowByKey.get(key);
     if (!row) {
@@ -1551,19 +1567,42 @@ export function evaluate(
   query: Goal[],
   options: EvaluateOptions = {}
 ): Bindings[] {
+  return evaluateRelational(clauses, query, undefined, options);
+}
+
+function evaluateRelational(
+  clauses: Clause[],
+  query: Goal[],
+  project: readonly string[] | undefined,
+  options: EvaluateOptions
+): Bindings[] {
   const { maxRows = 1000 } = options;
   const lookup = relationLookupContext(options);
   assertGoalsNumericSafety(query);
   const { db, predicateStrata } = deriveDatabase(clauses, options, lookup);
-  return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata, lookup).map(
-    ({ bindings }) => bindings
-  );
+  return queryBindingsWithProofRefs(
+    db,
+    query,
+    maxRows,
+    predicateStrata,
+    lookup,
+    project
+  ).map(({ bindings }) => bindings);
 }
 
 export function evaluateWithProof(
   clauses: Clause[],
   query: Goal[],
   options: EvaluateOptions = {}
+): ExplainedBindings[] {
+  return evaluateRelationalWithProof(clauses, query, undefined, options);
+}
+
+function evaluateRelationalWithProof(
+  clauses: Clause[],
+  query: Goal[],
+  project: readonly string[] | undefined,
+  options: EvaluateOptions
 ): ExplainedBindings[] {
   const alternativeOptions = resolveAlternativeProofOptions(options);
   const {
@@ -1587,7 +1626,14 @@ export function evaluateWithProof(
     maxAggregateProofRows,
   };
   if (alternativeOptions.maxProofsPerRow === DEFAULT_MAX_PROOFS_PER_ROW) {
-    return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata, lookup).map(
+    return queryBindingsWithProofRefs(
+      db,
+      query,
+      maxRows,
+      predicateStrata,
+      lookup,
+      project
+    ).map(
       ({ bindings, proofs }) => ({
         bindings,
         proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, proofBudget)),
@@ -1605,7 +1651,8 @@ export function evaluateWithProof(
     maxProofDepth,
     maxProofNodes,
     maxAggregateProofRows,
-    lookup
+    lookup,
+    project
   ).map(({ bindings, proofs }) => ({
     bindings,
     proofs: proofs[0].map((proof) => cloneProofStep(proof, maxProofDepth, proofBudget)),
@@ -1627,7 +1674,9 @@ export function evaluateQuerySpec(
   query: QuerySpec,
   options: EvaluateOptions = {}
 ): Bindings[] {
-  if (query.kind === 'relational') return evaluate(clauses, query.goals, options);
+  if (query.kind === 'relational') {
+    return evaluateRelational(clauses, query.goals, query.project, options);
+  }
   const { maxRows = 1000, maxAggregateRows = 100_000 } = options;
   const lookup = relationLookupContext(options);
   if (maxRows < 1) return [];
@@ -1651,7 +1700,14 @@ export function evaluateQuerySpecWithProof(
   options: EvaluateOptions = {}
 ): ExplainedQueryBindings[] {
   const alternativeOptions = resolveAlternativeProofOptions(options);
-  if (query.kind === 'relational') return evaluateWithProof(clauses, query.goals, options);
+  if (query.kind === 'relational') {
+    return evaluateRelationalWithProof(
+      clauses,
+      query.goals,
+      query.project,
+      options
+    );
+  }
   if (alternativeOptions.maxProofsPerRow > DEFAULT_MAX_PROOFS_PER_ROW) {
     throw new EngineSafetyError('alternative proofs are relational-only');
   }

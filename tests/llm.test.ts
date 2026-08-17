@@ -761,6 +761,59 @@ describe('recallQuestion', () => {
     expect(llm.calls[0][0].content).toContain(
       'Never inline its body: helper variables used inside the rule are not requested answer columns.'
     );
+    expect(llm.calls[0][0].content).toContain(
+      'Every relational query containing variables MUST use "select Answer where goals"'
+    );
+  });
+
+  it('keeps projected helper variables out of recall bindings and deterministic answers', async () => {
+    store.assert(
+      'default',
+      'parent(alice, bob). parent(bob, carol). parent(carol, dan).'
+    );
+    const llm = new ScriptedLlm([
+      '?- select Grandchild where parent(alice, Parent), parent(Parent, Grandchild).',
+    ]);
+
+    const result = await recallQuestion(
+      { store, llm },
+      "Who is Alice's grandchild?",
+      ['default'],
+      { answerMode: 'deterministic', explain: true }
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query:
+        'select Grandchild where parent(alice, Parent), parent(Parent, Grandchild)',
+      bindings: [{ Grandchild: 'carol' }],
+      answer:
+        'Result for select Grandchild where parent(alice, Parent), parent(Parent, Grandchild): Grandchild = carol.',
+      explanation: { rows: [{ bindings: { Grandchild: 'carol' } }] },
+    });
+    expect(result.bindings[0]).not.toHaveProperty('Parent');
+  });
+
+  it('rejects unprojected multi-variable grounded output and retries once', async () => {
+    store.assert('default', 'edge(a, b). edge(b, c).');
+    const llm = new ScriptedLlm([
+      '?- edge(a, Mid), edge(Mid, End).',
+      '?- select End where edge(a, Mid), edge(Mid, End).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store, llm },
+      'What can A reach in two edge steps?'
+    );
+
+    expect(result).toMatchObject({
+      query: 'select End where edge(a, Mid), edge(Mid, End)',
+      bindings: [{ End: 'c' }],
+    });
+    expect(llm.calls).toHaveLength(2);
+    expect(llm.calls[1].at(-1)?.content).toContain(
+      'must use select to declare answer columns'
+    );
   });
 
   it('recalls through a deterministic relevant schema slice with 100+ predicates', async () => {
@@ -1190,7 +1243,7 @@ describe('recallQuestion', () => {
     );
 
     const groupCountLlm = new ScriptedLlm([
-      '?- team_size(Team, Size).',
+      '?- select Team, Size where team_size(Team, Size).',
       '?- count(*) as Count where team_size(Team, Size).',
     ]);
     const groupCount = await retrieveQuestion(
@@ -1203,7 +1256,9 @@ describe('recallQuestion', () => {
     });
     expect(groupCountLlm.calls).toHaveLength(2);
 
-    const eachLlm = new ScriptedLlm(['?- team_size(Team, Count).']);
+    const eachLlm = new ScriptedLlm([
+      '?- select Team, Count where team_size(Team, Count).',
+    ]);
     const each = await retrieveQuestion(
       { store: aggregateStore, llm: eachLlm },
       'How many members are on each team?'
@@ -1225,7 +1280,7 @@ describe('recallQuestion', () => {
        team_size(Team, Count) :- count(*) as Count where member(Team, Person).`
     );
     const llm = new ScriptedLlm([
-      '?- member(Team, alice), team_size(Team, Count).',
+      '?- select Count where member(Team, alice), team_size(Team, Count).',
     ]);
 
     const result = await retrieveQuestion(
@@ -1235,8 +1290,8 @@ describe('recallQuestion', () => {
 
     expect(result).toMatchObject({
       status: 'answered',
-      query: 'member(Team, alice), team_size(Team, Count)',
-      bindings: [{ Team: 'red', Count: '2' }],
+      query: 'select Count where member(Team, alice), team_size(Team, Count)',
+      bindings: [{ Count: '2' }],
     });
     expect(llm.calls).toHaveLength(1);
   });
@@ -1248,7 +1303,7 @@ describe('recallQuestion', () => {
       'age(alice, 30). age(bob, 20). age(carol, 38). age(dana, 27).'
     );
     const llm = new ScriptedLlm([
-      '?- age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5.',
+      '?- select Person where age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5.',
     ]);
 
     const result = await retrieveQuestion(
@@ -1258,8 +1313,9 @@ describe('recallQuestion', () => {
 
     expect(result).toEqual({
       status: 'answered',
-      query: 'age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5',
-      bindings: [{ Person: 'carol', Years: '38', DanaYears: '27' }],
+      query:
+        'select Person where age(Person, Years), age(dana, DanaYears), Years > DanaYears + 5',
+      bindings: [{ Person: 'carol' }],
     });
     expect(llm.calls[0][0].content).toContain('Years > DanaYears + 5');
   });
@@ -1283,7 +1339,7 @@ describe('recallQuestion', () => {
       { validTimeMode: 'archive_until', at: new Date('2026-08-16T16:59:00.000Z') }
     );
     const llm = new ScriptedLlm([
-      '?- works_at(mira, initech), works_at_until(mira, Company, Until).',
+      '?- select Company where works_at(mira, initech), works_at_until(mira, Company, Until).',
       'Mira worked at Acme until 16 August 2026.',
     ]);
 
@@ -1323,8 +1379,8 @@ describe('recallQuestion', () => {
       "works_at(mira, initech). works_at_until(mira, acme, '2026-08-16T16:59:00.000Z')."
     );
     const llm = new ScriptedLlm([
-      '?- works_at_until(mira, Company, Until).',
-      '?- works_at(mira, initech), works_at_until(mira, Company, Until).',
+      '?- select Company where works_at_until(mira, Company, Until).',
+      '?- select Company where works_at(mira, initech), works_at_until(mira, Company, Until).',
     ]);
 
     const result = await retrieveQuestion(
@@ -1333,16 +1389,14 @@ describe('recallQuestion', () => {
     );
 
     expect(result.query).toBe(
-      'works_at(mira, initech), works_at_until(mira, Company, Until)'
+      'select Company where works_at(mira, initech), works_at_until(mira, Company, Until)'
     );
-    expect(result.bindings).toEqual([
-      { Company: 'acme', Until: "'2026-08-16T16:59:00.000Z'" },
-    ]);
+    expect(result.bindings).toEqual([{ Company: 'acme' }]);
     expect(result.queryReviews).toEqual([
       {
-        originalQuery: 'works_at_until(mira, Company, Until)',
+        originalQuery: 'select Company where works_at_until(mira, Company, Until)',
         reviewedQuery:
-          'works_at(mira, initech), works_at_until(mira, Company, Until)',
+          'select Company where works_at(mira, initech), works_at_until(mira, Company, Until)',
         reasons: ['missing_temporal_context'],
         competingPredicates: ['works_at/2'],
         outcome: 'corrected',
