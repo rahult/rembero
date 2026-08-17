@@ -332,7 +332,7 @@ export async function rememberText(
   const schema = buildSchemaSummary(schemaClauses);
   assertSafeForExternalLlm(schema, 'memory schema');
   const messages: ChatMessage[] = [
-    { role: 'system', content: extractionSystemPrompt(schema) },
+    { role: 'system', content: extractionSystemPrompt(schema, trust) },
     { role: 'user', content: text },
   ];
   const extraction = await completeWithRetry(

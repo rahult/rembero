@@ -120,6 +120,22 @@ try {
     { cwd: directory }
   );
   const installedCli = join(directory, 'node_modules', 'rembero', 'dist', 'cli.js');
+  const installedExtractionEval = join(
+    directory,
+    'node_modules',
+    'rembero',
+    'dist',
+    'evals',
+    'run-extraction.js'
+  );
+  const extractionEvalHelp = run(
+    process.execPath,
+    [installedExtractionEval, '--help'],
+    { cwd: directory }
+  );
+  if (!extractionEvalHelp.includes('Usage: npm run eval:extract')) {
+    throw new Error('packaged extraction evaluation runner failed');
+  }
   const claudeSettings = join(directory, 'claude', 'settings.json');
   run(
     process.execPath,
@@ -764,7 +780,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, verified cross-model recall ranking, indexed-versus-scan deterministic query profiling, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, exact personal knowledge extraction evaluation, verified cross-model recall ranking, indexed-versus-scan deterministic query profiling, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

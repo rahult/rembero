@@ -4,11 +4,14 @@ Rembero keeps rule evaluation, proofs, graph construction, schema selection, and
 deterministic answer rendering local. The configured model translates natural-language
 memory and recall requests; it is not the reasoning authority.
 
-## Verified recall models
+## Verified models
 
-The following live OpenRouter comparison was run on 2026-08-17 AEST against the v0.39
-grounded 26-case corpus with 100 distractor predicates. Every run used temperature zero,
-the real bounded schema selector, and the real Datalog engine.
+The following live OpenRouter comparisons were run on 2026-08-17 AEST. Every run used
+temperature zero and the real storage/reasoning pipeline.
+
+### Recall translation
+
+The v0.39 grounded corpus has 26 cases and 100 distractor predicates:
 
 | Model | Correct | Accuracy | Precision / recall / F1 | Budget exhausted | Errors | Observed seconds |
 |---|---:|---:|---:|---:|---:|---:|
@@ -17,19 +20,30 @@ the real bounded schema selector, and the real Datalog engine.
 | `anthropic/claude-sonnet-5` | 26/26 | 100.0% | 100.0% / 100.0% / 100.0% | 0 | 0 | 139.6 |
 | `openai/gpt-5.4-mini` | 24/26 | 92.3% | 92.0% / 92.0% / 92.0% | 0 | 0 | 37.2 |
 
+### Personal knowledge extraction
+
+The v0.40 corpus has 15 exact mutation cases, including corrections, rules, tentative
+trust, authority no-ops, and local secret rejection:
+
+| Model | Correct | Accuracy | Mutation precision / recall / F1 | Safety | Errors | Observed seconds |
+|---|---:|---:|---:|---:|---:|---:|
+| `openai/gpt-5.6-luna` | 15/15 | 100.0% | 100.0% / 100.0% / 100.0% | 100.0% | 0 | 22.0 |
+| `google/gemini-3.7-flash` | 15/15 | 100.0% | 100.0% / 100.0% / 100.0% | 100.0% | 0 | 38.7 |
+| `anthropic/claude-sonnet-5` | 15/15 | 100.0% | 100.0% / 100.0% / 100.0% | 100.0% | 0 | 48.8 |
+| `openai/gpt-5.4-mini` | 14/15 | 93.3% | 91.7% / 91.7% / 91.7% | 100.0% | 0 | 13.1 |
+
 Observed duration is diagnostic only. Provider load, routing, and model revisions can
 change it, so it is not a release threshold.
 
 ## Recommendation
 
-- Keep `openai/gpt-5.6-luna` as the default. It passed this recall checkpoint and was
-  also the least expensive model in the catalog snapshot below.
+- Keep `openai/gpt-5.6-luna` as the default. It passed both checkpoints and was also the
+  least expensive model in the catalog snapshot below.
 - Use `google/gemini-3.7-flash` as the first verified fallback when independent provider
   diversity matters.
 - `anthropic/claude-sonnet-5` also passed, but its catalog price was materially higher.
-- Do not recommend `openai/gpt-5.4-mini` for grounded recall at this checkpoint. It twice
-  returned helper variables from inlined rule bodies, producing plausible but incorrect
-  answer columns.
+- Do not recommend `openai/gpt-5.4-mini` at this checkpoint. It returned helper variables
+  from inlined recall rules and also changed `dr_chen` to `chen` during extraction.
 
 The OpenRouter catalog snapshot observed during the same session listed these prices per
 million tokens:
@@ -46,9 +60,9 @@ before making a purchasing decision.
 
 ## Boundary of the evidence
 
-This evaluation measures question-to-query translation and exact retrieved bindings. It
-does not compare natural-language fact extraction or final prose phrasing. Do not change
-the default model solely from this table without running extraction cases as well.
+These evaluations measure question-to-query translation, exact retrieved bindings, and
+exact personal-knowledge mutations. They do not compare final prose phrasing or broad
+open-domain semantic coverage beyond the labeled cases.
 
 The v0.39 ranker deterministically treats `grandchild` and `grandparent` as the same
 kinship concept for schema selection. This makes the authored `grandparent` rule and its
@@ -62,6 +76,8 @@ Run the checkpoint yourself:
 LLM_API_KEY="$OPENROUTER_API_KEY" npm run eval:recall -- \
   --models openai/gpt-5.6-luna,google/gemini-3.7-flash,anthropic/claude-sonnet-5,openai/gpt-5.4-mini \
   --variants grounded
+LLM_API_KEY="$OPENROUTER_API_KEY" npm run eval:extract -- \
+  --models openai/gpt-5.6-luna,google/gemini-3.7-flash,anthropic/claude-sonnet-5,openai/gpt-5.4-mini
 ```
 
 Live zero-temperature runs can still move when a provider changes routing or model

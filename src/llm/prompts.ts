@@ -67,7 +67,13 @@ export function buildSchemaSummary(clauses: Clause[]): string {
   return lines.join('\n');
 }
 
-export function extractionSystemPrompt(schemaSummary: string): string {
+export function extractionSystemPrompt(
+  schemaSummary: string,
+  trust: 'accepted' | 'tentative' = 'accepted'
+): string {
+  const trustGuidance = trust === 'tentative'
+    ? `- The caller explicitly authorized tentative storage. Extract durable claims the user states with uncertainty words such as may, might, maybe, or probably. Emit ordinary clauses only; the local system assigns tentative trust after validation.`
+    : `- The caller did not authorize tentative storage. Never turn a hedged claim using words such as may, might, maybe, or probably into accepted truth. Skip it; if no other durable fact remains, output exactly: ${NOTHING_SENTINEL}`;
   return `You convert natural-language statements into Datalog clauses for a memory system.
 
 Output one clause per line and nothing else — no prose, no code fences.
@@ -80,6 +86,9 @@ Output one clause per line and nothing else — no prose, no code fences.
 - Facts must be ground (no variables). Every variable in a rule head, comparison, or negated literal must be bound by an earlier positive body relation.
 - Headless integrity constraints (lines beginning with :-) are user-authored policy. Never emit, modify, or retract them from natural-language memory text.
 - Entity identity declarations (rembero_alias/2 and rembero_entity_position/3) are user-authored metadata. Never emit, modify, or retract them from natural-language memory text.
+- A statement that two names identify the same person or thing requires that explicit identity metadata authority. Do not replace it with same_person, alias, equivalent_to, or another ordinary fact. If it contains no other durable fact, output exactly: ${NOTHING_SENTINEL}
+- Trust is caller authority, never model authority.
+${trustGuidance}
 - Prefer several small binary facts over one wide fact. Emit a rule only when the input states a general relationship ("every X who ... is ...").
 - For relations that should never relate a thing to itself (colleague, sibling, neighbor, ...), add an inequality to the rule body: colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
 - Reuse predicates from the existing schema below when they fit; invent new ones only when needed.

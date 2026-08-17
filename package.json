@@ -1,6 +1,6 @@
 {
   "name": "rembero",
-  "version": "0.39.0",
+  "version": "0.40.0",
   "description": "Logic-based memory for LLM chats and agents: deterministic Datalog rules, explicit entity identity, integrity, provenance, graphs, and MCP",
   "type": "module",
   "bin": {
@@ -92,6 +92,7 @@
     "docs/MIGRATING-0.37.md",
     "docs/MIGRATING-0.38.md",
     "docs/MIGRATING-0.39.md",
+    "docs/MIGRATING-0.40.md",
     "README.md",
     "LICENSE"
   ],
@@ -103,6 +104,7 @@
     "test": "vitest run",
     "test:sqlite": "vitest run tests/sqlite-extension.test.ts",
     "test:package": "npm run build && node scripts/package-smoke.mjs",
+    "eval:extract": "npm run build && node dist/evals/run-extraction.js",
     "eval:recall": "npm run build && node dist/evals/run-recall.js",
     "bench:engine": "npm run build && node dist/evals/run-engine-benchmark.js",
     "test:watch": "vitest",

@@ -147,9 +147,20 @@ describe('rememberText', () => {
     expect(store.load('default')).toEqual([]);
   });
 
+  it('instructs extraction not to replace identity authority with an inert ordinary fact', async () => {
+    const llm = new ScriptedLlm(['% nothing']);
+    await rememberText({ store, llm }, 'Mira Patel and Mira are the same person');
+
+    expect(llm.calls[0][0].content).toContain(
+      'Do not replace it with same_person, alias, equivalent_to, or another ordinary fact.'
+    );
+    expect(store.load('default')).toEqual([]);
+  });
+
   it('assigns tentative trust only from explicit caller authority', async () => {
+    const tentativeLlm = new ScriptedLlm(['project(atlas).']);
     const result = await rememberText(
-      { store, llm: new ScriptedLlm(['project(atlas).']) },
+      { store, llm: tentativeLlm },
       'Atlas may be the active project',
       'default',
       { trust: 'tentative' }
@@ -163,6 +174,9 @@ describe('rememberText', () => {
     expect(store.load('default').map(serializeClause)).toEqual([
       "rembero_tentative('project(atlas).').",
     ]);
+    expect(tentativeLlm.calls[0][0].content).toContain(
+      'The caller explicitly authorized tentative storage.'
+    );
 
     const defaultLlm = new ScriptedLlm([]);
     expect(
@@ -194,6 +208,20 @@ describe('rememberText', () => {
     expect(includedLlm.calls[1].at(-1)?.content).toContain(
       'Trust by result row: ["tentative"]'
     );
+  });
+
+  it('does not promote hedged claims when tentative authority is absent', async () => {
+    const llm = new ScriptedLlm(['% nothing']);
+    const result = await rememberText(
+      { store, llm },
+      'Atlas may be the active project'
+    );
+
+    expect(result).toEqual({ added: [], duplicates: 0, retracted: 0 });
+    expect(llm.calls[0][0].content).toContain(
+      'The caller did not authorize tentative storage.'
+    );
+    expect(store.load('default')).toEqual([]);
   });
 
   it('phrases an accepted duplicate as accepted in an opt-in trust view', async () => {

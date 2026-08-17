@@ -70,8 +70,8 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 3. **Complete — measured model flexibility**: the full grounded 26-case recall corpus was
    run against three additional OpenRouter models. Gemini 3.7 Flash and Claude Sonnet 5
    matched the default's 100%; GPT-5.4 Mini scored 92.3% by leaking rule-local helper
-   variables. The dated price snapshot, recommendation, and extraction-evidence boundary
-   are documented without changing the default model.
+   variables. The dated price snapshot and recommendation are documented without changing
+   the default model; v0.40 separately closes the extraction-evidence boundary.
 
 ## Phase 10 — Ecosystem  *(ongoing)*
 
@@ -470,7 +470,24 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    variables as requested answers, with local and live-model regression evidence.
 3. **Complete — honest compatibility guidance**: four current OpenRouter models ran the
    same 26-case engine-backed corpus; results, observed prices, latency caveat, default
-   decision, and the unevaluated extraction boundary are checked in.
+   decision, and the recall-only evidence boundary are checked in.
+
+## Phase 43 — Exact personal knowledge extraction evaluation  *(v0.40)*
+
+1. **Complete — engine-backed mutation corpus**: 15 labeled cases run through the real
+   `rememberText` and `MemoryStore` path, covering facts, schema reuse under 100
+   distractors, duplicates, corrections, removals, rules, trust, no-ops, and secret
+   rejection.
+2. **Complete — semantic and authority-aware scoring**: alpha-equivalent rules compare
+   canonically; signed mutation precision/recall/F1 excludes unchanged initial facts;
+   exact accuracy also checks final state, operation counts, expected rejection, and
+   zero-call local safety.
+3. **Complete — explicit tentative extraction contract**: accepted mode skips hedged
+   claims, tentative caller authority is visible to extraction without granting metadata
+   authority to the model, and alias-only text cannot become an inert identity surrogate.
+4. **Complete — cross-model evidence**: Luna, Gemini 3.7 Flash, and Claude Sonnet 5 passed
+   15/15; GPT-5.4 Mini scored 14/15. Combined recall/extraction results retain Luna as the
+   verified default and keep final prose phrasing outside the claim.
 
 ## Not planned
 

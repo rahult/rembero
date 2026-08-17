@@ -1,9 +1,42 @@
-# Recall evaluations
+# Natural-language evaluations
 
-Rembero measures natural-language recall at the evidence boundary, before answer phrasing.
-The live model translates each labeled question into Datalog, the real engine evaluates it
-against a fixed memory corpus, and the runner compares the returned binding rows with the
-expected rows. This isolates retrieval quality from prose style.
+Rembero measures both personal-knowledge extraction and recall at deterministic evidence
+boundaries. The extraction runner scores the exact store mutation after validation; the
+recall runner scores exact engine bindings before answer phrasing.
+
+## Extraction
+
+Run the default model against the labeled extraction corpus:
+
+```bash
+npm run eval:extract
+```
+
+Compare models or select cases:
+
+```bash
+npm run eval:extract -- --models openai/gpt-5.6-luna,another/model
+npm run eval:extract -- --cases replace_current_fact,derived_colleague_rule
+npm run --silent eval:extract -- --json
+```
+
+Each case gets a fresh real `MemoryStore` and runs through `rememberText`. The 15-case
+corpus covers exact facts, quoted and numeric values, schema reuse among 100 distractor
+predicates, duplicates, replacement, removal, positive and negated rules, tentative
+caller authority, non-factual input, policy and identity no-ops, and secret rejection
+before any model call.
+
+Rules are compared by alpha-equivalent canonical form, so harmless variable renaming does
+not fail. Signed mutation precision/recall/F1 scores both added and removed clauses without
+inflating results from unchanged initial facts. Exact-case accuracy additionally requires
+the complete final state, added clauses, duplicate/retraction counts, expected rejection,
+and the zero-call secret boundary to match.
+
+## Recall
+
+For recall, the live model translates each labeled question into Datalog, the real engine
+evaluates it against a fixed memory corpus, and the runner compares the returned binding
+rows with the expected rows. This isolates retrieval quality from prose style.
 
 Run the default model against both prompt variants:
 
@@ -19,7 +52,7 @@ npm run eval:recall -- --cases direct_employer,derived_colleague
 npm run --silent eval:recall -- --json
 ```
 
-The command loads `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` exactly like the product
+Both commands load `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` exactly like the product
 CLI. Runs are sequential and use temperature zero, but they are still live-model
 measurements: provider or model changes can move the result. The checked-in corpus,
 labels, normalizer, and metric tests remain deterministic.
@@ -35,7 +68,7 @@ Version 0.20 adds a reusable aggregate-predicate case, bringing the deterministi
 to 25 cases. Version 0.21 adds one explicitly tentative recall case, bringing it to 26;
 that case runs with `include_tentative` while every other case retains the accepted view.
 
-## Metrics
+## Recall metrics
 
 - **Accuracy**: percentage of cases with the correct query/unanswerable decision and an
   exact binding-row set.
@@ -56,6 +89,22 @@ represented by one empty binding row; a ground query that is false has no rows. 
 facts are held out from the sample facts included in the model-visible schema summary.
 
 ## Last live comparison
+
+### Extraction
+
+Measured on 2026-08-17 AEST with the v0.40 extraction contract:
+
+| Model | Cases | Accuracy | Mutation precision | Mutation recall | Mutation F1 | Safety | Unexpected errors |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `openai/gpt-5.6-luna` | 15 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
+| `google/gemini-3.7-flash` | 15 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
+| `anthropic/claude-sonnet-5` | 15 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
+| `openai/gpt-5.4-mini` | 15 | 93.3% | 91.7% | 91.7% | 91.7% | **100.0%** | **0** |
+
+GPT-5.4 Mini changed `dr_chen` to `chen` in the quoted-city case. The other three
+models produced the exact expected mutations in this run.
+
+### Recall
 
 Measured on 2026-08-17 AEST with the v0.39 grounded prompt and deterministic schema
 ranker. All 26 current cases ran among 100 distractor predicates with no schema-budget

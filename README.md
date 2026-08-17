@@ -340,6 +340,13 @@ inconsistent by exposing rule-local helper variables. Luna stays the default bec
 comparison covers recall translation, not memory extraction. See
 [the model-compatibility checkpoint](docs/MODEL-COMPATIBILITY.md).
 
+Version 0.40 measures what natural-language memory actually changes. A 15-case live
+extraction corpus runs through the real store and scores exact additions, removals,
+corrections, rules, duplicates, tentative trust, authority no-ops, and local secret
+rejection. Accepted mode now skips hedged claims; tentative caller authority is conveyed
+to extraction while trust assignment remains local. See
+[the evaluation contract](docs/EVALS.md).
+
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
 complete selected namespaces. Empty or unanswerable results from a partial slice trigger
@@ -602,12 +609,13 @@ npm test          # vitest suite (engine, store, pipeline, tools)
 npm run build     # tsc
 npm run build:sqlite # compile the native SQLite extension
 npm run test:sqlite  # native + Node adapter + CLI end-to-end checks
+npm run eval:extract # live labeled comparison of exact personal-knowledge mutations
 npm run eval:recall # live labeled comparison of baseline and grounded recall prompts
 npm run dev -- …  # run the CLI from source (tsx)
 ```
 
-The recall eval reports exact-case accuracy, binding-row precision/recall/F1, and
-answerability accuracy. It can also compare OpenRouter models or emit JSON; see
+The extraction and recall evals report exact-case accuracy plus mutation or binding-row
+precision/recall/F1. They can compare OpenRouter models or emit JSON; see
 [docs/EVALS.md](docs/EVALS.md).
 
 See [the stratified-negation contract](docs/STRATIFIED-NEGATION.md) for safety,
