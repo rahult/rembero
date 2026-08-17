@@ -24,6 +24,7 @@ import {
   ParseError,
   canonicalKey,
   isComparison,
+  isIntegrityConstraint,
   isNegation,
   literalMatches,
   parseProgram,
@@ -35,7 +36,10 @@ import {
   enforceIntegrityCandidate,
   type IntegrityEnforcementOptions,
 } from '../knowledge/enforcement.js';
-import type { EntityRewrite } from '../knowledge/identity.js';
+import {
+  isEntityMetadataPredicate,
+  type EntityRewrite,
+} from '../knowledge/identity.js';
 import {
   decodeTentativeDeclaration,
   assertTrustMetadataSafety,
@@ -92,6 +96,7 @@ export type IdempotentMutationOperation =
   | 'retract'
   | 'supersede'
   | 'resolve_tentative'
+  | 'rule_change'
   | 'checkpoint';
 
 export class OperationConflictError extends Error {
@@ -126,6 +131,55 @@ export interface SupersedeResult {
   retracted: number;
   archived: Clause[];
   opId: string;
+}
+
+export const MAX_RULE_CHANGE_RULES = 64;
+
+export interface RuleChangeCandidateView {
+  namespaces: string[];
+  clauses: Clause[];
+  clausesByNamespace: Map<string, Clause[]>;
+}
+
+export interface RuleChangeMutationRequest {
+  namespaces: string[];
+  expectedBaselineDigest: string;
+  proposalDigest: string;
+  add: string | Clause[];
+  remove: string | Clause[];
+  validateCandidate?: (candidate: RuleChangeCandidateView) => void;
+}
+
+export interface RuleChangeMutationResult {
+  added: Clause[];
+  removed: Clause[];
+  namespace: string;
+  namespaces: string[];
+  baselineDigest: string;
+  proposalDigest: string;
+  opId: string;
+  sequence: number;
+}
+
+export class RuleChangeStaleError extends Error {
+  readonly code = 'rule_change_stale';
+
+  constructor(
+    readonly expectedDigest: string,
+    readonly actualDigest: string
+  ) {
+    super('rule change proposal baseline no longer matches current knowledge');
+    this.name = 'RuleChangeStaleError';
+  }
+
+  toJSON(): Record<string, string> {
+    return {
+      error: this.code,
+      message: this.message,
+      expectedDigest: this.expectedDigest,
+      actualDigest: this.actualDigest,
+    };
+  }
 }
 
 export type MemoryHistoryAction = 'asserted' | 'retracted' | 'superseded';
@@ -376,6 +430,55 @@ function sanitizeJournalDetails(details: Record<string, unknown>): Record<string
 function validDate(value: Date, label: string): Date {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
     throw new Error(`${label} must be a valid Date`);
+  }
+  return value;
+}
+
+export function knowledgeProgramDigest(
+  namespaces: readonly string[],
+  clausesByNamespace: ReadonlyMap<string, readonly Clause[]>
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify(
+        namespaces.map((namespace) => [
+          namespace,
+          (clausesByNamespace.get(namespace) ?? []).map(canonicalKey),
+        ])
+      )
+    )
+    .digest('hex');
+}
+
+function ruleChangeRules(
+  value: string | Clause[],
+  label: string
+): Clause[] {
+  const clauses = typeof value === 'string' ? parseProgram(value) : value;
+  if (clauses.length > MAX_RULE_CHANGE_RULES) {
+    throw new Error(`${label} exceeds ${MAX_RULE_CHANGE_RULES} rules`);
+  }
+  const keys = new Set<string>();
+  for (const clause of clauses) {
+    if (clause.body.length === 0 || isIntegrityConstraint(clause)) {
+      throw new Error(`${label} must contain ordinary or aggregate rules only`);
+    }
+    if (
+      isEntityMetadataPredicate(clause.head.predicate) ||
+      isTrustMetadataPredicate(clause.head.predicate)
+    ) {
+      throw new Error(`${label} may not define reserved metadata`);
+    }
+    const key = canonicalKey(clause);
+    if (keys.has(key)) throw new Error(`${label} contains duplicate rules`);
+    keys.add(key);
+  }
+  return clauses;
+}
+
+function validateSha256(value: string, label: string): string {
+  if (!/^[a-f0-9]{64}$/.test(value)) {
+    throw new Error(`${label} must be a lowercase SHA-256 digest`);
   }
   return value;
 }
@@ -1827,6 +1930,186 @@ export class MemoryStore {
     );
   }
 
+  /**
+   * Atomically apply one reviewed, digest-bound exact rule change.
+   * The caller-supplied validator runs while the global mutation lock is held.
+   */
+  applyRuleChange(
+    namespace: string,
+    request: RuleChangeMutationRequest,
+    context: MutationContext
+  ): RuleChangeMutationResult {
+    if (context.opId === undefined) {
+      throw new Error('rule change application requires an explicit operation id');
+    }
+    if (context.integrity?.mode !== 'no_new_violations') {
+      throw new Error('rule change application requires no_new_violations enforcement');
+    }
+    const opId = validateOperationId(context.opId);
+    const at = validDate(context.at ?? new Date(), 'rule change timestamp');
+    const expectedBaselineDigest = validateSha256(
+      request.expectedBaselineDigest,
+      'rule change baseline digest'
+    );
+    const proposalDigest = validateSha256(
+      request.proposalDigest,
+      'rule change proposal digest'
+    );
+    const additions = ruleChangeRules(request.add, 'rule change additions');
+    const removals = ruleChangeRules(request.remove, 'rule change removals');
+    if (additions.length === 0 && removals.length === 0) {
+      throw new Error('rule change application requires at least one rule change');
+    }
+    const namespaces = [...new Set(request.namespaces)];
+    if (namespaces.length === 0 || namespaces.length > 32) {
+      throw new Error('rule change namespace list must contain 1 to 32 entries');
+    }
+    if (!namespaces.includes(namespace)) {
+      throw new Error(`rule change namespaces must include target '${namespace}'`);
+    }
+    for (const name of namespaces) this.filePath(name);
+    const integrityNames = this.integrityNamespaces(namespace, context.integrity);
+    if (JSON.stringify(integrityNames) !== JSON.stringify(namespaces)) {
+      throw new Error('rule change integrity namespaces must match proposal namespaces');
+    }
+    const serializedAdditions = additions.map(serializeClause);
+    const serializedRemovals = removals.map(serializeClause);
+    const effectiveContext = { ...context, opId };
+
+    return this.withMutationLock(() =>
+      this.withNamespaceLock(namespace, () =>
+        this.withLock('journal', () => {
+          const journal = this.readJournalUnlocked();
+          const priorIndex = journal.findIndex(
+            (entry) =>
+              entry.op === 'rule_change' &&
+              entry.namespace === namespace &&
+              entry.opId === opId
+          );
+          const priorOperation = priorIndex < 0 ? undefined : journal[priorIndex];
+          if (priorOperation !== undefined) {
+            if (
+              priorOperation.proposalDigest !== proposalDigest ||
+              priorOperation.baselineDigest !== expectedBaselineDigest ||
+              JSON.stringify(priorOperation.namespaces) !== JSON.stringify(namespaces) ||
+              JSON.stringify(priorOperation.addedRules) !==
+                JSON.stringify(serializedAdditions) ||
+              JSON.stringify(priorOperation.removedRules) !==
+                JSON.stringify(serializedRemovals)
+            ) {
+              throw new OperationConflictError('rule_change', namespace, opId);
+            }
+            return {
+              added: parseJournalClauseList(
+                priorOperation.addedRules,
+                `rule change operation '${opId}' addedRules`
+              ),
+              removed: parseJournalClauseList(
+                priorOperation.removedRules,
+                `rule change operation '${opId}' removedRules`
+              ),
+              namespace,
+              namespaces,
+              baselineDigest: expectedBaselineDigest,
+              proposalDigest,
+              opId,
+              sequence: priorIndex + 1,
+            };
+          }
+
+          const clausesByNamespace = new Map<string, Clause[]>();
+          for (const name of namespaces) {
+            clausesByNamespace.set(name, [...this.loadCached(name).clauses]);
+          }
+          const actualDigest = knowledgeProgramDigest(
+            namespaces,
+            clausesByNamespace
+          );
+          if (actualDigest !== expectedBaselineDigest) {
+            throw new RuleChangeStaleError(expectedBaselineDigest, actualDigest);
+          }
+          const loaded = this.loadCached(namespace);
+          const removalKeys = new Set(removals.map(canonicalKey));
+          const existingKeys = new Set(loaded.clauses.map(canonicalKey));
+          if ([...removalKeys].some((key) => !existingKeys.has(key))) {
+            throw new Error('reviewed rule removal is absent from the target namespace');
+          }
+          const retained = loaded.clauses.filter(
+            (clause) => !removalKeys.has(canonicalKey(clause))
+          );
+          const retainedKeys = new Set(retained.map(canonicalKey));
+          if (additions.some((clause) => retainedKeys.has(canonicalKey(clause)))) {
+            throw new Error('reviewed rule addition already exists in the target namespace');
+          }
+          const candidateTarget = [...retained, ...additions];
+          const candidateByNamespace = new Map(clausesByNamespace);
+          candidateByNamespace.set(namespace, candidateTarget);
+          const candidateView: RuleChangeCandidateView = {
+            namespaces,
+            clauses: namespaces.flatMap(
+              (name) => candidateByNamespace.get(name) ?? []
+            ),
+            clausesByNamespace: candidateByNamespace,
+          };
+          request.validateCandidate?.(candidateView);
+          this.enforceMutation(
+            namespace,
+            loaded.clauses,
+            candidateTarget,
+            additions,
+            effectiveContext,
+            at
+          );
+
+          const journalEntry = this.createJournalEntry(
+            namespace,
+            'rule_change',
+            {
+              opId,
+              namespaces,
+              baselineDigest: expectedBaselineDigest,
+              proposalDigest,
+              addedRules: serializedAdditions,
+              removedRules: serializedRemovals,
+              ...(context.sourceText === undefined
+                ? {}
+                : { sourceText: context.sourceText }),
+              ...(context.origin === undefined ? {} : { origin: context.origin }),
+            },
+            at
+          );
+          const lineBytes = Buffer.byteLength(
+            `${JSON.stringify(journalEntry)}\n`,
+            'utf8'
+          );
+          const journalPath = this.journalPath();
+          const currentBytes = existsSync(journalPath)
+            ? statSync(journalPath).size
+            : 0;
+          if (currentBytes + lineBytes > MAX_JOURNAL_BYTES) {
+            throw new Error(`journal.log would exceed ${MAX_JOURNAL_BYTES} bytes`);
+          }
+          const entry: CachedNamespace = {
+            clauses: candidateTarget,
+            keys: new Set(candidateTarget.map(canonicalKey)),
+            fileStamp: loaded.fileStamp,
+          };
+          this.commitMutation(namespace, entry, journalEntry);
+          return {
+            added: additions,
+            removed: removals,
+            namespace,
+            namespaces,
+            baselineDigest: expectedBaselineDigest,
+            proposalDigest,
+            opId,
+            sequence: journal.length + 1,
+          };
+        })
+      )
+    );
+  }
+
   private latestJournalSourcesUnlocked(namespace: string): Map<string, string> {
     const sources = new Map<string, { clause: Clause; opId: string }>();
     for (const [index, journalEntry] of this.readJournalUnlocked().entries()) {
@@ -1836,6 +2119,25 @@ export class MemoryStore {
         if (typeof journalEntry.opId !== 'string') throw new Error(`${label} has no opId`);
         for (const clause of parseJournalClauseList(journalEntry.added, `${label} added`)) {
           sources.set(canonicalKey(clause), { clause, opId: journalEntry.opId });
+        }
+        continue;
+      }
+      if (journalEntry.op === 'rule_change') {
+        if (typeof journalEntry.opId !== 'string') throw new Error(`${label} has no opId`);
+        for (const clause of parseJournalClauseList(
+          journalEntry.removedRules,
+          `${label} removedRules`
+        )) {
+          sources.delete(canonicalKey(clause));
+        }
+        for (const clause of parseJournalClauseList(
+          journalEntry.addedRules,
+          `${label} addedRules`
+        )) {
+          sources.set(canonicalKey(clause), {
+            clause,
+            opId: journalEntry.opId,
+          });
         }
         continue;
       }
@@ -3168,7 +3470,10 @@ export class MemoryStore {
           throw new Error(`${label} has an invalid namespace`);
         }
         const isMutation =
-          entry.op === 'assert' || entry.op === 'retract' || entry.op === 'supersede';
+          entry.op === 'assert' ||
+          entry.op === 'retract' ||
+          entry.op === 'supersede' ||
+          entry.op === 'rule_change';
         if (isMutation) {
           if (typeof entry.opId !== 'string' || entry.opId.length === 0) {
             throw new Error(`${label} has no opId`);
@@ -3189,6 +3494,60 @@ export class MemoryStore {
         if (entry.op === 'assert') {
           for (const clause of parseJournalClauseList(entry.added, `${label} added`)) {
             state.set(stateKey(entry.namespace, clause), {
+              namespace: entry.namespace,
+              clause,
+              source: journalMemorySource(entry),
+            });
+          }
+        } else if (entry.op === 'rule_change') {
+          validateSha256(
+            typeof entry.baselineDigest === 'string' ? entry.baselineDigest : '',
+            `${label} baselineDigest`
+          );
+          validateSha256(
+            typeof entry.proposalDigest === 'string' ? entry.proposalDigest : '',
+            `${label} proposalDigest`
+          );
+          if (
+            !Array.isArray(entry.namespaces) ||
+            !entry.namespaces.every((value) => typeof value === 'string') ||
+            !entry.namespaces.includes(entry.namespace)
+          ) {
+            throw new Error(`${label} rule change has invalid namespaces`);
+          }
+          const removedRules = parseJournalClauseList(
+            entry.removedRules,
+            `${label} removedRules`
+          );
+          const addedRules = parseJournalClauseList(
+            entry.addedRules,
+            `${label} addedRules`
+          );
+          if (
+            removedRules.length > MAX_RULE_CHANGE_RULES ||
+            addedRules.length > MAX_RULE_CHANGE_RULES ||
+            removedRules.some(
+              (clause) => clause.body.length === 0 || isIntegrityConstraint(clause)
+            ) ||
+            addedRules.some(
+              (clause) => clause.body.length === 0 || isIntegrityConstraint(clause)
+            )
+          ) {
+            throw new Error(`${label} rule change contains a non-rule clause`);
+          }
+          for (const clause of removedRules) {
+            const key = stateKey(entry.namespace, clause);
+            if (!state.has(key)) {
+              throw new Error(`${label} removed rule is not active`);
+            }
+            state.delete(key);
+          }
+          for (const clause of addedRules) {
+            const key = stateKey(entry.namespace, clause);
+            if (state.has(key)) {
+              throw new Error(`${label} added rule is already active`);
+            }
+            state.set(key, {
               namespace: entry.namespace,
               clause,
               source: journalMemorySource(entry),
@@ -3483,7 +3842,11 @@ export class MemoryStore {
     const entries = this.withLock('journal', () => this.readJournalUnlocked());
     const latest = new Map<string, { key: string; source: MemorySource }>();
     for (const [index, entry] of entries.entries()) {
-      if (entry.op !== 'assert' && entry.op !== 'supersede') continue;
+      if (
+        entry.op !== 'assert' &&
+        entry.op !== 'supersede' &&
+        entry.op !== 'rule_change'
+      ) continue;
       if (!selected.has(entry.namespace)) continue;
       const label = `journal.log line ${index + 1}`;
       if (typeof entry.opId !== 'string') throw new Error(`${label} has no opId`);
@@ -3524,7 +3887,12 @@ export class MemoryStore {
           });
         }
       }
-      for (const clause of parseJournalClauseList(entry.added, `${label} added`)) {
+      const addedField = entry.op === 'rule_change' ? entry.addedRules : entry.added;
+      const addedLabel = entry.op === 'rule_change' ? 'addedRules' : 'added';
+      for (const clause of parseJournalClauseList(
+        addedField,
+        `${label} ${addedLabel}`
+      )) {
         const key = canonicalKey(clause);
         const currentKey = `${entry.namespace}\u0000${key}`;
         if (!current.has(currentKey)) continue;

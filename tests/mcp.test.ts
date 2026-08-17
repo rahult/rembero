@@ -57,7 +57,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.43.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.44.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -66,6 +66,7 @@ describe('MCP explanation surfaces', () => {
           'check_integrity',
           'conflict_views',
           'what_if',
+          'apply_rule_change',
           'why_not',
           'knowledge_topology',
           'diff_recorded_knowledge',
@@ -192,11 +193,10 @@ describe('MCP explanation surfaces', () => {
       const simulatedRuleText = simulatedRule.content.find(
         (item) => item.type === 'text'
       );
-      expect(
-        JSON.parse(
-          simulatedRuleText?.type === 'text' ? simulatedRuleText.text : ''
-        )
-      ).toMatchObject({
+      const simulatedRulePayload = JSON.parse(
+        simulatedRuleText?.type === 'text' ? simulatedRuleText.text : ''
+      );
+      expect(simulatedRulePayload).toMatchObject({
         changed: true,
         application: {
           assumedRules: ['connected(X, Y) :- edge(X, Y).'],
@@ -210,6 +210,24 @@ describe('MCP explanation surfaces', () => {
           candidate: { status: 'passed' },
           fixed: ['direct connection'],
         },
+      });
+
+      const appliedRule = await client.callTool({
+        name: 'apply_rule_change',
+        arguments: {
+          proposal: JSON.stringify(simulatedRulePayload.ruleProposal),
+          opId: 'mcp-reviewed-rule',
+        },
+      });
+      const appliedRuleText = appliedRule.content.find((item) => item.type === 'text');
+      expect(
+        JSON.parse(appliedRuleText?.type === 'text' ? appliedRuleText.text : '')
+      ).toMatchObject({
+        opId: 'mcp-reviewed-rule',
+        added: [expect.any(Object)],
+        removed: [],
+        audit: { topology: { ruleCount: 5 } },
+        checks: { status: 'passed' },
       });
 
       const repairs = await client.callTool({

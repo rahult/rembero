@@ -25,6 +25,7 @@ import {
   recallTool,
   supersedeFactsTool,
   whatIfTool,
+  applyRuleChangeProposalTool,
   whyNotTool,
   topologyTool,
   recordedDiffTool,
@@ -550,6 +551,34 @@ describe('MCP tool handlers', () => {
         fixed: ['recorded derivation'],
       },
     });
+  });
+
+  it('applies a reviewed current rule proposal through the tool boundary', () => {
+    store.assert('default', 'base(a).', { opId: 'apply-base' });
+    const preview = whatIfTool(
+      { store },
+      {
+        query: 'derived(X)',
+        assumeRules: 'derived(X) :- base(X).',
+      }
+    );
+    const applied = applyRuleChangeProposalTool(
+      { store },
+      {
+        proposal: JSON.stringify(preview.ruleProposal),
+        opId: 'tool-reviewed-rule',
+      }
+    );
+
+    expect(applied).toMatchObject({
+      opId: 'tool-reviewed-rule',
+      sequence: 2,
+      added: [expect.any(Object)],
+      audit: { topology: { ruleCount: 1 } },
+    });
+    expect(queryTool({ store }, { query: 'derived(X)' }).bindings).toEqual([
+      { X: 'a' },
+    ]);
   });
 
   it('explains current and recorded query blockers through the tool boundary', () => {

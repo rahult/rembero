@@ -36,6 +36,7 @@ import {
   reviewTentativeTool,
   supersedeFactsTool,
   whatIfTool,
+  applyRuleChangeProposalTool,
   whyNotTool,
   topologyTool,
   recordedDiffTool,
@@ -70,6 +71,10 @@ import {
 } from '../knowledge/why-not.js';
 import { MAX_TOPOLOGY_FOCUS_BYTES } from '../knowledge/topology.js';
 import {
+  MAX_RULE_CHANGE_PROPOSAL_BYTES,
+  RuleChangeCheckError,
+} from '../knowledge/rule-change.js';
+import {
   MAX_REPAIR_PLANS,
   MAX_REPAIR_SEARCH_STATES,
   MAX_REPAIR_STEPS,
@@ -100,6 +105,7 @@ import type { EntityIdentityMode } from '../knowledge/identity.js';
 import {
   MAX_OPERATION_ID_BYTES,
   OperationConflictError,
+  RuleChangeStaleError,
 } from '../store/store.js';
 import {
   MAX_GRAPH_NEIGHBOR_DEPTH,
@@ -345,7 +351,9 @@ function asError(e: unknown) {
   if (
     e instanceof OperationConflictError ||
     e instanceof IncompleteHistoryError ||
-    e instanceof TrustMetadataError
+    e instanceof TrustMetadataError ||
+    e instanceof RuleChangeStaleError ||
+    e instanceof RuleChangeCheckError
   ) {
     text = stringifyBoundedResult(e.toJSON(), 'MCP structured error');
   } else if (e instanceof IntegrityViolationError) {
@@ -434,7 +442,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.43.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.44.0' });
 
   server.registerTool(
     'remember',
@@ -1580,6 +1588,40 @@ export function createServer(deps: PipelineDeps): McpServer {
             entityIdentity,
             trustMode,
             recordedSequence,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'apply_rule_change',
+    {
+      title: 'Apply a reviewed digest-bound rule proposal',
+      description:
+        'Apply only an explicitly reviewed v1 ruleProposal emitted by what_if. Revalidates the proposal digest, exact current multi-namespace baseline, candidate rule audit, attached knowledge/coverage suite, and no-new-integrity-violations policy under one mutation lock before a crash-safe idempotent journal commit. Recorded-baseline proposals are never applicable. This is mutation authority: call only after human review.',
+      inputSchema: {
+        proposal: z
+          .string()
+          .max(MAX_RULE_CHANGE_PROPOSAL_BYTES)
+          .describe('Standalone ruleProposal JSON or complete what_if JSON containing one'),
+        opId: z
+          .string()
+          .min(1)
+          .max(MAX_OPERATION_ID_BYTES)
+          .describe('Caller-stable idempotency key for this reviewed application'),
+        maxViolations: maxViolationsField,
+      },
+    },
+    async ({ proposal, opId, maxViolations }) => {
+      try {
+        return asContent(
+          applyRuleChangeProposalTool(resolvedDeps, {
+            proposal,
+            opId,
+            maxViolations,
           })
         );
       } catch (e) {

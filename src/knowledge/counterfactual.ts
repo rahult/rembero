@@ -20,6 +20,7 @@ import type {
   RecordedKnowledgeSnapshot,
   RecordedSnapshotMetadata,
 } from '../store/store.js';
+import { knowledgeProgramDigest } from '../store/store.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 import {
   explainKnowledge,
@@ -37,12 +38,19 @@ import {
   type RuleAuditResult,
 } from './rule-audit.js';
 import {
+  parseKnowledgeCheckSuite,
   runKnowledgeChecks,
   type KnowledgeCheckSuite,
   type KnowledgeCheckSuiteResult,
 } from './checks.js';
-import { isEntityMetadataPredicate } from './identity.js';
-import { isTrustMetadataPredicate } from './trust.js';
+import {
+  isEntityMetadataPredicate,
+  type EntityIdentityMode,
+} from './identity.js';
+import {
+  isTrustMetadataPredicate,
+  type TrustViewMode,
+} from './trust.js';
 
 export const MAX_COUNTERFACTUAL_ASSUMPTIONS = 64;
 export const MAX_COUNTERFACTUAL_RETRACTIONS = 64;
@@ -159,6 +167,21 @@ export interface CounterfactualCheckDelta {
   coverageFixed: boolean;
 }
 
+export interface RuleChangeProposal {
+  version: 1;
+  proposalDigest: string;
+  baselineDigest: string;
+  namespace: string;
+  namespaces: string[];
+  query: string;
+  assumeRules: string[];
+  withoutRules: string[];
+  checkSuite?: string;
+  entityIdentity?: EntityIdentityMode;
+  trustMode?: TrustViewMode;
+  recordedSequence?: number;
+}
+
 export interface CounterfactualKnowledgeResult {
   changed: boolean;
   application: CounterfactualApplication;
@@ -169,6 +192,7 @@ export interface CounterfactualKnowledgeResult {
   ruleAuditDelta?: CounterfactualRuleAuditDelta;
   checkDelta?: CounterfactualCheckDelta;
   recordedSnapshot?: RecordedSnapshotMetadata;
+  ruleProposal?: RuleChangeProposal;
 }
 
 function isReservedPredicate(predicate: string): boolean {
@@ -480,6 +504,50 @@ function checkDelta(
     coveragePercentDelta: candidate.coverage.percent - baseline.coverage.percent,
     coverageRegressed: baseline.coveragePassed && !candidate.coveragePassed,
     coverageFixed: !baseline.coveragePassed && candidate.coveragePassed,
+  };
+}
+
+export function computeRuleChangeProposalDigest(
+  proposal: Omit<RuleChangeProposal, 'proposalDigest'>
+): string {
+  return createHash('sha256')
+    .update(JSON.stringify(proposal))
+    .digest('hex');
+}
+
+function ruleChangeProposal(
+  view: CounterfactualKnowledgeView,
+  query: string,
+  checkSuite: KnowledgeCheckSuite | string | undefined,
+  explainOptions: Pick<ExplainKnowledgeOptions, 'entityIdentity' | 'trustMode'>
+): RuleChangeProposal {
+  const payload: Omit<RuleChangeProposal, 'proposalDigest'> = {
+    version: 1,
+    baselineDigest: knowledgeProgramDigest(
+      view.baseline.namespaces,
+      view.baseline.clausesByNamespace
+    ),
+    namespace: view.baseline.namespace,
+    namespaces: [...view.baseline.namespaces],
+    query,
+    assumeRules: [...view.application.assumedRules],
+    withoutRules: [...view.application.retractedRules],
+    ...(checkSuite === undefined
+      ? {}
+      : { checkSuite: JSON.stringify(parseKnowledgeCheckSuite(checkSuite)) }),
+    ...(explainOptions.entityIdentity === undefined
+      ? {}
+      : { entityIdentity: explainOptions.entityIdentity }),
+    ...(explainOptions.trustMode === undefined || explainOptions.trustMode === 'accepted'
+      ? {}
+      : { trustMode: explainOptions.trustMode }),
+    ...(view.baseline.recordedSnapshot === undefined
+      ? {}
+      : { recordedSequence: view.baseline.recordedSnapshot.sequence }),
+  };
+  return {
+    ...payload,
+    proposalDigest: computeRuleChangeProposalDigest(payload),
   };
 }
 
@@ -799,6 +867,16 @@ export function evaluateCounterfactualKnowledgeView(
     integrityDelta: integrityDelta(baselineIntegrity, candidateIntegrity),
     ...(auditDelta === undefined ? {} : { ruleAuditDelta: auditDelta }),
     ...(suiteDelta === undefined ? {} : { checkDelta: suiteDelta }),
+    ...(rulesChanged
+      ? {
+          ruleProposal: ruleChangeProposal(
+            view,
+            query,
+            checkSuite,
+            explainOptions
+          ),
+        }
+      : {}),
     ...(view.baseline.recordedSnapshot === undefined
       ? {}
       : { recordedSnapshot: structuredClone(view.baseline.recordedSnapshot) }),

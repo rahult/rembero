@@ -57,6 +57,11 @@ import {
 } from './knowledge/bundle.js';
 import { MAX_KNOWLEDGE_CHECK_SUITE_BYTES } from './knowledge/checks.js';
 import {
+  applyRuleChangeProposal,
+  MAX_RULE_CHANGE_PROPOSAL_BYTES,
+  RuleChangeCheckError,
+} from './knowledge/rule-change.js';
+import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
@@ -109,6 +114,7 @@ import {
   MemoryStore,
   IncompleteHistoryError,
   OperationConflictError,
+  RuleChangeStaleError,
   type ValidTimeMode,
 } from './store/store.js';
 import {
@@ -137,6 +143,7 @@ Usage:
   rembero check                          Check explicit integrity constraints with evidence
   rembero conflicts [focus]              Group conflicts by authored focus with evidence
   rembero what-if <query>                Preview fact or rule changes with deterministic impact
+  rembero apply-rule-change <file>       Apply one reviewed digest-bound rule proposal
   rembero why-not <query>                Explain deterministic blockers for a query
   rembero topology [predicate]           Map rules, policies, strata, and influence
   rembero diff <from> <to>               Compare two exact recorded knowledge states
@@ -207,7 +214,7 @@ Options:
       --compare-scan        Re-run profile with relation indexes disabled and prove equivalence
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
-      --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
+      --op-id <id>        Stable key for writes including reviewed rule application
       --as-of-sequence <n> Read the knowledge view after global journal entry n (0 = empty)
       --graph-result <n>  Export the complete support graph for result row n
       --graph-support <node-id>  Export the support closure for one graph node
@@ -755,9 +762,9 @@ async function main(): Promise<void> {
   }
   if (
     operationId !== undefined &&
-    !['assert', 'accept', 'reject', 'supersede', 'forget', 'import', 'checkpoint'].includes(command ?? '')
+    !['assert', 'accept', 'reject', 'supersede', 'forget', 'import', 'checkpoint', 'apply-rule-change'].includes(command ?? '')
   ) {
-    throw new Error('--op-id is available for assert, accept, reject, supersede, forget, import, and checkpoint');
+    throw new Error('--op-id is available for assert, accept, reject, supersede, forget, import, checkpoint, and apply-rule-change');
   }
   if (
     args.trust !== undefined &&
@@ -1157,6 +1164,35 @@ async function main(): Promise<void> {
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(maxViolations === undefined ? {} : { maxViolations }),
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'apply-rule-change': {
+      if (args.positional.length !== 1) {
+        throw new Error('apply-rule-change requires exactly one proposal JSON file');
+      }
+      if (operationId === undefined) {
+        throw new Error('apply-rule-change requires --op-id');
+      }
+      const file = resolve(args.positional[0]);
+      const stat = lstatSync(file);
+      if (stat.isSymbolicLink() || !stat.isFile()) {
+        throw new Error('refusing non-regular rule change proposal file');
+      }
+      if (stat.size > MAX_RULE_CHANGE_PROPOSAL_BYTES) {
+        throw new Error(
+          `rule change proposal exceeds ${MAX_RULE_CHANGE_PROPOSAL_BYTES} bytes`
+        );
+      }
+      const maxViolations = maxViolationsOption(args.maxViolations);
+      const result = applyRuleChangeProposal(
+        store,
+        readFileSync(file, 'utf8'),
+        {
+          opId: operationId,
+          ...(maxViolations === undefined ? {} : { maxViolations }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -1821,6 +1857,16 @@ main().catch((e: unknown) => {
   if (e instanceof OperationConflictError) {
     console.error(stringifyBoundedResult(e.toJSON(), 'CLI operation conflict'));
     process.exitCode = 4;
+    return;
+  }
+  if (e instanceof RuleChangeStaleError) {
+    console.error(stringifyBoundedResult(e.toJSON(), 'CLI stale rule proposal'));
+    process.exitCode = 7;
+    return;
+  }
+  if (e instanceof RuleChangeCheckError) {
+    console.error(stringifyBoundedResult(e.toJSON(), 'CLI rule change check failure'));
+    process.exitCode = 2;
     return;
   }
   if (e instanceof IntegrityViolationError) {

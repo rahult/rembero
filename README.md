@@ -45,7 +45,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 
 The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `query`,
 `check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
-`supersede_facts`, `what-if`, `what_if`, `why-not`, `why_not`, `topology`,
+`supersede_facts`, `what-if`, `what_if`, `apply-rule-change`, `apply_rule_change`, `why-not`, `why_not`, `topology`,
 `knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
 `plan_query_repair`, `audit-rules`, `audit_rules`, `search`, `search_knowledge`,
 `browse`, `browse_knowledge_graph`, `connect`, `connect_knowledge_graph`, `bundle`, `export_knowledge_bundle`,
@@ -76,7 +76,7 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
-`what_if`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
+`what_if`, `apply_rule_change`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
 `plan_query_repair`, `audit_rules`, `search_knowledge`, `checkpoint_journal`,
 `browse_knowledge_graph`, `connect_knowledge_graph`, `export_knowledge_bundle`, `verify_knowledge_bundle`,
 `run_knowledge_checks`, `profile_query`, `list_checkpoints`, and `list_memories`.
@@ -158,6 +158,7 @@ node dist/cli.js what-if  'colleague(mira, Who)' \
   --without 'works_at(rahul, _)' --assume 'works_at(rahul, acme).'
 node dist/cli.js what-if 'derived(X)' \
   --assume-rule 'derived(X) :- base(X).' --check-suite checks.json
+node dist/cli.js apply-rule-change rule-review.json --op-id reviewed-rule-v2
 node dist/cli.js why-not  'colleague(mira, rahul)' # missing premises + nearby evidence
 node dist/cli.js topology 'colleague' --direction upstream # rule dependency closure
 node dist/cli.js diff 17 23 --query 'status(mira, State)' # semantic + consequence diff
@@ -369,6 +370,12 @@ remove exact alpha-equivalent rules, compare query proofs, integrity, topology, 
 health, then run the same knowledge checks and semantic coverage against both programs.
 Current or exact recorded baselines remain immutable and proposed rules carry hypothetical
 provenance. See [the rule-change impact contract](docs/RULE-CHANGE-IMPACT.md).
+
+Version 0.44 applies only an explicitly reviewed digest-bound rule proposal. The operation
+rechecks the exact current baseline, candidate audit, attached checks/coverage, and
+no-new-integrity policy under one mutation lock, then journals one crash-safe idempotent
+change. Recorded proposals and stale or tampered artifacts cannot apply. See
+[the reviewed rule-application contract](docs/RULE-CHANGE-APPLICATION.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

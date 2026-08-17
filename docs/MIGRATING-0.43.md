@@ -11,4 +11,5 @@ and stored formats require no migration.
 When a rule actually changes, results add `ruleAuditDelta`; when a suite is supplied, they
 add `checkDelta`. Existing fact-only fields and behavior are unchanged.
 
-Rule changes remain preview-only. This release adds no rule commit/apply endpoint.
+In 0.43 rule changes remain preview-only. Version 0.44 adds a separate digest-bound
+reviewed apply endpoint; the preview call itself remains non-mutating.

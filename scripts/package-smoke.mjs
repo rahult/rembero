@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, connectKnowledgeGraph, createKnowledgeBundle, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, profileKnowledge, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, runKnowledgeChecks, searchKnowledge, selectExplanationGraph, selectRecallSchema, serializeKnowledgeBundle, simulateKnowledge, sqliteDatalogExecutionMode, verifyKnowledgeBundle } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, applyRuleChangeProposal, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, connectKnowledgeGraph, createKnowledgeBundle, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, profileKnowledge, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, runKnowledgeChecks, searchKnowledge, selectExplanationGraph, selectRecallSchema, serializeKnowledgeBundle, simulateKnowledge, sqliteDatalogExecutionMode, verifyKnowledgeBundle } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "if (materialize(parseProgram('base(a). derived(X) :- base(X).')).filter((fact) => fact.derived).length !== 1) throw new Error('public proof-free materialization API failed'); " +
@@ -108,6 +108,8 @@ try {
         "if (!simulated.changed || simulated.resultDelta.added[0]?.bindings?.State !== 'paused' || trustStore.clausesFor(['default']).length !== 1) throw new Error('public counterfactual API failed'); " +
         "const simulatedRule = simulateKnowledge(trustStore, 'active(Person)', { assumeRules: 'active(Person) :- status(Person, active).', checkSuite: { version: 1, coverage: { minimumPercent: 100 }, checks: [{ name: 'active Mira', query: 'active(mira)', expect: { kind: 'nonempty' } }] } }); " +
         "if (simulatedRule.candidate.rows[0]?.bindings?.Person !== 'mira' || simulatedRule.ruleAuditDelta?.candidate.topology.ruleCount !== 1 || simulatedRule.checkDelta?.candidate.status !== 'passed') throw new Error('public rule counterfactual API failed'); " +
+        "const ruleApplyStore = new MemoryStore('./rule-apply-memory'); ruleApplyStore.assert('default', 'base(a).', { opId: 'rule-base' }); const rulePlan = simulateKnowledge(ruleApplyStore, 'derived(X)', { assumeRules: 'derived(X) :- base(X).' }).ruleProposal; const ruleApplied = applyRuleChangeProposal(ruleApplyStore, rulePlan, { opId: 'reviewed-rule' }); " +
+        "if (ruleApplied.audit.topology.ruleCount !== 1 || evaluate(ruleApplyStore.load('default'), parseQuery('derived(X)'))[0]?.X?.value !== 'a') throw new Error('public reviewed rule application API failed'); " +
         "const checkpoint = trustStore.compactJournal({ opId: 'package-checkpoint', at: new Date('2026-08-17T02:00:00.000Z') }); " +
         "if (checkpoint.sequence !== 2 || trustStore.listJournalCheckpoints().length !== 1 || trustStore.recordedSnapshot(['default'], 1).clauses.length !== 1) throw new Error('public journal checkpoint API failed'); " +
         "const bundle = createKnowledgeBundle(trustStore); const bundleText = serializeKnowledgeBundle(bundle); const bundleVerification = verifyKnowledgeBundle(bundleText); " +
@@ -328,6 +330,45 @@ try {
     simulatedRuleTrust.ruleAuditDelta?.candidate?.topology?.ruleCount !== 1
   ) {
     throw new Error('packaged rule counterfactual simulation failed');
+  }
+  const ruleApplyHome = join(directory, 'rule-apply-home');
+  const ruleApplyEnv = { ...process.env, REMBERO_HOME: ruleApplyHome };
+  run(
+    process.execPath,
+    [installedCli, 'assert', 'base(a).', '--op-id', 'package-rule-base'],
+    { cwd: directory, env: ruleApplyEnv }
+  );
+  const rulePreview = run(
+    process.execPath,
+    [
+      installedCli,
+      'what-if',
+      'derived(X)',
+      '--assume-rule',
+      'derived(X) :- base(X).',
+    ],
+    { cwd: directory, env: ruleApplyEnv }
+  );
+  const ruleProposalFile = join(directory, 'rule-proposal.json');
+  writeFileSync(ruleProposalFile, rulePreview);
+  const ruleApplication = JSON.parse(
+    run(
+      process.execPath,
+      [
+        installedCli,
+        'apply-rule-change',
+        ruleProposalFile,
+        '--op-id',
+        'package-reviewed-rule',
+      ],
+      { cwd: directory, env: ruleApplyEnv }
+    )
+  );
+  if (
+    ruleApplication.audit?.topology?.ruleCount !== 1 ||
+    ruleApplication.added?.length !== 1
+  ) {
+    throw new Error('packaged reviewed rule application failed');
   }
   const checkpointOutput = JSON.parse(
     run(
@@ -803,7 +844,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, proposal-only deterministic rule change impact, proof-carrying derived personal knowledge paths, deterministic explicit personal knowledge paths, exact personal knowledge extraction evaluation, verified cross-model recall ranking, indexed-versus-scan deterministic query profiling, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, digest-bound reviewed rule change application, proposal-only deterministic rule change impact, proof-carrying derived personal knowledge paths, deterministic explicit personal knowledge paths, exact personal knowledge extraction evaluation, verified cross-model recall ranking, indexed-versus-scan deterministic query profiling, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

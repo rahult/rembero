@@ -534,6 +534,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    `what_if`, namespaces, identity, trust, recorded coordinates, hypothetical rule sources,
    packages, and fail-closed bounds remain proposal-only and non-mutating.
 
+## Phase 47 — Digest-bound reviewed rule application  *(v0.44)*
+
+1. **Complete — portable review artifact**: effective current rule previews emit JSON v1
+   binding ordered multi-namespace program digest, exact rules, review query, normalized
+   suite, view modes, and a content SHA-256; any edit invalidates the proposal.
+2. **Complete — atomic authority boundary**: explicit apply requires a stable operation ID,
+   exact current digest, candidate rule audit, attached check/coverage pass, and mandatory
+   no-new-integrity-violations enforcement under the cross-process mutation lock.
+3. **Complete — durable lifecycle**: one crash-recoverable `rule_change` journal event
+   replays through sources, exact recorded snapshots/diffs, checkpoints, idempotent retries,
+   conflicts, and hypothetical-to-durable rule provenance.
+4. **Complete — operational parity**: library, CLI `apply-rule-change`, MCP
+   `apply_rule_change`, package installs, structured stale/check/integrity errors, tamper,
+   concurrency, recorded-only rejection, and 16 MiB evidence bounds share one contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

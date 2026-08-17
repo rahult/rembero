@@ -60,6 +60,11 @@ Rule simulation is proposal, never authority. It does not call `assert`, change 
 file, append the journal, rotate a checkpoint, update a cache, or create a persistent
 source. It also does not reserve the baseline against a later writer.
 
+An effective current-state preview includes a digest-bound `ruleProposal`. Version 0.44
+adds a separate explicitly authorized apply operation that revalidates the artifact and
+all gates under the mutation lock; simulation itself remains non-mutating. See
+[reviewed rule change application](RULE-CHANGE-APPLICATION.md).
+
 With `recordedSequence`, Rembero reconstructs the exact namespace view at that global
 journal position, including per-namespace duplicate witnesses, then applies the proposed
 rule only in memory. The result includes the recorded coordinate and never mixes later

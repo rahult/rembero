@@ -450,6 +450,59 @@ describe('CLI ingress limits', () => {
     expect(store.clausesFor(['default'])).toHaveLength(1);
   });
 
+  it('applies one reviewed rule proposal file atomically and idempotently', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-apply-rule-'));
+    const home = join(root, 'home');
+    const proposalFile = join(root, 'proposal.json');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('default', 'base(a).', { opId: 'apply-baseline' });
+
+    const preview = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'what-if',
+        'derived(X)',
+        '--assume-rule',
+        'derived(X) :- base(X).',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(preview.status).toBe(0);
+    writeFileSync(proposalFile, preview.stdout);
+
+    const apply = () =>
+      spawnSync(
+        process.execPath,
+        [
+          resolve('dist/cli.js'),
+          'apply-rule-change',
+          proposalFile,
+          '--op-id',
+          'cli-reviewed-rule',
+        ],
+        { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+      );
+    const first = apply();
+    expect(first.status).toBe(0);
+    expect(JSON.parse(first.stdout)).toMatchObject({
+      opId: 'cli-reviewed-rule',
+      sequence: 2,
+      added: [expect.any(Object)],
+      audit: { topology: { ruleCount: 1 } },
+    });
+    const replay = apply();
+    expect(replay.status).toBe(0);
+    expect(JSON.parse(replay.stdout)).toEqual(JSON.parse(first.stdout));
+
+    const queried = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'query', 'derived(X)'],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(JSON.parse(queried.stdout)).toEqual([{ X: 'a' }]);
+  });
+
   it('explains rule blockers and sourced nearby facts without an LLM', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-why-not-'));
     const home = join(root, 'home');
@@ -1145,7 +1198,7 @@ describe('CLI ingress limits', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(
-      /--op-id is available for assert, accept, reject, supersede, forget, import, and checkpoint/i
+      /--op-id is available for assert, accept, reject, supersede, forget, import, checkpoint, and apply-rule-change/i
     );
   });
 

@@ -89,6 +89,10 @@ import {
   profileKnowledge,
   type ProfileKnowledgeResult,
 } from '../knowledge/profile.js';
+import {
+  applyRuleChangeProposal,
+  type ApplyRuleChangeProposalResult,
+} from '../knowledge/rule-change.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -618,6 +622,22 @@ export function whatIfTool(
     ...(args.recordedSequence === undefined
       ? {}
       : { recordedSequence: args.recordedSequence }),
+  });
+}
+
+export function applyRuleChangeProposalTool(
+  deps: StoreToolDeps,
+  args: {
+    proposal: string;
+    opId: string;
+    maxViolations?: number;
+  }
+): ApplyRuleChangeProposalResult {
+  return applyRuleChangeProposal(deps.store, args.proposal, {
+    opId: args.opId,
+    ...(args.maxViolations === undefined
+      ? {}
+      : { maxViolations: args.maxViolations }),
   });
 }
 

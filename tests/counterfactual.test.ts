@@ -269,6 +269,19 @@ describe('deterministic counterfactual knowledge', () => {
       coverageRegressed: false,
       coverageFixed: false,
     });
+    expect(result.ruleProposal).toMatchObject({
+      version: 1,
+      proposalDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      baselineDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      namespace: 'default',
+      namespaces: ['default'],
+      query: 'colleague(mira, Who)',
+      assumeRules: [
+        'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+      ],
+      withoutRules: [],
+      checkSuite: expect.any(String),
+    });
     expect(readFileSync(join(root, 'journal.log'), 'utf8')).toBe(journalBefore);
     expect(store.clausesFor(['default'])).toHaveLength(2);
   });
