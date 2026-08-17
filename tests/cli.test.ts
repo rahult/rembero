@@ -697,6 +697,59 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('exports and verifies a content-addressed bundle without mutating memory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-bundle-'));
+    const home = join(root, 'home');
+    const file = join(root, 'knowledge.json');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('personal', 'pet(rahul, luna).', {
+      opId: 'pet-source',
+      sourceText: 'My cat is Luna.',
+    });
+
+    const exported = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'bundle', '--namespaces', 'personal'],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+    expect(exported.status).toBe(0);
+    const bundle = JSON.parse(exported.stdout);
+    expect(bundle).toMatchObject({
+      format: 'rembero-knowledge-bundle',
+      view: { kind: 'current' },
+      namespaces: [
+        {
+          namespace: 'personal',
+          clauses: [
+            {
+              clause: 'pet(rahul, luna).',
+              sources: [{ opId: 'pet-source', text: 'My cat is Luna.' }],
+            },
+          ],
+        },
+      ],
+    });
+    writeFileSync(file, exported.stdout);
+    const verified = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'verify-bundle', file],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(verified.status).toBe(0);
+    expect(JSON.parse(verified.stdout)).toMatchObject({
+      valid: true,
+      namespaces: ['personal'],
+      clauseCount: 1,
+      sourceCount: 1,
+    });
+    expect(store.load('personal').map(serializeClause)).toEqual([
+      'pet(rahul, luna).',
+    ]);
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

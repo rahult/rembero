@@ -11,7 +11,12 @@ import {
 import type { PipelineDeps } from '../llm/pipeline.js';
 import { MAX_RECALL_SCHEMA_PREDICATES } from '../llm/schema.js';
 import { MAX_PROOFS_PER_ROW } from '../engine/index.js';
-import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT, stringifyBoundedResult } from '../safety.js';
+import {
+  MAX_INPUT_BYTES,
+  MAX_NAMESPACE_COUNT,
+  assertBoundedOutput,
+  stringifyBoundedResult,
+} from '../safety.js';
 import {
   checkIntegrityTool,
   conflictViewsTool,
@@ -38,6 +43,8 @@ import {
   auditRulesTool,
   searchKnowledgeTool,
   browseKnowledgeGraphTool,
+  exportKnowledgeBundleTool,
+  verifyKnowledgeBundleTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -69,6 +76,10 @@ import {
   MAX_BROWSE_GRAPH_DEPTH,
   MAX_BROWSE_PREDICATE_FOCUS_BYTES,
 } from '../knowledge/browse.js';
+import {
+  MAX_KNOWLEDGE_BUNDLE_BYTES,
+  serializeKnowledgeBundle,
+} from '../knowledge/bundle.js';
 import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
@@ -294,6 +305,11 @@ function asContent(result: unknown) {
   return { content: [{ type: 'text' as const, text: stringifyBoundedResult(result, 'MCP result') }] };
 }
 
+function asRawContent(text: string, label: string) {
+  assertBoundedOutput(text, label);
+  return { content: [{ type: 'text' as const, text }] };
+}
+
 function asError(e: unknown) {
   let text: string;
   if (
@@ -388,7 +404,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.32.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.33.0' });
 
   server.registerTool(
     'remember',
@@ -1369,6 +1385,55 @@ export function createServer(deps: PipelineDeps): McpServer {
             trustMode,
           })
         );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'export_knowledge_bundle',
+    {
+      title: 'Export content-addressed knowledge bundle',
+      description:
+        'Export raw portable namespace clauses, trust/identity metadata, and durable provenance as deterministic JSON with a SHA-256 content digest. Defaults to all namespaces; an optional recorded sequence exports that exact state. The bundle contains personal data and is returned verbatim without an LLM.',
+      inputSchema: {
+        namespaces: namespacesField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({ namespaces, recordedSequence }) => {
+      try {
+        const bundle = exportKnowledgeBundleTool(
+          { store: resolvedDeps.store },
+          { namespaces, recordedSequence }
+        );
+        return asRawContent(
+          serializeKnowledgeBundle(bundle),
+          'MCP knowledge bundle'
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'verify_knowledge_bundle',
+    {
+      title: 'Verify standalone knowledge bundle',
+      description:
+        'Verify bundle JSON structure, canonical clauses and ordering, durable provenance, resource bounds, recorded coordinates, and SHA-256 digest without importing or mutating knowledge.',
+      inputSchema: {
+        bundle: z
+          .string()
+          .max(MAX_KNOWLEDGE_BUNDLE_BYTES)
+          .describe('Serialized rembero knowledge bundle JSON'),
+      },
+    },
+    async ({ bundle }) => {
+      try {
+        return asContent(verifyKnowledgeBundleTool({ bundle }));
       } catch (e) {
         return asError(e);
       }

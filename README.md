@@ -48,7 +48,8 @@ The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `que
 `supersede_facts`, `what-if`, `what_if`, `why-not`, `why_not`, `topology`,
 `knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
 `plan_query_repair`, `audit-rules`, `audit_rules`, `search`, `search_knowledge`,
-`browse`, `browse_knowledge_graph`, `forget`, `list_memories`)
+`browse`, `browse_knowledge_graph`, `bundle`, `export_knowledge_bundle`,
+`verify_knowledge_bundle`, `forget`, `list_memories`)
 work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
 
@@ -76,7 +77,8 @@ Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
 `plan_query_repair`, `audit_rules`, `search_knowledge`, `checkpoint_journal`,
-`browse_knowledge_graph`, `list_checkpoints`, and `list_memories`.
+`browse_knowledge_graph`, `export_knowledge_bundle`, `verify_knowledge_bundle`,
+`list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -160,6 +162,7 @@ node dist/cli.js repair 'eligible(bob)' # minimal verified assumptions/retractio
 node dist/cli.js audit-rules 'eligible' --direction upstream # proactive rule health
 node dist/cli.js search 'Doctor Chen' --kind fact # local lexical provenance search
 node dist/cli.js browse mira --browse-depth 2 # explicit entity neighborhood
+node dist/cli.js bundle > knowledge.json && node dist/cli.js verify-bundle knowledge.json
 node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete support
 node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
@@ -297,6 +300,12 @@ Version 0.32 browses the explicit stored personal graph without inventing a quer
 shared entities, and returns claim/entity nodes, argument edges, provenance, aliases,
 trust, namespaces, and recorded views. Rules and inferred claims remain query-scoped. See
 [the explicit-graph-browse contract](docs/EXPLICIT-GRAPH-BROWSE.md).
+
+Version 0.33 exports raw namespace authority and durable provenance as deterministic,
+content-addressed JSON. `bundle` includes trust/identity metadata and current or exact
+recorded coordinates; `verify-bundle` checks canonical clauses, ordering, lineage, bounds,
+and SHA-256 without importing anything. See
+[the knowledge-bundle contract](docs/KNOWLEDGE-BUNDLES.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

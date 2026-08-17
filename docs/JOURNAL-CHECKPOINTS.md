@@ -5,6 +5,9 @@ discarding its recorded-time history. The checkpoint is an audit boundary, not a
 knowledge authority: portable `.dl` files remain current state and the complete logical
 journal remains the source for recorded snapshots.
 
+Version 0.33 bundles provide a separate portable artifact for raw clauses and provenance.
+Checkpoint files remain internal crash/audit boundaries and are not an interchange format.
+
 ## Use
 
 ```bash

@@ -51,7 +51,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.32.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.33.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -67,6 +67,8 @@ describe('MCP explanation surfaces', () => {
           'audit_rules',
           'search_knowledge',
           'browse_knowledge_graph',
+          'export_knowledge_bundle',
+          'verify_knowledge_bundle',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -240,6 +242,38 @@ describe('MCP explanation surfaces', () => {
           expect.objectContaining({ opId: 'mcp-source' }),
         ])
       );
+
+      const exportedBundle = await client.callTool({
+        name: 'export_knowledge_bundle',
+        arguments: { namespaces: ['default'], recordedSequence: 1 },
+      });
+      const exportedBundleText = exportedBundle.content.find(
+        (item) => item.type === 'text'
+      );
+      const bundleText =
+        exportedBundleText?.type === 'text' ? exportedBundleText.text : '';
+      expect(JSON.parse(bundleText)).toMatchObject({
+        format: 'rembero-knowledge-bundle',
+        view: { kind: 'recorded', sequence: 1 },
+        namespaces: [
+          {
+            namespace: 'default',
+            clauses: [{ clause: 'pet(rahul, luna).' }],
+          },
+        ],
+      });
+      const verifiedBundle = await client.callTool({
+        name: 'verify_knowledge_bundle',
+        arguments: { bundle: bundleText },
+      });
+      const verifiedBundleText = verifiedBundle.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          verifiedBundleText?.type === 'text' ? verifiedBundleText.text : ''
+        )
+      ).toMatchObject({ valid: true, clauseCount: 1, sourceCount: 1 });
 
       const asserted = await client.callTool({
         name: 'assert_facts',

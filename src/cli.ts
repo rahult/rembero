@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { autoCaptureClaudeStop } from './autocapture/capture.js';
 import {
@@ -48,6 +48,10 @@ import {
   MAX_BROWSE_GRAPH_DEPTH,
 } from './knowledge/browse.js';
 import {
+  MAX_KNOWLEDGE_BUNDLE_BYTES,
+  serializeKnowledgeBundle,
+} from './knowledge/bundle.js';
+import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
@@ -86,6 +90,8 @@ import {
   auditRulesTool,
   searchKnowledgeTool,
   browseKnowledgeGraphTool,
+  exportKnowledgeBundleTool,
+  verifyKnowledgeBundleTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -130,6 +136,8 @@ Usage:
   rembero audit-rules [predicate]        Audit rule health with deterministic evidence
   rembero search <text>                  Search facts, rules, policies, and sources locally
   rembero browse [entity]                Browse a bounded explicit personal graph
+  rembero bundle                         Export raw clauses and provenance with a digest
+  rembero verify-bundle <file>           Verify a standalone knowledge bundle
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -784,10 +792,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'bundle', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, search, browse, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, search, browse, bundle, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1378,6 +1386,37 @@ async function main(): Promise<void> {
           'CLI result'
         )
       );
+      return;
+    }
+    case 'bundle': {
+      const bundle = exportKnowledgeBundleTool(
+        { store },
+        {
+          namespaces,
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(serializeKnowledgeBundle(bundle));
+      return;
+    }
+    case 'verify-bundle': {
+      if (args.positional.length !== 1) {
+        throw new Error('verify-bundle requires exactly one bundle file');
+      }
+      const file = resolve(args.positional[0]);
+      const stat = lstatSync(file);
+      if (stat.isSymbolicLink() || !stat.isFile()) {
+        throw new Error('refusing non-regular knowledge bundle file');
+      }
+      if (stat.size > MAX_KNOWLEDGE_BUNDLE_BYTES) {
+        throw new Error(
+          `knowledge bundle exceeds ${MAX_KNOWLEDGE_BUNDLE_BYTES} bytes`
+        );
+      }
+      const result = verifyKnowledgeBundleTool({
+        bundle: readFileSync(file, 'utf8'),
+      });
+      console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }
     case 'export': {

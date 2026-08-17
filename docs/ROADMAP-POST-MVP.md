@@ -385,6 +385,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    focus, identity, tentative/accepted witnesses, multi-namespace sources, package, and
    explicit no-match behavior share the existing explanation graph IDs and edge shapes.
 
+## Phase 36 — Content-addressed portable knowledge bundle  *(v0.33)*
+
+1. **Complete — raw namespace authority and provenance**: canonical facts, rules,
+   constraints, trust/identity metadata, and namespace-filtered durable sources export
+   without projecting a read view or depending on internal checkpoint layout.
+2. **Complete — deterministic identity and standalone verification**: normalized bytewise
+   namespace/clause/source order, current or exact recorded coordinates, resource bounds,
+   temporal/trust lineage, and SHA-256 are verified without a store or mutation.
+3. **Complete — artifact interface parity**: compact library serialization, regular-file
+   CLI export/verify, raw MCP transport, multi-namespace duplicates, checkpointed stores,
+   empty bundles, tamper tests, package installs, and 16 MiB output limits share one format.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

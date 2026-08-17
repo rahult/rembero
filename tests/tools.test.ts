@@ -32,7 +32,10 @@ import {
   auditRulesTool,
   searchKnowledgeTool,
   browseKnowledgeGraphTool,
+  exportKnowledgeBundleTool,
+  verifyKnowledgeBundleTool,
 } from '../src/mcp/tools.js';
+import { serializeKnowledgeBundle } from '../src/knowledge/bundle.js';
 
 class ScriptedLlm implements LlmClient {
   constructor(private responses: string[]) {}
@@ -733,6 +736,36 @@ describe('MCP tool handlers', () => {
     ).toMatchObject({
       selection: { selectedClaims: 1, totalGroundFacts: 1 },
       recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
+  it('exports and verifies current and recorded bundles through the tool boundary', () => {
+    store.assert('first', 'item(a).', { opId: 'first-source' });
+    store.assert('second', 'item(b).', { opId: 'second-source' });
+    const current = exportKnowledgeBundleTool({ store }, {});
+    expect(current.namespaces.map(({ namespace }) => namespace)).toEqual([
+      'first',
+      'second',
+    ]);
+    expect(
+      verifyKnowledgeBundleTool({ bundle: serializeKnowledgeBundle(current) })
+    ).toMatchObject({
+      valid: true,
+      namespaceCount: 2,
+      clauseCount: 2,
+      sourceCount: 2,
+    });
+
+    const recorded = exportKnowledgeBundleTool(
+      { store },
+      { namespaces: ['first', 'second'], recordedSequence: 1 }
+    );
+    expect(recorded).toMatchObject({
+      view: { kind: 'recorded', sequence: 1, journalEntries: 2 },
+      namespaces: [
+        { namespace: 'first', clauses: [{ clause: 'item(a).' }] },
+        { namespace: 'second', clauses: [] },
+      ],
     });
   });
 

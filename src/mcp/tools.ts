@@ -70,6 +70,12 @@ import {
   browseKnowledgeGraph,
   type BrowseKnowledgeGraphResult,
 } from '../knowledge/browse.js';
+import {
+  createKnowledgeBundle,
+  verifyKnowledgeBundle,
+  type KnowledgeBundle,
+  type KnowledgeBundleVerification,
+} from '../knowledge/bundle.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -827,6 +833,27 @@ export function browseKnowledgeGraphTool(
       ? {}
       : { recordedSnapshot: recorded.recordedSnapshot }),
   };
+}
+
+export function exportKnowledgeBundleTool(
+  deps: StoreToolDeps,
+  args: {
+    namespaces?: string[] | '*';
+    recordedSequence?: number;
+  }
+): KnowledgeBundle {
+  return createKnowledgeBundle(deps.store, {
+    namespaces: args.namespaces ?? '*',
+    ...(args.recordedSequence === undefined
+      ? {}
+      : { recordedSequence: args.recordedSequence }),
+  });
+}
+
+export function verifyKnowledgeBundleTool(args: {
+  bundle: string;
+}): KnowledgeBundleVerification {
+  return verifyKnowledgeBundle(args.bundle);
 }
 
 export function forgetTool(

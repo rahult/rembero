@@ -298,6 +298,23 @@ export {
   type BrowseKnowledgeGraphResult,
 } from './knowledge/browse.js';
 export {
+  createKnowledgeBundle,
+  serializeKnowledgeBundle,
+  verifyKnowledgeBundle,
+  KNOWLEDGE_BUNDLE_FORMAT,
+  KNOWLEDGE_BUNDLE_VERSION,
+  MAX_KNOWLEDGE_BUNDLE_BYTES,
+  MAX_KNOWLEDGE_BUNDLE_NAMESPACES,
+  MAX_KNOWLEDGE_BUNDLE_CLAUSES,
+  MAX_KNOWLEDGE_BUNDLE_SOURCES,
+  type KnowledgeBundleView,
+  type KnowledgeBundleClause,
+  type KnowledgeBundleNamespace,
+  type KnowledgeBundle,
+  type CreateKnowledgeBundleOptions,
+  type KnowledgeBundleVerification,
+} from './knowledge/bundle.js';
+export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,
   MAX_TENTATIVE_CLAUSE_BYTES,

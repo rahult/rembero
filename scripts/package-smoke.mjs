@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, searchKnowledge, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, createKnowledgeBundle, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, searchKnowledge, selectExplanationGraph, selectRecallSchema, serializeKnowledgeBundle, simulateKnowledge, sqliteDatalogExecutionMode, verifyKnowledgeBundle } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "if (materialize(parseProgram('base(a). derived(X) :- base(X).')).filter((fact) => fact.derived).length !== 1) throw new Error('public proof-free materialization API failed'); " +
@@ -93,6 +93,8 @@ try {
         "if (!simulated.changed || simulated.resultDelta.added[0]?.bindings?.State !== 'paused' || trustStore.clausesFor(['default']).length !== 1) throw new Error('public counterfactual API failed'); " +
         "const checkpoint = trustStore.compactJournal({ opId: 'package-checkpoint', at: new Date('2026-08-17T02:00:00.000Z') }); " +
         "if (checkpoint.sequence !== 2 || trustStore.listJournalCheckpoints().length !== 1 || trustStore.recordedSnapshot(['default'], 1).clauses.length !== 1) throw new Error('public journal checkpoint API failed'); " +
+        "const bundle = createKnowledgeBundle(trustStore); const bundleText = serializeKnowledgeBundle(bundle); const bundleVerification = verifyKnowledgeBundle(bundleText); " +
+        "if (!bundleVerification.valid || bundleVerification.clauseCount !== 1 || bundleVerification.sha256 !== bundle.sha256) throw new Error('public knowledge bundle API failed'); " +
         "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed'); " +
         "const identity = canonicalizeKnowledge(parseProgram(\"rembero_alias('Mira Patel', mira). rembero_entity_position(works_at, 2, 0). works_at('Mira Patel', acme).\")); " +
         "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed'); " +
@@ -297,6 +299,25 @@ try {
   );
   if (checkpointOutput.sequence !== 2 || checkpointList.count !== 1) {
     throw new Error('packaged journal checkpoint failed');
+  }
+  const bundleOutput = run(process.execPath, [installedCli, 'bundle'], {
+    cwd: directory,
+    env: trustEnv,
+  });
+  const bundleFile = join(directory, 'trust-bundle.json');
+  writeFileSync(bundleFile, bundleOutput);
+  const verifiedBundleOutput = JSON.parse(
+    run(process.execPath, [installedCli, 'verify-bundle', bundleFile], {
+      cwd: directory,
+      env: trustEnv,
+    })
+  );
+  if (
+    verifiedBundleOutput.valid !== true ||
+    verifiedBundleOutput.clauseCount !== 1 ||
+    verifiedBundleOutput.sourceCount !== 1
+  ) {
+    throw new Error('packaged content-addressed knowledge bundle failed');
   }
   const repairHome = join(directory, 'repair-home');
   const repairEnv = { ...process.env, REMBERO_HOME: repairHome };
@@ -669,7 +690,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });
