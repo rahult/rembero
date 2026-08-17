@@ -113,3 +113,7 @@ graphs remain unchanged. Version 0.10 returns that same ephemeral graph in atomi
 write-rejection evidence; it does not materialize enforcement state as another graph.
 Version 0.12 adds pure navigation over these ephemeral graphs while preserving the same
 portable authority and deterministic node/edge ordering.
+Version 0.18 can combine complete cross-policy integrity evidence into one focused
+conflict graph: a stable `conflict` node connects through ordered `contains` edges to the
+existing violation result/proof subgraphs. The projection is still query-scoped and is
+never stored. See [the conflict-view contract](CONFLICT-VIEWS.md).

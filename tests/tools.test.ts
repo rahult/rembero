@@ -10,6 +10,7 @@ import { serializeClause } from '../src/engine/index.js';
 import {
   assertFactsTool,
   checkIntegrityTool,
+  conflictViewsTool,
   explainQueryTool,
   forgetTool,
   listMemoriesTool,
@@ -326,6 +327,27 @@ describe('MCP tool handlers', () => {
     expect(checkIntegrityTool({ store }, { entityIdentity: 'canonical' }).status).toBe(
       'violations'
     );
+    expect(
+      conflictViewsTool(
+        { store },
+        { recordedSequence: 1, entityIdentity: 'canonical' }
+      )
+    ).toMatchObject({
+      status: 'consistent',
+      matchingViolationCount: 0,
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+    expect(
+      conflictViewsTool(
+        { store },
+        { focus: "'Mira Patel'", entityIdentity: 'canonical' }
+      )
+    ).toMatchObject({
+      status: 'violations',
+      focus: 'mira',
+      matchingViolationCount: 1,
+      clusters: [{ focus: 'mira', rows: [{ focusBinding: 'Person' }] }],
+    });
     const listed = listMemoriesTool({ store }, { recordedSequence: 1 });
     expect(listed.predicates.some((group) => group.predicate === 'suspended/1')).toBe(false);
     expect(listed.recordedSnapshot?.sequence).toBe(1);

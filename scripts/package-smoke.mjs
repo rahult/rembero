@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, parseProgram, parseQuery, parseQuerySpec, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, parseProgram, parseQuery, parseQuerySpec, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -51,6 +51,8 @@ try {
         "if (!schema.pruned || !schema.selectedPredicates.includes('works_at/2') || schema.summaryBytes > 24576) throw new Error('public recall schema API failed'); " +
         "const integrity = checkIntegrity(parseProgram('active(mira). suspended(mira). :- active(X), suspended(X).')); " +
         "if (integrity.status !== 'violations' || integrity.violationCount !== 1) throw new Error('public integrity API failed'); " +
+        "const conflicts = inspectConflicts(parseProgram('active(mira). suspended(mira). :- active(Person), suspended(Person).'), new Map(), { focus: 'mira' }); " +
+        "if (conflicts.clusterCount !== 1 || conflicts.clusters[0]?.focus !== 'mira' || !conflicts.clusters[0]?.graph.nodes.some((node) => node.kind === 'conflict')) throw new Error('public conflict view API failed'); " +
         "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed'); " +
         "const identity = canonicalizeKnowledge(parseProgram(\"rembero_alias('Mira Patel', mira). rembero_entity_position(works_at, 2, 0). works_at('Mira Patel', acme).\")); " +
         "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed'); " +
@@ -372,7 +374,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

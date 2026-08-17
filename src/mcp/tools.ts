@@ -28,6 +28,10 @@ import {
   checkIntegrity,
   type IntegrityCheckResult,
 } from '../knowledge/integrity.js';
+import {
+  inspectConflicts,
+  type ConflictViewResult,
+} from '../knowledge/conflicts.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -329,6 +333,42 @@ export function checkIntegrityTool(
       ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
     }
   );
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
+}
+
+export function conflictViewsTool(
+  deps: StoreToolDeps,
+  args: {
+    focus?: string;
+    namespaces?: string[] | '*';
+    proofLimit?: number;
+    maxViolations?: number;
+    entityIdentity?: EntityIdentityMode;
+    graphSelector?: ExplanationGraphSelector;
+    recordedSequence?: number;
+  }
+): ConflictViewResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  if (args.focus !== undefined) assertBoundedInput(args.focus, 'conflict focus');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = inspectConflicts(recorded.clauses, recorded.sources, {
+    ...(args.focus === undefined ? {} : { focus: args.focus }),
+    ...(args.proofLimit === undefined
+      ? {}
+      : { maxProofsPerRow: args.proofLimit }),
+    ...(args.maxViolations === undefined
+      ? {}
+      : { maxViolations: args.maxViolations }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
+  });
   return {
     ...result,
     ...(recorded.recordedSnapshot === undefined

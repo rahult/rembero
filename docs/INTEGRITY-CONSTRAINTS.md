@@ -69,6 +69,12 @@ Use `--proof-limit <n>` to inspect alternative derivations of a violation and
 `maxViolations`. If another proof or violation exists beyond the requested bound,
 inspection fails rather than presenting an incomplete audit as complete.
 
+Version 0.18 adds `rembero conflicts [focus]` and MCP `conflict_views` when a person- or
+entity-oriented projection is more useful than the policy-oriented `checks` array. It
+groups complete rows by the first alpha-stable binding authored in each constraint and
+combines their source/proof graphs without inferring new policy. See
+[the conflict-view contract](CONFLICT-VIEWS.md).
+
 ## Deterministic and temporal boundary
 
 - Constraints are stored, diffed, exported, imported, journaled, sourced, and

@@ -36,6 +36,7 @@ import {
 import { serveStdio } from './mcp/server.js';
 import {
   checkIntegrityTool,
+  conflictViewsTool,
   assertFactsTool,
   explainQueryTool,
   forgetTool,
@@ -74,6 +75,7 @@ Usage:
   rembero supersede [datalog]            End matching facts; optionally add replacements
   rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
   rembero check                          Check explicit integrity constraints with evidence
+  rembero conflicts [focus]              Group conflicts by authored focus with evidence
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero list                           List stored memories
@@ -89,7 +91,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/check/list/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/check/conflicts/list/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -468,10 +470,10 @@ async function main(): Promise<void> {
     'import',
     'review',
   ].includes(command ?? '');
-  const graphCommand = ['recall-explain', 'explain', 'check'].includes(command ?? '');
+  const graphCommand = ['recall-explain', 'explain', 'check', 'conflicts'].includes(command ?? '');
   if (graphSelector !== undefined && !writeCommand && !graphCommand) {
     throw new Error(
-      'graph selection is available for recall-explain, explain, check, and integrity-guarded writes'
+      'graph selection is available for recall-explain, explain, check, conflicts, and integrity-guarded writes'
     );
   }
   if (
@@ -493,10 +495,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'check', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, check, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -689,6 +691,24 @@ async function main(): Promise<void> {
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       if (result.status === 'violations') process.exitCode = 2;
+      return;
+    }
+    case 'conflicts': {
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const maxViolations = maxViolationsOption(args.maxViolations);
+      const result = conflictViewsTool(
+        { store, entityIdentity: entityIdentitySetting },
+        {
+          ...(text.length === 0 ? {} : { focus: text }),
+          namespaces,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(maxViolations === undefined ? {} : { maxViolations }),
+          ...(graphSelector === undefined ? {} : { graphSelector }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      if (result.matchingViolationCount > 0) process.exitCode = 2;
       return;
     }
     case 'forget': {

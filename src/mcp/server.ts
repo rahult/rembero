@@ -13,6 +13,7 @@ import { MAX_PROOFS_PER_ROW } from '../engine/index.js';
 import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT, stringifyBoundedResult } from '../safety.js';
 import {
   checkIntegrityTool,
+  conflictViewsTool,
   assertFactsTool,
   explainQueryTool,
   forgetTool,
@@ -30,6 +31,7 @@ import {
   MAX_SUPERSEDE_PATTERNS,
 } from '../store/store.js';
 import { MAX_INTEGRITY_VIOLATIONS } from '../knowledge/integrity.js';
+import { MAX_CONFLICT_FOCUS_BYTES } from '../knowledge/conflicts.js';
 import {
   IntegrityViolationError,
   type IntegrityEnforcementMode,
@@ -76,6 +78,12 @@ const maxViolationsField = z
   .max(MAX_INTEGRITY_VIOLATIONS)
   .optional()
   .describe('Maximum complete integrity-violation rows returned across all constraints');
+const conflictFocusField = z
+  .string()
+  .min(1)
+  .max(MAX_CONFLICT_FOCUS_BYTES)
+  .optional()
+  .describe('Optional ground Datalog atom or number selecting one conflict focus');
 const integrityModeField = z
   .enum(['strict', 'no_new_violations'])
   .optional()
@@ -221,7 +229,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.17.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.18.0' });
 
   server.registerTool(
     'remember',
@@ -560,6 +568,49 @@ export function createServer(deps: PipelineDeps): McpServer {
       try {
         return asContent(
           checkIntegrityTool(resolvedDeps, {
+            namespaces,
+            proofLimit,
+            maxViolations,
+            entityIdentity,
+            graphSelector,
+            recordedSequence,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'conflict_views',
+    {
+      title: 'Inspect focused knowledge conflicts',
+      description:
+        "Group complete integrity violations by each constraint's first alpha-stable binding. Optional focus, canonical identity, recorded snapshots, proofs, durable sources, and per-cluster graph selection are supported. No LLM is used and no conflict store is persisted.",
+      inputSchema: {
+        focus: conflictFocusField,
+        namespaces: namespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({
+      focus,
+      namespaces,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      graphSelector,
+      recordedSequence,
+    }) => {
+      try {
+        return asContent(
+          conflictViewsTool(resolvedDeps, {
+            focus,
             namespaces,
             proofLimit,
             maxViolations,

@@ -204,6 +204,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    deterministic work counters, and fails below the 2x speedup or 100x work-reduction
    acceptance thresholds.
 
+## Phase 21 — Focused conflict views  *(v0.18)*
+
+1. **Complete — authored focus clustering**: complete integrity violations group by each
+   constraint's first alpha-stable binding, while variable-free policy enters one global
+   cluster. Rembero never guesses subject semantics from predicate names.
+2. **Complete — personal and recorded inspection**: library, CLI `conflicts`, and MCP
+   `conflict_views` support optional ground focus terms, canonical aliases, namespace
+   unions, exact recorded sequences, proof limits, and complete violation bounds.
+3. **Complete — focused graph evidence**: stable conflict nodes and ordered `contains`
+   edges combine cross-policy rows, declaration sources, fact proofs, rules, and existing
+   selectable graph support without persisting conflict or repair state.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

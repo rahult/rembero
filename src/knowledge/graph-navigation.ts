@@ -23,13 +23,17 @@ export interface ExplanationGraphSelection {
 }
 
 export interface GraphSelectableExplanation {
-  rows: Array<{ bindings: Record<string, string> }>;
+  rows: Array<{
+    bindings: Record<string, string>;
+    /** Optional explanation-local result node ID for composite projections. */
+    graphResultId?: string;
+  }>;
   graph: ExplanationGraph;
   graphSelection?: ExplanationGraphSelection;
 }
 
-function resultId(bindings: Record<string, string>): string {
-  return `result:${JSON.stringify(Object.entries(bindings))}`;
+function resultId(row: GraphSelectableExplanation['rows'][number]): string {
+  return row.graphResultId ?? `result:${JSON.stringify(Object.entries(row.bindings))}`;
 }
 
 function assertNodeId(nodeId: string): void {
@@ -173,7 +177,7 @@ export function selectExplanationGraph<T extends GraphSelectableExplanation>(
 
   if (selector.kind === 'result') {
     const row = explanation.rows[selector.row - 1];
-    focusNodeIds = row === undefined ? [] : [resultId(row.bindings)];
+    focusNodeIds = row === undefined ? [] : [resultId(row)];
     for (const nodeId of focusNodeIds) requireNode(nodes, nodeId);
     selected = supportClosure(explanation.graph, nodes, focusNodeIds);
   } else if (selector.kind === 'support') {

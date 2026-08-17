@@ -499,6 +499,52 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('returns a focused current or recorded conflict view with meaningful exit status', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-conflicts-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'status(mira, active). :- status(Person, active), status(Person, terminated).',
+      { opId: 'baseline' }
+    );
+    store.assert('default', 'status(mira, terminated).', { opId: 'later' });
+
+    const current = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'conflicts', 'mira'],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(current.status).toBe(2);
+    expect(JSON.parse(current.stdout)).toMatchObject({
+      status: 'violations',
+      focus: 'mira',
+      matchingViolationCount: 1,
+      clusterCount: 1,
+      clusters: [{ focus: 'mira', rows: [{ focusBinding: 'Person' }] }],
+    });
+
+    const recorded = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'conflicts',
+        'mira',
+        '--as-of-sequence',
+        '1',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(recorded.status).toBe(0);
+    expect(JSON.parse(recorded.stdout)).toMatchObject({
+      status: 'consistent',
+      focus: 'mira',
+      matchingViolationCount: 0,
+      clusterCount: 0,
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
   it('returns zero for a consistent constrained knowledge base', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-integrity-clean-'));
     const home = join(root, 'home');

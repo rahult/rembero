@@ -49,13 +49,14 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.17.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.18.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
           'explain_query',
           'recall_explain',
           'check_integrity',
+          'conflict_views',
           'history',
           'supersede_facts',
         ])
@@ -262,6 +263,32 @@ describe('MCP explanation surfaces', () => {
         ],
       });
 
+      const conflicts = await client.callTool({
+        name: 'conflict_views',
+        arguments: {
+          focus: 'bob',
+          maxViolations: 10,
+          graphSelector: { kind: 'result', row: 1 },
+        },
+      });
+      const conflictsText = conflicts.content.find((item) => item.type === 'text');
+      const conflictsPayload = JSON.parse(
+        conflictsText?.type === 'text' ? conflictsText.text : ''
+      );
+      expect(conflictsPayload).toMatchObject({
+        status: 'violations',
+        focus: 'bob',
+        matchingViolationCount: 1,
+        clusterCount: 1,
+        clusters: [
+          {
+            focus: 'bob',
+            rows: [{ focusBinding: 'X', bindings: { X: 'bob' } }],
+            graphSelection: { selector: { kind: 'result', row: 1 } },
+          },
+        ],
+      });
+
       const negated = await client.callTool({
         name: 'explain_query',
         arguments: { query: 'employee(X), \\+ suspended(X)' },
@@ -414,6 +441,62 @@ describe('MCP explanation surfaces', () => {
       expect(recordedPayload).toMatchObject({
         bindings: [{ Company: 'acme' }],
         recordedSnapshot: { sequence: historyPayload.events[0].sequence },
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('combines recorded snapshots, canonical focus, and graph selection for conflicts', async () => {
+    const store = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-mcp-recorded-conflicts-'))
+    );
+    store.assert(
+      'default',
+      `rembero_alias('Mira Patel', mira).
+       rembero_entity_position(active, 1, 0).
+       active('Mira Patel').
+       :- active(Person), suspended(Person).`,
+      { opId: 'recorded-conflict-baseline' }
+    );
+    store.assert('default', 'suspended(mira).', {
+      opId: 'recorded-conflict-later',
+    });
+    const server = createServer({
+      store,
+      llm: new ScriptedLlm([]),
+    });
+    const client = new Client({ name: 'rembero-recorded-conflict-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const response = await client.callTool({
+        name: 'conflict_views',
+        arguments: {
+          focus: "'Mira Patel'",
+          entityIdentity: 'canonical',
+          recordedSequence: 2,
+          graphSelector: { kind: 'result', row: 1 },
+        },
+      });
+      const responseText = response.content.find((item) => item.type === 'text');
+      const payload = JSON.parse(
+        responseText?.type === 'text' ? responseText.text : ''
+      );
+      expect(payload).toMatchObject({
+        status: 'violations',
+        focus: 'mira',
+        matchingViolationCount: 1,
+        recordedSnapshot: { sequence: 2, journalEntries: 2 },
+        clusters: [
+          {
+            focus: 'mira',
+            graphSelection: { selector: { kind: 'result', row: 1 } },
+            rows: [{ bindings: { Person: 'mira' } }],
+          },
+        ],
       });
     } finally {
       await client.close();

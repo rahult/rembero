@@ -122,6 +122,7 @@ export {
   buildExplanationGraph,
   explainKnowledge,
   type ClaimGraphNode,
+  type ConflictGraphNode,
   type EntityGraphNode,
   type ExplainKnowledgeOptions,
   type ExplainKnowledgeResult,
@@ -138,6 +139,15 @@ export {
   type SourcedProofStep,
   type SourcedQueryProof,
 } from './knowledge/graph.js';
+export {
+  inspectConflicts,
+  MAX_CONFLICT_FOCUS_BYTES,
+  type ConflictCluster,
+  type ConflictConstraint,
+  type ConflictViolation,
+  type ConflictViewOptions,
+  type ConflictViewResult,
+} from './knowledge/conflicts.js';
 export {
   MAX_GRAPH_NEIGHBOR_DEPTH,
   MAX_GRAPH_NODE_ID_BYTES,

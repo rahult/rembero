@@ -126,17 +126,26 @@ export interface ProofGraphNode {
   identityRewrites?: EntityRewrite[];
 }
 
+export interface ConflictGraphNode {
+  id: string;
+  kind: 'conflict';
+  focus: string | null;
+  violationCount: number;
+  constraintIds: string[];
+}
+
 export type ExplanationGraphNode =
   | ResultGraphNode
   | ClaimGraphNode
   | EntityGraphNode
   | AbsenceGraphNode
   | AggregateGraphNode
-  | ProofGraphNode;
+  | ProofGraphNode
+  | ConflictGraphNode;
 
 export interface ExplanationGraphEdge {
   id: string;
-  kind: 'answers' | 'because' | 'arg' | 'input' | 'witness' | 'proves';
+  kind: 'answers' | 'because' | 'arg' | 'input' | 'witness' | 'proves' | 'contains';
   from: string;
   to: string;
   position?: number;

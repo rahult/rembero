@@ -66,8 +66,8 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 ```
 
 Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
-`supersede_facts`, `query`, `explain_query`, `check_integrity`, `history`, `forget`,
-and `list_memories`.
+`supersede_facts`, `query`, `explain_query`, `check_integrity`, `conflict_views`,
+`history`, `forget`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -125,6 +125,8 @@ node dist/cli.js recall   "Who owns Atlas?" --schema-predicate-limit 48
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
 node dist/cli.js assert   ':- status(Person, active), status(Person, terminated).'
 node dist/cli.js check    --proof-limit 2 --max-violations 100
+node dist/cli.js conflicts mira # focused cross-policy conflict evidence
+node dist/cli.js conflicts mira --as-of-sequence 17 # exact recorded conflict view
 node dist/cli.js assert   'status(mira, terminated).' --integrity-mode strict
 node dist/cli.js assert   'status(mira, active).' --op-id change-123 # retry-safe
 node dist/cli.js supersede 'works_at(mira, initech).' \
@@ -171,6 +173,13 @@ authority or reordering authored goals. Checked-in selective-join and recursive-
 benchmarks require byte-identical rows and proofs, at least a 2x median speedup, and at
 least a 100x reduction in deterministic relation work. Run `npm run bench:engine`; see
 [the deterministic indexing contract](docs/ENGINE-INDEXING.md).
+
+Version 0.18 groups explicit integrity violations into focused personal conflict views.
+`rembero conflicts [focus]` and MCP `conflict_views` combine every policy violation for
+the same first alpha-stable constraint binding, with declaration provenance, fact proofs,
+stable cluster IDs, and selectable evidence graphs. Canonical aliases and exact recorded
+snapshots use the existing opt-in contracts; no conflict store or inferred subject schema
+is added. See [the conflict-view contract](docs/CONFLICT-VIEWS.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
