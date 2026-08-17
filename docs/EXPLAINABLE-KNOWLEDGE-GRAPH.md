@@ -4,6 +4,10 @@ Rembero's personal memory remains portable Datalog in `.dl` files. The graph is 
 deterministic projection of query results and their derivation proofs, not a second store
 that can drift from the facts.
 
+Version 0.32 also supports bounded entity/predicate browsing over explicit stored ground
+facts. It reuses claim/entity/argument shapes but never materializes rule conclusions;
+query-scoped explanation remains the authority for derived claims.
+
 ```bash
 rembero explain 'colleague(rahul, Who)'
 rembero recall-explain "Who are Rahul's colleagues?"

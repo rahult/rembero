@@ -48,7 +48,7 @@ The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `que
 `supersede_facts`, `what-if`, `what_if`, `why-not`, `why_not`, `topology`,
 `knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
 `plan_query_repair`, `audit-rules`, `audit_rules`, `search`, `search_knowledge`,
-`forget`, `list_memories`)
+`browse`, `browse_knowledge_graph`, `forget`, `list_memories`)
 work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
 
@@ -76,7 +76,7 @@ Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
 `plan_query_repair`, `audit_rules`, `search_knowledge`, `checkpoint_journal`,
-`list_checkpoints`, and `list_memories`.
+`browse_knowledge_graph`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -159,6 +159,7 @@ node dist/cli.js diff 17 23 --query 'status(mira, State)' # semantic + consequen
 node dist/cli.js repair 'eligible(bob)' # minimal verified assumptions/retractions
 node dist/cli.js audit-rules 'eligible' --direction upstream # proactive rule health
 node dist/cli.js search 'Doctor Chen' --kind fact # local lexical provenance search
+node dist/cli.js browse mira --browse-depth 2 # explicit entity neighborhood
 node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete support
 node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
@@ -290,6 +291,12 @@ durable source text. `search` returns fixed integer scores with explicit match r
 provenance, trust/identity projection, recorded views, and a result/clause/predicate/entity
 graph. It is lexical retrieval, not logical proof or vector similarity. See
 [the local-knowledge-search contract](docs/LOCAL-KNOWLEDGE-SEARCH.md).
+
+Version 0.32 browses the explicit stored personal graph without inventing a query.
+`browse` seeds by entity and/or predicate, expands a bounded fact hypergraph through
+shared entities, and returns claim/entity nodes, argument edges, provenance, aliases,
+trust, namespaces, and recorded views. Rules and inferred claims remain query-scoped. See
+[the explicit-graph-browse contract](docs/EXPLICIT-GRAPH-BROWSE.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

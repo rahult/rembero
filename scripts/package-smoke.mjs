@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, searchKnowledge, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, searchKnowledge, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "if (materialize(parseProgram('base(a). derived(X) :- base(X).')).filter((fact) => fact.derived).length !== 1) throw new Error('public proof-free materialization API failed'); " +
@@ -65,6 +65,8 @@ try {
         "if (repair.plans[0]?.assume[0] !== 'badge(bob).' || repairStore.clausesFor(['default']).length !== 2) throw new Error('public repair planning API failed'); " +
         "const localSearch = searchKnowledge(repairStore.clausesFor(['default']), 'eligible', repairStore.sourcesFor(['default']), { kinds: ['rule'] }); " +
         "if (localSearch.results[0]?.clause !== 'eligible(X) :- employee(X), badge(X).' || !localSearch.graph.edges.some((edge) => edge.kind === 'defines')) throw new Error('public local search API failed'); " +
+        "const browsed = browseKnowledgeGraph(repairStore.clausesFor(['default']), repairStore.sourcesFor(['default']), { focus: 'bob' }); " +
+        "if (browsed.selection.selectedClaims !== 1 || !browsed.graph.nodes.some((node) => node.kind === 'claim' && node.predicate === 'employee') || browsed.graph.nodes.some((node) => node.kind === 'claim' && node.predicate === 'eligible')) throw new Error('public explicit graph browse API failed'); " +
         "const aggregateRules = parseProgram('member(red, alice). member(red, bob). team_size(Team, Count) :- count(*) as Count where member(Team, Person).'); " +
         "const aggregateRuleRows = evaluate(aggregateRules, parseQuery('team_size(Team, Count)')); " +
         "if (!isAggregateRule(aggregateRules[2]) || aggregateRuleRows[0]?.Count?.value !== 2) throw new Error('public aggregate rule API failed'); " +
@@ -346,6 +348,20 @@ try {
       'eligible(X) :- employee(X), badge(X).'
   ) {
     throw new Error('packaged deterministic local search failed');
+  }
+  const repairBrowse = JSON.parse(
+    run(process.execPath, [installedCli, 'browse', 'bob'], {
+      cwd: directory,
+      env: repairEnv,
+    })
+  );
+  if (
+    repairBrowse.selection?.selectedClaims !== 1 ||
+    !repairBrowse.graph?.nodes?.some(
+      ({ kind, predicate }) => kind === 'claim' && predicate === 'employee'
+    )
+  ) {
+    throw new Error('packaged explicit knowledge graph browse failed');
   }
   const extensionPath = run(process.execPath, [installedCli, 'sqlite-build'], {
     cwd: directory,
@@ -653,7 +669,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

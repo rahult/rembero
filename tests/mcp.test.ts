@@ -51,7 +51,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.31.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.32.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -66,6 +66,7 @@ describe('MCP explanation surfaces', () => {
           'plan_query_repair',
           'audit_rules',
           'search_knowledge',
+          'browse_knowledge_graph',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -210,6 +211,35 @@ describe('MCP explanation surfaces', () => {
           },
         ],
       });
+
+      const browsed = await client.callTool({
+        name: 'browse_knowledge_graph',
+        arguments: { focus: 'rahul', depth: 1, maxClaims: 10 },
+      });
+      const browsedText = browsed.content.find((item) => item.type === 'text');
+      expect(
+        JSON.parse(browsedText?.type === 'text' ? browsedText.text : '')
+      ).toMatchObject({
+        status: 'matches',
+        selection: { focus: 'rahul', selectedClaims: 1 },
+        graph: {
+          nodes: expect.arrayContaining([
+            expect.objectContaining({ kind: 'claim', predicate: 'pet' }),
+          ]),
+        },
+      });
+      const browsedPayload = JSON.parse(
+        browsedText?.type === 'text' ? browsedText.text : ''
+      );
+      const petClaim = browsedPayload.graph.nodes.find(
+        (node: { kind: string; predicate?: string }) =>
+          node.kind === 'claim' && node.predicate === 'pet'
+      );
+      expect(petClaim.sources).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ opId: 'mcp-source' }),
+        ])
+      );
 
       const asserted = await client.callTool({
         name: 'assert_facts',

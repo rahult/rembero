@@ -37,6 +37,7 @@ import {
   repairPlanTool,
   auditRulesTool,
   searchKnowledgeTool,
+  browseKnowledgeGraphTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -62,6 +63,12 @@ import {
   MAX_REPAIR_STEPS,
 } from '../knowledge/repair.js';
 import { MAX_KNOWLEDGE_SEARCH_LIMIT } from '../knowledge/search.js';
+import {
+  MAX_BROWSE_ENTITY_FOCUS_BYTES,
+  MAX_BROWSE_GRAPH_CLAIMS,
+  MAX_BROWSE_GRAPH_DEPTH,
+  MAX_BROWSE_PREDICATE_FOCUS_BYTES,
+} from '../knowledge/browse.js';
 import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
@@ -181,6 +188,33 @@ const knowledgeSearchKindsField = z
   .max(3)
   .optional()
   .describe('Optional fact, rule, or constraint filters');
+const browseEntityFocusField = z
+  .union([
+    z.string().max(MAX_BROWSE_ENTITY_FOCUS_BYTES),
+    z.number().finite(),
+  ])
+  .optional()
+  .describe('Optional exact atom string or numeric entity seed');
+const browsePredicateField = z
+  .string()
+  .min(1)
+  .max(MAX_BROWSE_PREDICATE_FOCUS_BYTES)
+  .optional()
+  .describe("Optional seed predicate as 'name' or 'name/arity'");
+const browseDepthField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_BROWSE_GRAPH_DEPTH)
+  .optional()
+  .describe('Explicit fact-neighborhood depth (default: 1)');
+const browseClaimLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_BROWSE_GRAPH_CLAIMS)
+  .optional()
+  .describe('Maximum complete explicit claims (default: 100)');
 const conflictFocusField = z
   .string()
   .min(1)
@@ -354,7 +388,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.31.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.32.0' });
 
   server.registerTool(
     'remember',
@@ -785,6 +819,52 @@ export function createServer(deps: PipelineDeps): McpServer {
             namespaces,
             limit,
             kinds,
+            entityIdentity,
+            trustMode,
+            recordedSequence,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'browse_knowledge_graph',
+    {
+      title: 'Browse the explicit personal knowledge graph',
+      description:
+        'Browse a bounded entity- or predicate-seeded hypergraph derived only from explicit stored ground facts. Returns claim/entity nodes, argument edges, provenance, aliases, trust, and recorded-view metadata. Rules and inferred claims require query/explain; no graph sidecar or LLM is used.',
+      inputSchema: {
+        focus: browseEntityFocusField,
+        predicate: browsePredicateField,
+        depth: browseDepthField,
+        maxClaims: browseClaimLimitField,
+        namespaces: namespacesField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({
+      focus,
+      predicate,
+      depth,
+      maxClaims,
+      namespaces,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+    }) => {
+      try {
+        return asContent(
+          browseKnowledgeGraphTool(resolvedDeps, {
+            focus,
+            predicate,
+            depth,
+            maxClaims,
+            namespaces,
             entityIdentity,
             trustMode,
             recordedSequence,

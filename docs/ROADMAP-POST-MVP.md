@@ -373,6 +373,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    MCP, namespace, kind/limit/truncation, package, input/source/clause/output bounds, and
    explicit no-match behavior work without an LLM while never claiming semantic proof.
 
+## Phase 35 — Bounded explicit personal graph browse  *(v0.32)*
+
+1. **Complete — stored-fact hypergraph authority**: only explicit projected ground facts
+   become claim nodes; every argument becomes an entity edge with durable provenance,
+   aliases, trust, temporal values, and no rule-derived claim materialization.
+2. **Complete — complete bounded neighborhoods**: entity and/or predicate seeds expand by
+   shared entities at exact depth, failing before partial output when claim, node, fact,
+   focus, or namespace bounds are exceeded.
+3. **Complete — local interface parity**: current/recorded library, CLI, MCP, atom/numeric
+   focus, identity, tentative/accepted witnesses, multi-namespace sources, package, and
+   explicit no-match behavior share the existing explanation graph IDs and edge shapes.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

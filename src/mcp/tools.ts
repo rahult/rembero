@@ -66,6 +66,10 @@ import {
   type KnowledgeSearchClauseKind,
   type KnowledgeSearchResult,
 } from '../knowledge/search.js';
+import {
+  browseKnowledgeGraph,
+  type BrowseKnowledgeGraphResult,
+} from '../knowledge/browse.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -774,6 +778,46 @@ export function searchKnowledgeTool(
   const result = searchKnowledge(recorded.clauses, args.text, recorded.sources, {
     ...(args.limit === undefined ? {} : { limit: args.limit }),
     ...(args.kinds === undefined ? {} : { kinds: args.kinds }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
+  });
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
+}
+
+export function browseKnowledgeGraphTool(
+  deps: StoreToolDeps,
+  args: {
+    focus?: string | number;
+    predicate?: string;
+    depth?: number;
+    maxClaims?: number;
+    namespaces?: string[] | '*';
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+  }
+): BrowseKnowledgeGraphResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  if (typeof args.focus === 'string') {
+    assertBoundedInput(args.focus, 'knowledge graph entity focus');
+  }
+  if (args.predicate !== undefined) {
+    assertBoundedInput(args.predicate, 'knowledge graph predicate focus');
+  }
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = browseKnowledgeGraph(recorded.clauses, recorded.sources, {
+    ...(args.focus === undefined ? {} : { focus: args.focus }),
+    ...(args.predicate === undefined ? {} : { predicate: args.predicate }),
+    ...(args.depth === undefined ? {} : { depth: args.depth }),
+    ...(args.maxClaims === undefined ? {} : { maxClaims: args.maxClaims }),
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
     ...(trustMode === 'accepted' ? {} : { trustMode }),
   });

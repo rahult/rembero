@@ -284,6 +284,20 @@ export {
   type KnowledgeSearchResult,
 } from './knowledge/search.js';
 export {
+  browseKnowledgeGraph,
+  DEFAULT_BROWSE_GRAPH_DEPTH,
+  MAX_BROWSE_GRAPH_DEPTH,
+  DEFAULT_BROWSE_GRAPH_CLAIMS,
+  MAX_BROWSE_GRAPH_CLAIMS,
+  MAX_BROWSE_GRAPH_NODES,
+  MAX_BROWSE_GRAPH_FACTS,
+  MAX_BROWSE_PREDICATE_FOCUS_BYTES,
+  MAX_BROWSE_ENTITY_FOCUS_BYTES,
+  type BrowseKnowledgeGraphOptions,
+  type BrowseKnowledgeGraphSelection,
+  type BrowseKnowledgeGraphResult,
+} from './knowledge/browse.js';
+export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,
   MAX_TENTATIVE_CLAUSE_BYTES,

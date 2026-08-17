@@ -44,6 +44,10 @@ import {
   type KnowledgeSearchClauseKind,
 } from './knowledge/search.js';
 import {
+  MAX_BROWSE_GRAPH_CLAIMS,
+  MAX_BROWSE_GRAPH_DEPTH,
+} from './knowledge/browse.js';
+import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
@@ -81,6 +85,7 @@ import {
   repairPlanTool,
   auditRulesTool,
   searchKnowledgeTool,
+  browseKnowledgeGraphTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -124,6 +129,7 @@ Usage:
   rembero repair <query>                 Propose minimal verified fact-only query repairs
   rembero audit-rules [predicate]        Audit rule health with deterministic evidence
   rembero search <text>                  Search facts, rules, policies, and sources locally
+  rembero browse [entity]                Browse a bounded explicit personal graph
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -141,7 +147,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/audit-rules/search/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/audit-rules/search/browse/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -165,6 +171,10 @@ Options:
       --search-states <n> Repair search states (default: 128; max: ${MAX_REPAIR_SEARCH_STATES})
       --search-limit <n>  Local search results (default: 20; max: ${MAX_KNOWLEDGE_SEARCH_LIMIT})
       --kind <kind>       Local search kind: fact, rule, or constraint; repeatable
+      --predicate <name>  Browse seed predicate name or name/arity
+      --browse-depth <n>  Explicit graph depth (default: 1; max: ${MAX_BROWSE_GRAPH_DEPTH})
+      --claim-limit <n>   Explicit graph claims (default: 100; max: ${MAX_BROWSE_GRAPH_CLAIMS})
+      --focus-number      Interpret browse entity focus as a numeric term
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -228,6 +238,10 @@ interface ParsedArgs {
   searchStates?: string;
   searchLimit?: string;
   searchKinds: string[];
+  browsePredicate?: string;
+  browseDepth?: string;
+  claimLimit?: string;
+  focusNumber: boolean;
   at?: string;
 }
 
@@ -242,6 +256,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     assumptions: [],
     without: [],
     searchKinds: [],
+    focusNumber: false,
   };
   const valueAfter = (index: number, flag: string): string => {
     const value = argv[index + 1];
@@ -347,6 +362,17 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--kind') {
       parsed.searchKinds.push(valueAfter(i, arg));
       i += 1;
+    } else if (arg === '--predicate') {
+      parsed.browsePredicate = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--browse-depth') {
+      parsed.browseDepth = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--claim-limit') {
+      parsed.claimLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--focus-number') {
+      parsed.focusNumber = true;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
       i += 1;
@@ -680,6 +706,7 @@ async function main(): Promise<void> {
       'repair',
       'audit-rules',
       'search',
+      'browse',
       'list',
     ].includes(command ?? '')
   ) {
@@ -735,6 +762,15 @@ async function main(): Promise<void> {
   ) {
     throw new Error('search limits and kinds are available only for search');
   }
+  if (
+    (args.browsePredicate !== undefined ||
+      args.browseDepth !== undefined ||
+      args.claimLimit !== undefined ||
+      args.focusNumber) &&
+    command !== 'browse'
+  ) {
+    throw new Error('browse options are available only for browse');
+  }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
   }
@@ -748,10 +784,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'search', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, search, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, search, browse, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1180,6 +1216,50 @@ async function main(): Promise<void> {
                 ),
               }),
           ...(kinds === undefined ? {} : { kinds }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'browse': {
+      let focus: string | number | undefined = text.length === 0 ? undefined : text;
+      if (args.focusNumber) {
+        if (text.length === 0) throw new Error('--focus-number requires an entity focus');
+        const numeric = Number(text);
+        if (!Number.isFinite(numeric)) {
+          throw new Error('numeric browse focus must be finite');
+        }
+        focus = numeric;
+      }
+      const result = browseKnowledgeGraphTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          focus,
+          predicate: args.browsePredicate,
+          namespaces,
+          ...(args.browseDepth === undefined
+            ? {}
+            : {
+                depth: integerOption(
+                  args.browseDepth,
+                  0,
+                  'knowledge graph browse depth'
+                ),
+              }),
+          ...(args.claimLimit === undefined
+            ? {}
+            : {
+                maxClaims: integerOption(
+                  args.claimLimit,
+                  0,
+                  'knowledge graph claim limit'
+                ),
+              }),
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
       );

@@ -31,6 +31,7 @@ import {
   repairPlanTool,
   auditRulesTool,
   searchKnowledgeTool,
+  browseKnowledgeGraphTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -691,6 +692,46 @@ describe('MCP tool handlers', () => {
     ).toMatchObject({
       status: 'no_match',
       results: [],
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
+  it('browses current and recorded explicit graph neighborhoods through the tool boundary', () => {
+    store.assert('default', 'works_at(mira, acme).', {
+      opId: 'mira-source',
+    });
+    store.assert('default', 'works_at(rahul, acme).', {
+      opId: 'rahul-source',
+    });
+
+    expect(
+      browseKnowledgeGraphTool(
+        { store },
+        { focus: 'acme', depth: 1 }
+      )
+    ).toMatchObject({
+      status: 'matches',
+      selection: { selectedClaims: 2, totalGroundFacts: 2 },
+      graph: {
+        nodes: expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'claim',
+            values: ['mira', 'acme'],
+          }),
+          expect.objectContaining({
+            kind: 'claim',
+            values: ['rahul', 'acme'],
+          }),
+        ]),
+      },
+    });
+    expect(
+      browseKnowledgeGraphTool(
+        { store },
+        { focus: 'acme', recordedSequence: 1 }
+      )
+    ).toMatchObject({
+      selection: { selectedClaims: 1, totalGroundFacts: 1 },
       recordedSnapshot: { sequence: 1, journalEntries: 2 },
     });
   });

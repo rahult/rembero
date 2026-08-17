@@ -653,6 +653,50 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('browses an explicit entity neighborhood without an LLM', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-browse-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('default', 'works_at(mira, acme). works_at(rahul, acme).', {
+      opId: 'employment',
+    });
+    store.assert('default', 'lives_in(rahul, melbourne).', {
+      opId: 'home',
+    });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'browse',
+        'mira',
+        '--browse-depth',
+        '3',
+        '--claim-limit',
+        '10',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'matches',
+      selection: {
+        focus: 'mira',
+        depth: 3,
+        selectedClaims: 3,
+      },
+      graph: {
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ kind: 'claim', predicate: 'lives_in' }),
+        ]),
+      },
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');
