@@ -307,6 +307,12 @@ recorded coordinates; `verify-bundle` checks canonical clauses, ordering, lineag
 and SHA-256 without importing anything. See
 [the knowledge-bundle contract](docs/KNOWLEDGE-BUNDLES.md).
 
+Version 0.34 lets durable source vocabulary influence recall schema selection locally.
+Predicate groups gain bounded source-word/phrase scores before dependency closure, while
+source statements never enter the model prompt. Pruning diagnostics expose only the
+selected predicate signatures that matched provenance. See
+[the provenance-aware-recall contract](docs/PROVENANCE-AWARE-RECALL.md).
+
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
 complete selected namespaces. Empty or unanswerable results from a partial slice trigger

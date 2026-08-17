@@ -965,6 +965,7 @@ export async function retrieveQuestion(
   let initialSelection: RecallSchemaSelection;
   try {
     initialSelection = selectRecallSchema(clauses, question, {
+      sourceIndex: view.sources,
       ...(schemaPredicateLimit === undefined
         ? {}
         : { predicateLimit: schemaPredicateLimit }),
@@ -974,6 +975,7 @@ export async function retrieveQuestion(
     if (!(error instanceof RecallSchemaBudgetError)) throw error;
     try {
       initialSelection = selectRecallSchema(clauses, question, {
+        sourceIndex: view.sources,
         predicateLimit: MAX_RECALL_SCHEMA_PREDICATES,
         ...(schemaByteLimit === undefined ? {} : { byteLimit: schemaByteLimit }),
       });
@@ -1161,6 +1163,7 @@ export async function retrieveQuestion(
   ) {
     try {
       finalSelection = selectRecallSchema(clauses, question, {
+        sourceIndex: view.sources,
         predicateLimit: finalSelection.totalPredicates,
         ...(schemaByteLimit === undefined ? {} : { byteLimit: schemaByteLimit }),
       });

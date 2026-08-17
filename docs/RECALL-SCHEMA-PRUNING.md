@@ -110,6 +110,11 @@ Lexical ranking is intentionally the v0.7 baseline. Embedding-assisted ranking r
 future option only if the checked-in scale eval demonstrates a meaningful recall gap that
 justifies its privacy and reproducibility cost.
 
+Version 0.34 adds one deterministic improvement first: bounded durable source words and
+exact phrases contribute local ranking points without entering the model prompt.
+`sourceMatchedPredicates` exposes only the selected predicate signatures that received
+that signal.
+
 Version 0.19 adds a separate bounded safeguard after a query returns rows. High-confidence
 same-anchor predicate competition or omitted named temporal context triggers one review;
 ordinary grounded answers remain one-call. This does not change schema selection or the

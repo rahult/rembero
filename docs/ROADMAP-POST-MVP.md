@@ -397,6 +397,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    CLI export/verify, raw MCP transport, multi-namespace duplicates, checkpointed stores,
    empty bundles, tamper tests, package installs, and 16 MiB output limits share one format.
 
+## Phase 37 — Provenance-aware recall schema ranking  *(v0.34)*
+
+1. **Complete — bounded local source signals**: redacted durable source statements add
+   fixed exact-word and phrase scores within 4,096 characters per predicate, composed
+   with existing predicate, fact, rule, temporal, and typo ranking.
+2. **Complete — no prompt leakage or semantic shortcut**: source text changes selection
+   only; prompts still contain predicate names, selected rules, and syntax sample facts,
+   while complete evaluation and dependency closure remain authoritative.
+3. **Complete — inspectable recall parity**: source-matched selected signatures appear in
+   pruning diagnostics across widening, trust, identity, recorded views, scale tests,
+   library/package APIs, and existing question/schema/output bounds.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

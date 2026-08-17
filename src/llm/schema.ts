@@ -2,12 +2,14 @@ import {
   type Clause,
   type Goal,
   type Term,
+  canonicalKey,
   isComparison,
   isIntegrityConstraint,
   isNegation,
   predKey,
   serializeClause,
 } from '../engine/index.js';
+import type { MemorySource } from '../store/store.js';
 import { isEntityMetadataDeclaration } from '../knowledge/identity.js';
 import { serializePromptClause } from './prompts.js';
 
@@ -18,12 +20,15 @@ export const MAX_RECALL_SCHEMA_BYTES = 48 * 1024;
 export const MAX_RECALL_SCHEMA_CLAUSES = 100_000;
 export const MAX_RECALL_SCHEMA_CANDIDATES = 10_000;
 export const MAX_RECALL_QUESTION_WORDS = 256;
+export const MAX_RECALL_SOURCE_RANKING_CHARS = 4_096;
 const MAX_RANKING_WORD_CHARS = 64;
 const MAX_RANKING_TERM_CHARS = 256;
 
 export interface RecallSchemaOptions {
   predicateLimit?: number;
   byteLimit?: number;
+  /** Local-only durable provenance used for ranking; never copied into the prompt. */
+  sourceIndex?: ReadonlyMap<string, MemorySource[]>;
 }
 
 export interface RecallSchemaDiagnostics {
@@ -34,6 +39,7 @@ export interface RecallSchemaDiagnostics {
   schemaComplete: boolean;
   summaryBytes: number;
   omittedRules: number;
+  sourceMatchedPredicates: string[];
 }
 
 export interface RecallSchemaSelection extends RecallSchemaDiagnostics {
@@ -160,8 +166,9 @@ function goalPredicate(goal: Goal): { predicate: string; arity: number } | undef
 function groupScore(
   group: PredicateGroup,
   question: string,
-  questionWords: ReadonlySet<string>
-): number {
+  questionWords: ReadonlySet<string>,
+  sourceIndex: ReadonlyMap<string, MemorySource[]> | undefined
+): { total: number; source: number } {
   const predicateWords = recallWords(group.predicate);
   let score = overlapCount(predicateWords, questionWords) * 100;
   if (question.toLowerCase().includes(group.predicate.toLowerCase())) score += 200;
@@ -208,7 +215,31 @@ function groupScore(
   score += overlapCount(ruleWords, questionWords) * 10;
 
   if (TEMPORAL_INTENT.test(question) && group.predicate.endsWith('_until')) score += 80;
-  return score;
+
+  let sourceScore = 0;
+  if (sourceIndex !== undefined) {
+    let remaining = MAX_RECALL_SOURCE_RANKING_CHARS;
+    const sourceParts: string[] = [];
+    for (const clause of [...group.facts, ...group.rules]) {
+      for (const source of sourceIndex.get(canonicalKey(clause)) ?? []) {
+        if (source.text === undefined || remaining <= 0) continue;
+        const selected = source.text.slice(0, remaining);
+        sourceParts.push(selected);
+        remaining -= selected.length;
+      }
+    }
+    const sourceText = sourceParts.join(' ');
+    const sourceWords = new Set(recallWords(sourceText));
+    sourceScore += overlapCount(sourceWords, questionWords) * 40;
+    const normalizedQuestion = question.trim().toLowerCase();
+    if (
+      normalizedQuestion.length > 0 &&
+      sourceText.toLowerCase().includes(normalizedQuestion)
+    ) {
+      sourceScore += 120;
+    }
+  }
+  return { total: score + sourceScore, source: sourceScore };
 }
 
 function dependenciesFor(group: PredicateGroup, groups: ReadonlyMap<string, PredicateGroup>): string[] {
@@ -274,6 +305,7 @@ function diagnostics(selection: RecallSchemaSelection): RecallSchemaDiagnostics 
     schemaComplete: selection.schemaComplete,
     summaryBytes: selection.summaryBytes,
     omittedRules: selection.omittedRules,
+    sourceMatchedPredicates: [...selection.sourceMatchedPredicates],
   };
 }
 
@@ -321,6 +353,7 @@ export function selectRecallSchema(
       schemaComplete: true,
       summaryBytes: Buffer.byteLength(summary, 'utf8'),
       omittedRules: 0,
+      sourceMatchedPredicates: [],
       pruned: false,
     };
   }
@@ -333,11 +366,11 @@ export function selectRecallSchema(
   const scores = new Map(
     [...groups.values()].map((group) => [
       group.key,
-      groupScore(group, question, questionWords),
+      groupScore(group, question, questionWords, options.sourceIndex),
     ])
   );
   const ranked = [...groups.values()].sort((left, right) => {
-    const scoreDifference = scores.get(right.key)! - scores.get(left.key)!;
+    const scoreDifference = scores.get(right.key)!.total - scores.get(left.key)!.total;
     return scoreDifference || compareText(left.key, right.key);
   });
   const includeTemporal = TEMPORAL_INTENT.test(question);
@@ -347,7 +380,7 @@ export function selectRecallSchema(
     const closure = selectionClosure(candidate.key, groups, includeTemporal);
     const additions = [...closure].filter((key) => !selected.has(key));
     if (selected.size + additions.length > predicateLimit) {
-      if (selected.size === 0 && scores.get(candidate.key)! > 0) {
+      if (selected.size === 0 && scores.get(candidate.key)!.total > 0) {
         throw new RecallSchemaBudgetError(
           `relevant predicate dependency group exceeds recall schema limit ${predicateLimit}`
         );
@@ -365,6 +398,9 @@ export function selectRecallSchema(
   const selectedPredicates = ranked
     .map((group) => group.key)
     .filter((key) => selected.has(key));
+  const sourceMatchedPredicates = selectedPredicates.filter(
+    (key) => scores.get(key)!.source > 0
+  );
   const lines: string[] = [
     `% selected predicates (${selectedPredicates.length} of ${groups.size}; ranked locally for this question)`,
     ...selectedPredicates,
@@ -455,6 +491,7 @@ export function selectRecallSchema(
     schemaComplete: selectedPredicates.length === groups.size && omittedRules === 0,
     summaryBytes,
     omittedRules,
+    sourceMatchedPredicates,
     pruned: selectedPredicates.length < groups.size,
   };
 }

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { parseProgram } from '../src/engine/index.js';
+import { canonicalKey, parseProgram } from '../src/engine/index.js';
 import { buildSchemaSummary } from '../src/llm/prompts.js';
 import {
   DEFAULT_RECALL_SCHEMA_BYTES,
   MAX_RECALL_SCHEMA_BYTES,
   MAX_RECALL_QUESTION_WORDS,
   MAX_RECALL_SCHEMA_PREDICATES,
+  MAX_RECALL_SOURCE_RANKING_CHARS,
   selectRecallSchema,
 } from '../src/llm/schema.js';
 
@@ -51,6 +52,59 @@ describe('deterministic recall schema pruning', () => {
     expect(selection.summary).not.toContain('% e.g. works_at(carol, globex).');
     expect(selection.summaryBytes).toBeLessThanOrEqual(DEFAULT_RECALL_SCHEMA_BYTES);
     expect(selection.catalogComplete).toBe(true);
+  });
+
+  it('uses durable source vocabulary locally without copying it into the prompt', () => {
+    const clauses = parseProgram(`
+      atlas_owner(atlas, rahul).
+      fact_z(atlas, rust).
+    `);
+    const question = 'What technology stack does Atlas use?';
+    const withoutSources = selectRecallSchema(clauses, question, {
+      predicateLimit: 1,
+    });
+    expect(withoutSources.selectedPredicates).toEqual(['atlas_owner/2']);
+
+    const sourceIndex = new Map([
+      [
+        canonicalKey(clauses[1]),
+        [
+          {
+            namespace: 'default',
+            opId: 'technology-source',
+            ts: '2026-08-17T00:00:00.000Z',
+            text: question,
+          },
+        ],
+      ],
+    ]);
+    const withSources = selectRecallSchema(clauses, question, {
+      predicateLimit: 1,
+      sourceIndex,
+    });
+    expect(withSources.selectedPredicates).toEqual(['fact_z/2']);
+    expect(withSources.sourceMatchedPredicates).toEqual(['fact_z/2']);
+    expect(withSources.summary).toContain('% e.g. fact_z(atlas, rust).');
+    expect(withSources.summary).not.toContain('technology stack does Atlas use');
+
+    const beyondBound = new Map([
+      [
+        canonicalKey(clauses[1]),
+        [
+          {
+            namespace: 'default',
+            opId: 'bounded-source',
+            ts: '2026-08-17T00:00:00.000Z',
+            text: `${'x'.repeat(MAX_RECALL_SOURCE_RANKING_CHARS)} hiddenneedle`,
+          },
+        ],
+      ],
+    ]);
+    const bounded = selectRecallSchema(clauses, 'hiddenneedle', {
+      predicateLimit: 1,
+      sourceIndex: beyondBound,
+    });
+    expect(bounded.sourceMatchedPredicates).toEqual([]);
   });
 
   it('includes transitive rule dependencies for a selected derived predicate', () => {

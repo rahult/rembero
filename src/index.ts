@@ -93,6 +93,7 @@ export {
   MAX_RECALL_SCHEMA_CLAUSES,
   MAX_RECALL_SCHEMA_PREDICATES,
   MAX_RECALL_QUESTION_WORDS,
+  MAX_RECALL_SOURCE_RANKING_CHARS,
   RecallSchemaBudgetError,
   type RecallSchemaDiagnostics,
   type RecallSchemaOptions,

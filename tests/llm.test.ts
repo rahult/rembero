@@ -765,6 +765,86 @@ describe('recallQuestion', () => {
     expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThan(64 * 1024);
   });
 
+  it('ranks recall schema by local source vocabulary without sending source text', async () => {
+    const sourced = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-source-rank-'))
+    );
+    sourced.assert('default', 'atlas_owner(atlas, rahul).', {
+      opId: 'owner-source',
+    });
+    sourced.assert('default', 'fact_z(atlas, rust).', {
+      opId: 'technology-source',
+      sourceText: 'What technology stack does Atlas use?',
+    });
+    const llm = new ScriptedLlm([
+      '?- fact_z(atlas, Technology).',
+      '?- fact_z(atlas, Technology).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: sourced, llm, recallSchemaPredicateLimit: 1 },
+      'What technology stack does Atlas use?'
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      bindings: [{ Technology: 'rust' }],
+      pruning: {
+        selectedPredicates: ['fact_z/2'],
+        sourceMatchedPredicates: ['fact_z/2'],
+      },
+    });
+    const prompt = llm.calls[0][0].content;
+    expect(prompt).toContain('% e.g. fact_z(atlas, rust).');
+    expect(prompt).not.toContain('What technology stack does Atlas use?');
+  });
+
+  it('composes provenance ranking with canonical identity projection', async () => {
+    const sourced = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-source-identity-'))
+    );
+    sourced.assert('default', 'mira_owner(mira, rahul).', {
+      opId: 'owner-source',
+    });
+    sourced.assert(
+      'default',
+      `rembero_alias('Mira Patel', mira).
+       rembero_entity_position(fact_z, 2, 0).
+       fact_z('Mira Patel', rust).`,
+      {
+        opId: 'technology-source',
+        sourceText: 'What technology stack does Mira Patel use?',
+      }
+    );
+    const llm = new ScriptedLlm([
+      '?- fact_z(mira, Technology).',
+      '?- fact_z(mira, Technology).',
+    ]);
+
+    const result = await retrieveQuestion(
+      {
+        store: sourced,
+        llm,
+        recallSchemaPredicateLimit: 1,
+        entityIdentity: 'canonical',
+      },
+      'What technology stack does Mira Patel use?'
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      bindings: [{ Technology: 'rust' }],
+      pruning: {
+        selectedPredicates: ['fact_z/2'],
+        sourceMatchedPredicates: ['fact_z/2'],
+      },
+    });
+    const prompt = llm.calls[0][0].content;
+    expect(prompt).toContain('% e.g. fact_z(mira, rust).');
+    expect(prompt).not.toContain('Mira Patel');
+    expect(prompt).not.toContain('technology stack');
+  });
+
   it('keeps derived-rule dependencies in a pruned recall-explain path', async () => {
     const scaled = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-recall-derived-')));
     const noise = Array.from(
