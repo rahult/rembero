@@ -51,7 +51,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.34.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.35.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -69,6 +69,7 @@ describe('MCP explanation surfaces', () => {
           'browse_knowledge_graph',
           'export_knowledge_bundle',
           'verify_knowledge_bundle',
+          'run_knowledge_checks',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -274,6 +275,37 @@ describe('MCP explanation surfaces', () => {
           verifiedBundleText?.type === 'text' ? verifiedBundleText.text : ''
         )
       ).toMatchObject({ valid: true, clauseCount: 1, sourceCount: 1 });
+
+      const suite = JSON.stringify({
+        version: 1,
+        checks: [
+          {
+            name: 'pet remembered',
+            query: 'pet(rahul, Name)',
+            expect: {
+              kind: 'rows',
+              order: 'exact',
+              rows: [{ Name: 'luna' }],
+            },
+          },
+          {
+            name: 'no dragon',
+            query: 'dragon(Name)',
+            expect: { kind: 'empty' },
+          },
+        ],
+      });
+      const checked = await client.callTool({
+        name: 'run_knowledge_checks',
+        arguments: { suite, recordedSequence: 1 },
+      });
+      const checkedText = checked.content.find((item) => item.type === 'text');
+      expect(JSON.parse(checkedText?.type === 'text' ? checkedText.text : '')).toMatchObject({
+        status: 'passed',
+        checkCount: 2,
+        passedCount: 2,
+        recordedSnapshot: { sequence: 1 },
+      });
 
       const asserted = await client.callTool({
         name: 'assert_facts',

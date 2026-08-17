@@ -316,6 +316,22 @@ export {
   type KnowledgeBundleVerification,
 } from './knowledge/bundle.js';
 export {
+  parseKnowledgeCheckSuite,
+  runKnowledgeChecks,
+  KNOWLEDGE_CHECK_SUITE_VERSION,
+  MAX_KNOWLEDGE_CHECK_SUITE_BYTES,
+  MAX_KNOWLEDGE_CHECKS,
+  MAX_KNOWLEDGE_CHECK_NAME_BYTES,
+  MAX_KNOWLEDGE_CHECK_EXPECTED_ROWS,
+  MAX_KNOWLEDGE_CHECK_BINDINGS,
+  type KnowledgeCheckExpectation,
+  type KnowledgeCheck,
+  type KnowledgeCheckSuite,
+  type KnowledgeCheckResult,
+  type RunKnowledgeChecksOptions,
+  type KnowledgeCheckSuiteResult,
+} from './knowledge/checks.js';
+export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,
   MAX_TENTATIVE_CLAUSE_BYTES,

@@ -409,6 +409,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    pruning diagnostics across widening, trust, identity, recorded views, scale tests,
    library/package APIs, and existing question/schema/output bounds.
 
+## Phase 38 — Portable deterministic knowledge checks  *(v0.35)*
+
+1. **Complete — bounded suite contract**: standalone JSON v1 carries up to 64 unique named
+   queries expecting empty, non-empty, exact ordered rows, or duplicate-free row sets with
+   canonical serialized binding values and aggregate row/name/input bounds.
+2. **Complete — evidence-backed regression failure**: compact passes and rich failures
+   expose actual/missing/unexpected rows, pure order mismatch, query proofs/graphs, or
+   complete why-not blockers without storing tests or invoking an LLM.
+3. **Complete — CI and historical parity**: current/recorded library, regular-file CLI exit
+   `2`, MCP, trust, identity, namespaces, proof limits, optional passing evidence, package,
+   malformed-suite, and 16 MiB result boundaries share one immutable execution view.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

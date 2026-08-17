@@ -45,6 +45,7 @@ import {
   browseKnowledgeGraphTool,
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
+  runKnowledgeChecksTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -80,6 +81,7 @@ import {
   MAX_KNOWLEDGE_BUNDLE_BYTES,
   serializeKnowledgeBundle,
 } from '../knowledge/bundle.js';
+import { MAX_KNOWLEDGE_CHECK_SUITE_BYTES } from '../knowledge/checks.js';
 import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
@@ -404,7 +406,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.34.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.35.0' });
 
   server.registerTool(
     'remember',
@@ -884,6 +886,52 @@ export function createServer(deps: PipelineDeps): McpServer {
             entityIdentity,
             trustMode,
             recordedSequence,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'run_knowledge_checks',
+    {
+      title: 'Run deterministic knowledge regression suite',
+      description:
+        'Run a bounded JSON v1 suite of named empty, nonempty, exact-row, or set-row Datalog expectations against one current or recorded view. Passing checks stay compact by default; failures include row deltas plus proof or why-not evidence. No test metadata is stored and no LLM or mutation is used.',
+      inputSchema: {
+        suite: z
+          .string()
+          .max(MAX_KNOWLEDGE_CHECK_SUITE_BYTES)
+          .describe('Serialized knowledge check suite JSON'),
+        namespaces: namespacesField,
+        proofLimit: proofLimitField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+        includePassingEvidence: z.boolean().optional(),
+      },
+    },
+    async ({
+      suite,
+      namespaces,
+      proofLimit,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+      includePassingEvidence,
+    }) => {
+      try {
+        return asContent(
+          runKnowledgeChecksTool(resolvedDeps, {
+            suite,
+            namespaces,
+            proofLimit,
+            entityIdentity,
+            trustMode,
+            recordedSequence,
+            includePassingEvidence,
           })
         );
       } catch (e) {

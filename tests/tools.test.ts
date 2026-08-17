@@ -34,6 +34,7 @@ import {
   browseKnowledgeGraphTool,
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
+  runKnowledgeChecksTool,
 } from '../src/mcp/tools.js';
 import { serializeKnowledgeBundle } from '../src/knowledge/bundle.js';
 
@@ -766,6 +767,40 @@ describe('MCP tool handlers', () => {
         { namespace: 'first', clauses: [{ clause: 'item(a).' }] },
         { namespace: 'second', clauses: [] },
       ],
+    });
+  });
+
+  it('runs current and recorded knowledge suites through the tool boundary', () => {
+    store.assert('default', 'item(a).', { opId: 'before' });
+    store.assert('default', 'item(b).', { opId: 'after' });
+    const suite = JSON.stringify({
+      version: 1,
+      checks: [
+        {
+          name: 'only first item',
+          query: 'item(X)',
+          expect: {
+            kind: 'rows',
+            order: 'exact',
+            rows: [{ X: 'a' }],
+          },
+        },
+      ],
+    });
+    expect(runKnowledgeChecksTool({ store }, { suite })).toMatchObject({
+      status: 'failed',
+      failedCount: 1,
+      checks: [{ unexpectedRows: [{ X: 'b' }] }],
+    });
+    expect(
+      runKnowledgeChecksTool(
+        { store },
+        { suite, recordedSequence: 1 }
+      )
+    ).toMatchObject({
+      status: 'passed',
+      passedCount: 1,
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
     });
   });
 

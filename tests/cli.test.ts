@@ -750,6 +750,70 @@ describe('CLI ingress limits', () => {
     ]);
   });
 
+  it('runs knowledge regression files with CI-friendly pass and failure exits', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-checks-'));
+    const home = join(root, 'home');
+    const passingFile = join(root, 'passing.json');
+    const failingFile = join(root, 'failing.json');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('default', 'item(a). item(b).', { opId: 'items' });
+    writeFileSync(
+      passingFile,
+      JSON.stringify({
+        version: 1,
+        checks: [
+          {
+            name: 'items',
+            query: 'item(X)',
+            expect: {
+              kind: 'rows',
+              order: 'set',
+              rows: [{ X: 'b' }, { X: 'a' }],
+            },
+          },
+        ],
+      })
+    );
+    writeFileSync(
+      failingFile,
+      JSON.stringify({
+        version: 1,
+        checks: [
+          {
+            name: 'missing item',
+            query: 'item(c)',
+            expect: { kind: 'nonempty' },
+          },
+        ],
+      })
+    );
+    const run = (file: string) =>
+      spawnSync(process.execPath, [resolve('dist/cli.js'), 'test-knowledge', file], {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      });
+    const passing = run(passingFile);
+    expect(passing.status).toBe(0);
+    expect(JSON.parse(passing.stdout)).toMatchObject({
+      status: 'passed',
+      passedCount: 1,
+    });
+    const failing = run(failingFile);
+    expect(failing.status).toBe(2);
+    expect(JSON.parse(failing.stdout)).toMatchObject({
+      status: 'failed',
+      failedCount: 1,
+      checks: [
+        {
+          whyNot: {
+            status: 'blocked',
+            failures: [{ reason: 'missing_fact', goal: 'item(c)' }],
+          },
+        },
+      ],
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

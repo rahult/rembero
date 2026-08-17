@@ -5,6 +5,9 @@ or current-data hazards through a failed query. The audit is derived from v0.25 
 and the same bounded fixpoint used by query evaluation. It does not guess domain intent or
 rewrite valid Datalog.
 
+Use v0.35 `test-knowledge` when a structural audit should be complemented by concrete
+query/result regression expectations.
+
 ## Use
 
 ```bash

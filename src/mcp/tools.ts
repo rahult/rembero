@@ -76,6 +76,10 @@ import {
   type KnowledgeBundle,
   type KnowledgeBundleVerification,
 } from '../knowledge/bundle.js';
+import {
+  runKnowledgeChecks,
+  type KnowledgeCheckSuiteResult,
+} from '../knowledge/checks.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -854,6 +858,46 @@ export function verifyKnowledgeBundleTool(args: {
   bundle: string;
 }): KnowledgeBundleVerification {
   return verifyKnowledgeBundle(args.bundle);
+}
+
+export function runKnowledgeChecksTool(
+  deps: StoreToolDeps,
+  args: {
+    suite: string;
+    namespaces?: string[] | '*';
+    proofLimit?: number;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+    includePassingEvidence?: boolean;
+  }
+): KnowledgeCheckSuiteResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = runKnowledgeChecks(
+    recorded.clauses,
+    recorded.sources,
+    args.suite,
+    {
+      ...(args.proofLimit === undefined
+        ? {}
+        : { maxProofsPerRow: args.proofLimit }),
+      ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(trustMode === 'accepted' ? {} : { trustMode }),
+      ...(args.includePassingEvidence === undefined
+        ? {}
+        : { includePassingEvidence: args.includePassingEvidence }),
+    }
+  );
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
 }
 
 export function forgetTool(

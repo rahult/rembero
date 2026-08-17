@@ -51,6 +51,7 @@ import {
   MAX_KNOWLEDGE_BUNDLE_BYTES,
   serializeKnowledgeBundle,
 } from './knowledge/bundle.js';
+import { MAX_KNOWLEDGE_CHECK_SUITE_BYTES } from './knowledge/checks.js';
 import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
@@ -92,6 +93,7 @@ import {
   browseKnowledgeGraphTool,
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
+  runKnowledgeChecksTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -138,6 +140,7 @@ Usage:
   rembero browse [entity]                Browse a bounded explicit personal graph
   rembero bundle                         Export raw clauses and provenance with a digest
   rembero verify-bundle <file>           Verify a standalone knowledge bundle
+  rembero test-knowledge <file>          Run a deterministic rule regression suite
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -155,7 +158,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/audit-rules/search/browse/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/audit-rules/search/browse/test-knowledge/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -183,6 +186,7 @@ Options:
       --browse-depth <n>  Explicit graph depth (default: 1; max: ${MAX_BROWSE_GRAPH_DEPTH})
       --claim-limit <n>   Explicit graph claims (default: 100; max: ${MAX_BROWSE_GRAPH_CLAIMS})
       --focus-number      Interpret browse entity focus as a numeric term
+      --include-passing-evidence  Include proofs/graphs for passing knowledge checks
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -250,6 +254,7 @@ interface ParsedArgs {
   browseDepth?: string;
   claimLimit?: string;
   focusNumber: boolean;
+  includePassingEvidence: boolean;
   at?: string;
 }
 
@@ -265,6 +270,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     without: [],
     searchKinds: [],
     focusNumber: false,
+    includePassingEvidence: false,
   };
   const valueAfter = (index: number, flag: string): string => {
     const value = argv[index + 1];
@@ -381,6 +387,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--focus-number') {
       parsed.focusNumber = true;
+    } else if (arg === '--include-passing-evidence') {
+      parsed.includePassingEvidence = true;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
       i += 1;
@@ -715,6 +723,7 @@ async function main(): Promise<void> {
       'audit-rules',
       'search',
       'browse',
+      'test-knowledge',
       'list',
     ].includes(command ?? '')
   ) {
@@ -779,6 +788,9 @@ async function main(): Promise<void> {
   ) {
     throw new Error('browse options are available only for browse');
   }
+  if (args.includePassingEvidence && command !== 'test-knowledge') {
+    throw new Error('--include-passing-evidence is available only for test-knowledge');
+  }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
   }
@@ -792,10 +804,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'bundle', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, search, browse, bundle, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, search, browse, bundle, test-knowledge, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1417,6 +1429,41 @@ async function main(): Promise<void> {
         bundle: readFileSync(file, 'utf8'),
       });
       console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'test-knowledge': {
+      if (args.positional.length !== 1) {
+        throw new Error('test-knowledge requires exactly one suite file');
+      }
+      const file = resolve(args.positional[0]);
+      const stat = lstatSync(file);
+      if (stat.isSymbolicLink() || !stat.isFile()) {
+        throw new Error('refusing non-regular knowledge check suite file');
+      }
+      if (stat.size > MAX_KNOWLEDGE_CHECK_SUITE_BYTES) {
+        throw new Error(
+          `knowledge check suite exceeds ${MAX_KNOWLEDGE_CHECK_SUITE_BYTES} bytes`
+        );
+      }
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const result = runKnowledgeChecksTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          suite: readFileSync(file, 'utf8'),
+          namespaces,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+          ...(args.includePassingEvidence
+            ? { includePassingEvidence: true }
+            : {}),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      if (result.failedCount > 0) process.exitCode = 2;
       return;
     }
     case 'export': {

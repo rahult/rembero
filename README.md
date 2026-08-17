@@ -49,7 +49,8 @@ The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `que
 `knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
 `plan_query_repair`, `audit-rules`, `audit_rules`, `search`, `search_knowledge`,
 `browse`, `browse_knowledge_graph`, `bundle`, `export_knowledge_bundle`,
-`verify_knowledge_bundle`, `forget`, `list_memories`)
+`verify_knowledge_bundle`, `test-knowledge`, `run_knowledge_checks`, `forget`,
+`list_memories`)
 work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
 
@@ -78,7 +79,7 @@ Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `what_if`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
 `plan_query_repair`, `audit_rules`, `search_knowledge`, `checkpoint_journal`,
 `browse_knowledge_graph`, `export_knowledge_bundle`, `verify_knowledge_bundle`,
-`list_checkpoints`, and `list_memories`.
+`run_knowledge_checks`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -163,6 +164,7 @@ node dist/cli.js audit-rules 'eligible' --direction upstream # proactive rule he
 node dist/cli.js search 'Doctor Chen' --kind fact # local lexical provenance search
 node dist/cli.js browse mira --browse-depth 2 # explicit entity neighborhood
 node dist/cli.js bundle > knowledge.json && node dist/cli.js verify-bundle knowledge.json
+node dist/cli.js test-knowledge checks.json # deterministic rule regression suite
 node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete support
 node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
@@ -312,6 +314,12 @@ Predicate groups gain bounded source-word/phrase scores before dependency closur
 source statements never enter the model prompt. Pruning diagnostics expose only the
 selected predicate signatures that matched provenance. See
 [the provenance-aware-recall contract](docs/PROVENANCE-AWARE-RECALL.md).
+
+Version 0.35 runs portable deterministic knowledge regression suites. Named checks can
+expect empty, non-empty, exact ordered rows, or order-insensitive row sets against current
+or recorded views. Failures include row deltas and proof or why-not evidence; CLI failures
+exit `2` without storing test metadata. See
+[the knowledge-check contract](docs/KNOWLEDGE-CHECKS.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
