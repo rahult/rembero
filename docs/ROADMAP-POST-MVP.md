@@ -683,6 +683,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    client, loopback integration tests, browser interaction and responsive QA, package smoke,
    and existing core/SQLite gates share one release.
 
+## Phase 57 — Hosted product marketing playground
+
+1. **Complete — proof-first product narrative**: a responsive marketing surface explains
+   readable memory, deterministic rules, proof-carrying answers, honest unknowns, the
+   model boundary, and MCP/TypeScript/CLI integration without unverified claims.
+2. **Complete — real browser engine**: fixed natural-language presets map visibly to
+   canonical queries evaluated by the actual pure TypeScript engine under strict bounds;
+   supported, non-answer, session-only correction, source, and reset states are interactive.
+3. **Complete — safe hosted boundary**: the deployed Sites project uses fictional data,
+   makes no network/model/storage calls from the playground, and leaves D1/R2 disabled;
+   the personal local server remains loopback-only and is never exposed.
+4. **Complete — hosted delivery**: coordinated desktop/mobile concepts, bespoke social
+   preview, vinext build/render tests, lint, browser QA, saved source version, private
+   production deployment, and durable project metadata share one milestone.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

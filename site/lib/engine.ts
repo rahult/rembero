@@ -1,0 +1,15 @@
+export {
+  EngineLimitError,
+  EngineSafetyError,
+  ParseError,
+  evaluateQuerySpecWithProof,
+  isIntegrityConstraint,
+  parseProgram,
+  parseQuerySpec,
+  serializeClause,
+  serializeTerm,
+  type Clause,
+  type ProofStep,
+  type QueryProof,
+  type Term,
+} from "../../src/engine/index.js";

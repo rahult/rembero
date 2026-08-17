@@ -24,3 +24,12 @@ jobs:
       - run: npm test
       - if: matrix.node == 24
         run: npm run test:package
+      - if: matrix.node == 24
+        working-directory: site
+        run: npm ci --ignore-scripts
+      - if: matrix.node == 24
+        working-directory: site
+        run: npm test
+      - if: matrix.node == 24
+        working-directory: site
+        run: npm run lint

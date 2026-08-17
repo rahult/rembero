@@ -21,6 +21,12 @@ knowledge, local search, health, and the explicit knowledge graph. It uses a ded
 `.rembero-web/` sandbox and does not touch existing memory. See
 [the web-console contract](docs/WEB-CONSOLE.md).
 
+For an online product tour, open the private
+[Rembero marketing playground](https://rembero.rahultrikha.chatgpt.site). It runs the real
+deterministic engine over fictional sample knowledge entirely in the browser, including a
+supported rule proof, an honest non-answer, and a session-only sourced correction. See
+[the hosted-playground contract](docs/MARKETING-PLAYGROUND.md).
+
 ```
 "Rahul works at Acme. Mira also works at Acme.          works_at(rahul, acme).
  People who work at the same company are colleagues."   works_at(mira, acme).
