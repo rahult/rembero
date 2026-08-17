@@ -40,6 +40,10 @@ import {
   MAX_REPAIR_STEPS,
 } from './knowledge/repair.js';
 import {
+  MAX_KNOWLEDGE_SEARCH_LIMIT,
+  type KnowledgeSearchClauseKind,
+} from './knowledge/search.js';
+import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
@@ -76,6 +80,7 @@ import {
   recordedDiffTool,
   repairPlanTool,
   auditRulesTool,
+  searchKnowledgeTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -118,6 +123,7 @@ Usage:
   rembero diff <from> <to>               Compare two exact recorded knowledge states
   rembero repair <query>                 Propose minimal verified fact-only query repairs
   rembero audit-rules [predicate]        Audit rule health with deterministic evidence
+  rembero search <text>                  Search facts, rules, policies, and sources locally
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -135,7 +141,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/audit-rules/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/audit-rules/search/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -157,6 +163,8 @@ Options:
       --plan-limit <n>    Repair plans (default: 8; max: ${MAX_REPAIR_PLANS})
       --repair-steps <n>  Iterative repair depth (default: 4; max: ${MAX_REPAIR_STEPS})
       --search-states <n> Repair search states (default: 128; max: ${MAX_REPAIR_SEARCH_STATES})
+      --search-limit <n>  Local search results (default: 20; max: ${MAX_KNOWLEDGE_SEARCH_LIMIT})
+      --kind <kind>       Local search kind: fact, rule, or constraint; repeatable
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -218,6 +226,8 @@ interface ParsedArgs {
   planLimit?: string;
   repairSteps?: string;
   searchStates?: string;
+  searchLimit?: string;
+  searchKinds: string[];
   at?: string;
 }
 
@@ -231,6 +241,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     patterns: [],
     assumptions: [],
     without: [],
+    searchKinds: [],
   };
   const valueAfter = (index: number, flag: string): string => {
     const value = argv[index + 1];
@@ -330,6 +341,12 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--search-states') {
       parsed.searchStates = valueAfter(i, arg);
       i += 1;
+    } else if (arg === '--search-limit') {
+      parsed.searchLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--kind') {
+      parsed.searchKinds.push(valueAfter(i, arg));
+      i += 1;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
       i += 1;
@@ -423,6 +440,19 @@ function topologyDirectionOption(
     return value;
   }
   throw new Error("topology direction must be 'upstream', 'downstream', or 'both'");
+}
+
+function searchKindsOption(
+  values: string[]
+): KnowledgeSearchClauseKind[] | undefined {
+  if (values.length === 0) return undefined;
+  const kinds = [...new Set(values)];
+  for (const kind of kinds) {
+    if (kind !== 'fact' && kind !== 'rule' && kind !== 'constraint') {
+      throw new Error("--kind must be 'fact', 'rule', or 'constraint'");
+    }
+  }
+  return kinds as KnowledgeSearchClauseKind[];
 }
 
 function entityIdentityOption(
@@ -649,6 +679,7 @@ async function main(): Promise<void> {
       'diff',
       'repair',
       'audit-rules',
+      'search',
       'list',
     ].includes(command ?? '')
   ) {
@@ -698,6 +729,12 @@ async function main(): Promise<void> {
   ) {
     throw new Error('repair search limits are available only for repair');
   }
+  if (
+    (args.searchLimit !== undefined || args.searchKinds.length > 0) &&
+    command !== 'search'
+  ) {
+    throw new Error('search limits and kinds are available only for search');
+  }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
   }
@@ -711,10 +748,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'search', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, search, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1120,6 +1157,33 @@ async function main(): Promise<void> {
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       if (result.warningCount > 0) process.exitCode = 2;
+      return;
+    }
+    case 'search': {
+      const kinds = searchKindsOption(args.searchKinds);
+      const result = searchKnowledgeTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          text,
+          namespaces,
+          ...(args.searchLimit === undefined
+            ? {}
+            : {
+                limit: integerOption(
+                  args.searchLimit,
+                  0,
+                  'knowledge search limit'
+                ),
+              }),
+          ...(kinds === undefined ? {} : { kinds }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
     }
     case 'check': {

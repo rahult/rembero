@@ -36,6 +36,7 @@ import {
   recordedDiffTool,
   repairPlanTool,
   auditRulesTool,
+  searchKnowledgeTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -60,6 +61,7 @@ import {
   MAX_REPAIR_SEARCH_STATES,
   MAX_REPAIR_STEPS,
 } from '../knowledge/repair.js';
+import { MAX_KNOWLEDGE_SEARCH_LIMIT } from '../knowledge/search.js';
 import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
@@ -166,6 +168,19 @@ const repairSearchStateLimitField = z
   .max(MAX_REPAIR_SEARCH_STATES)
   .optional()
   .describe('Maximum candidate edit states inspected (default: 128)');
+const knowledgeSearchLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_KNOWLEDGE_SEARCH_LIMIT)
+  .optional()
+  .describe('Maximum ranked local knowledge matches (default: 20)');
+const knowledgeSearchKindsField = z
+  .array(z.enum(['fact', 'rule', 'constraint']))
+  .min(1)
+  .max(3)
+  .optional()
+  .describe('Optional fact, rule, or constraint filters');
 const conflictFocusField = z
   .string()
   .min(1)
@@ -339,7 +354,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.30.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.31.0' });
 
   server.registerTool(
     'remember',
@@ -731,6 +746,49 @@ export function createServer(deps: PipelineDeps): McpServer {
               ),
             }
           )
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'search_knowledge',
+    {
+      title: 'Search knowledge locally',
+      description:
+        'Rank selected facts, rules, and policies locally using fixed lexical evidence from predicate names, atoms, authored clauses, and redacted durable source text. Returns explicit score reasons, provenance, and a query/result/clause/predicate/entity graph. This is retrieval, not semantic proof; no LLM or vector service is used.',
+      inputSchema: {
+        text: boundedText(),
+        namespaces: namespacesField,
+        limit: knowledgeSearchLimitField,
+        kinds: knowledgeSearchKindsField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({
+      text,
+      namespaces,
+      limit,
+      kinds,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+    }) => {
+      try {
+        return asContent(
+          searchKnowledgeTool(resolvedDeps, {
+            text,
+            namespaces,
+            limit,
+            kinds,
+            entityIdentity,
+            trustMode,
+            recordedSequence,
+          })
         );
       } catch (e) {
         return asError(e);

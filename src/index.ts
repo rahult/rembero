@@ -267,6 +267,23 @@ export {
   type RuleAuditResult,
 } from './knowledge/rule-audit.js';
 export {
+  searchKnowledge,
+  DEFAULT_KNOWLEDGE_SEARCH_LIMIT,
+  MAX_KNOWLEDGE_SEARCH_LIMIT,
+  MAX_KNOWLEDGE_SEARCH_CLAUSES,
+  MAX_KNOWLEDGE_SEARCH_SOURCE_CHARS,
+  MAX_KNOWLEDGE_SEARCH_WORDS,
+  type KnowledgeSearchClauseKind,
+  type KnowledgeSearchReasonKind,
+  type KnowledgeSearchReason,
+  type KnowledgeSearchResultItem,
+  type KnowledgeSearchGraphNode,
+  type KnowledgeSearchGraphEdge,
+  type KnowledgeSearchGraph,
+  type KnowledgeSearchOptions,
+  type KnowledgeSearchResult,
+} from './knowledge/search.js';
+export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,
   MAX_TENTATIVE_CLAUSE_BYTES,

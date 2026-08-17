@@ -61,6 +61,11 @@ import {
   auditKnowledgeRules,
   type RuleAuditResult,
 } from '../knowledge/rule-audit.js';
+import {
+  searchKnowledge,
+  type KnowledgeSearchClauseKind,
+  type KnowledgeSearchResult,
+} from '../knowledge/search.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -737,6 +742,38 @@ export function auditRulesTool(
   const result = auditKnowledgeRules(recorded.clauses, recorded.sources, {
     ...(args.focus === undefined ? {} : { focus: args.focus }),
     ...(args.direction === undefined ? {} : { direction: args.direction }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
+  });
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
+}
+
+export function searchKnowledgeTool(
+  deps: StoreToolDeps,
+  args: {
+    text: string;
+    namespaces?: string[] | '*';
+    limit?: number;
+    kinds?: KnowledgeSearchClauseKind[];
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+  }
+): KnowledgeSearchResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  assertBoundedInput(args.text, 'knowledge search text');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = searchKnowledge(recorded.clauses, args.text, recorded.sources, {
+    ...(args.limit === undefined ? {} : { limit: args.limit }),
+    ...(args.kinds === undefined ? {} : { kinds: args.kinds }),
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
     ...(trustMode === 'accepted' ? {} : { trustMode }),
   });

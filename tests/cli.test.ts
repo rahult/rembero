@@ -607,6 +607,52 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('searches local facts and sources without an LLM', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-search-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('default', 'dentist(rahul, chen).', {
+      opId: 'dentist-source',
+      sourceText: 'Rahul dentist is Doctor Chen.',
+    });
+    store.assert('default', 'pet(rahul, luna).', {
+      opId: 'pet-source',
+      sourceText: 'Rahul cat is Luna.',
+    });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'search',
+        'Doctor Chen',
+        '--kind',
+        'fact',
+        '--search-limit',
+        '5',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'matches',
+      results: [
+        {
+          rank: 1,
+          clause: 'dentist(rahul, chen).',
+          sources: [{ opId: 'dentist-source' }],
+          reasons: expect.arrayContaining([
+            expect.objectContaining({ kind: 'source_phrase' }),
+          ]),
+        },
+      ],
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

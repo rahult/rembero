@@ -30,6 +30,7 @@ import {
   recordedDiffTool,
   repairPlanTool,
   auditRulesTool,
+  searchKnowledgeTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -654,6 +655,42 @@ describe('MCP tool handlers', () => {
           predicateKeys: ['blocked/1'],
         }),
       ],
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
+  it('searches current and recorded knowledge locally through the tool boundary', () => {
+    store.assert('default', 'dentist(rahul, chen).', {
+      opId: 'dentist-source',
+      sourceText: 'Rahul dentist is Chen.',
+    });
+    store.assert('default', 'pet(rahul, luna).', {
+      opId: 'pet-source',
+      sourceText: 'Rahul cat is Luna.',
+    });
+
+    expect(
+      searchKnowledgeTool(
+        { store },
+        { text: 'cat Luna', kinds: ['fact'], limit: 5 }
+      )
+    ).toMatchObject({
+      status: 'matches',
+      results: [
+        {
+          clause: 'pet(rahul, luna).',
+          sources: [{ opId: 'pet-source' }],
+        },
+      ],
+    });
+    expect(
+      searchKnowledgeTool(
+        { store },
+        { text: 'cat Luna', recordedSequence: 1 }
+      )
+    ).toMatchObject({
+      status: 'no_match',
+      results: [],
       recordedSnapshot: { sequence: 1, journalEntries: 2 },
     });
   });

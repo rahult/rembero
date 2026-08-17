@@ -361,6 +361,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    one query-generation call (plus the existing fallback only when empty), while v0.29
    negative recall stays deterministic in both modes.
 
+## Phase 34 — Deterministic local knowledge search  *(v0.31)*
+
+1. **Complete — inspectable lexical retrieval**: facts, rules, and policies receive fixed
+   integer scores from exact source/clause phrases, head/body predicates, ground terms,
+   source/clause words, and bounded predicate typo distance, with every reason returned.
+2. **Complete — provenance and graph evidence**: matches retain redacted durable sources,
+   hypothetical/trust/identity projection, and a non-persistent search/result/clause/
+   predicate/entity graph with distinct define/dependency edges.
+3. **Complete — local interface parity and honest scope**: current/recorded library, CLI,
+   MCP, namespace, kind/limit/truncation, package, input/source/clause/output bounds, and
+   explicit no-match behavior work without an LLM while never claiming semantic proof.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
