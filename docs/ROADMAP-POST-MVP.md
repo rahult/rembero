@@ -433,6 +433,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    coverage-only failure preserves passed row counts, runs all checks, exits CLI `2`, and
    composes with current/recorded identity, trust, proof limits, MCP, and package paths.
 
+## Phase 40 — Schema-only SQLite Datalog planning  *(v0.37)*
+
+1. **Complete — deterministic routing plan**: rule programs, raw conjunctions, and
+   aggregates expose native versus portable mode, execution boundary, input kind, result
+   relation/variables, derived predicate arities, and transitive recursion before execution.
+2. **Complete — transaction-safe schema evidence**: referenced main/temp tables and views,
+   visible/generated columns, declared types, arity, optional one-SELECT native SQL, and
+   active resource bounds are validated inside a savepoint without scanning rows.
+3. **Complete — adapter and artifact parity**: public `DatalogDatabase`, `sqlite-plan` CLI,
+   native/portable/temp/view/generated/missing/arity/no-row-scan tests, installed package,
+   and Node 22+ SQLite gates share the execution schema used by portable loading.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

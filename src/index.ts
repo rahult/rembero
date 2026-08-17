@@ -49,6 +49,10 @@ export {
   type DatalogProof,
   type OpenDatalogDatabaseOptions,
   type SqliteDatalogExecutionMode,
+  type SqliteDatalogPlanColumn,
+  type SqliteDatalogPlanRelation,
+  type SqliteDatalogPlanDerivedPredicate,
+  type SqliteDatalogPlan,
 } from './sqlite/extension.js';
 export {
   type ChatMessage,

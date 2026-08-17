@@ -462,6 +462,25 @@ try {
   if (rows.length !== 2 || rows[0].X !== 'alice' || rows[1].X !== 'bob') {
     throw new Error(`unexpected packaged query result: ${output}`);
   }
+  const sqlitePlanOutput = run(
+    process.execPath,
+    [
+      installedCli,
+      'sqlite-plan',
+      databasePath,
+      'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+    ],
+    { cwd: directory }
+  );
+  const sqlitePlan = JSON.parse(sqlitePlanOutput);
+  if (
+    sqlitePlan.mode !== 'native' ||
+    sqlitePlan.scansData !== false ||
+    sqlitePlan.baseRelations?.[0]?.predicate !== 'works_at' ||
+    typeof sqlitePlan.nativeSql !== 'string'
+  ) {
+    throw new Error(`unexpected packaged SQLite Datalog plan: ${sqlitePlanOutput}`);
+  }
 
   const recursiveProgram =
     'path(X, Y) :- edge(X, Y).\n' +
@@ -727,7 +746,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

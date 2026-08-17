@@ -9,9 +9,11 @@ import {
   type Goal,
   type QueryProof,
   type QuerySpec,
+  type ScalarExpression,
   type Term,
   evaluateQuerySpec,
   evaluateQuerySpecWithProof,
+  isArithmeticExpression,
   isComparison,
   isIntegrityConstraint,
   isNegation,
@@ -37,6 +39,47 @@ export interface DatalogExplanation {
 }
 
 export type SqliteDatalogExecutionMode = 'native' | 'portable';
+
+export interface SqliteDatalogPlanColumn {
+  name: string;
+  declaredType: string | null;
+  hidden: number;
+}
+
+export interface SqliteDatalogPlanRelation {
+  predicate: string;
+  arity: number;
+  objectType: 'table' | 'view';
+  temporary: boolean;
+  columns: SqliteDatalogPlanColumn[];
+}
+
+export interface SqliteDatalogPlanDerivedPredicate {
+  predicate: string;
+  arity: number;
+  recursive: boolean;
+}
+
+export interface SqliteDatalogPlan {
+  mode: SqliteDatalogExecutionMode;
+  executionBoundary: 'sqlite_scalar' | 'portable_snapshot';
+  inputKind: 'rule_program' | 'relational_query' | 'aggregate_query';
+  result: {
+    predicate?: string;
+    variables: string[];
+  };
+  derivedPredicates: SqliteDatalogPlanDerivedPredicate[];
+  baseRelations: SqliteDatalogPlanRelation[];
+  nativeSql?: string;
+  scansData: false;
+  bounds: {
+    ruleBytes: number;
+    baseRows: number;
+    derivedFacts: number;
+    queryRows: number;
+    resultBytes: number;
+  };
+}
 
 const MAX_RULE_BYTES = 64 * 1024;
 const MAX_BASE_ROWS = 100_000;
@@ -323,6 +366,74 @@ function rowFromBindings(bindings: Bindings): DatalogRow {
   );
 }
 
+function expressionVariables(expression: ScalarExpression, add: (name: string) => void): void {
+  if (!isArithmeticExpression(expression)) {
+    if (expression.type === 'var' && expression.name !== '_') add(expression.name);
+    return;
+  }
+  if (expression.kind === 'unary') expressionVariables(expression.operand, add);
+  else {
+    expressionVariables(expression.left, add);
+    expressionVariables(expression.right, add);
+  }
+}
+
+function queryVariables(query: QuerySpec): string[] {
+  if (query.kind === 'aggregate') return [query.as];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const add = (name: string) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    result.push(name);
+  };
+  for (const goal of query.goals) {
+    if (isComparison(goal)) {
+      expressionVariables(goal.left, add);
+      expressionVariables(goal.right, add);
+      continue;
+    }
+    const literal = isNegation(goal) ? goal.not : goal;
+    for (const term of literal.args) {
+      if (term.type === 'var' && term.name !== '_') add(term.name);
+    }
+  }
+  return result;
+}
+
+function derivedPredicatePlans(program: Clause[]): SqliteDatalogPlanDerivedPredicate[] {
+  const arities = new Map<string, number>();
+  for (const clause of program) arities.set(clause.head.predicate, clause.head.args.length);
+  const dependencies = new Map<string, Set<string>>();
+  for (const clause of program) {
+    const values = dependencies.get(clause.head.predicate) ?? new Set<string>();
+    for (const goal of clause.body) {
+      const literal = literalFromGoal(goal);
+      if (literal !== undefined && arities.has(literal.predicate)) {
+        values.add(literal.predicate);
+      }
+    }
+    dependencies.set(clause.head.predicate, values);
+  }
+  const recursive = (predicate: string): boolean => {
+    const pending = [...(dependencies.get(predicate) ?? [])];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+      if (current === predicate) return true;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      pending.push(...(dependencies.get(current) ?? []));
+    }
+    return false;
+  };
+  return [...arities]
+    .map(([predicate, arity]) => ({ predicate, arity, recursive: recursive(predicate) }))
+    .sort((left, right) =>
+      left.predicate.localeCompare(right.predicate) || left.arity - right.arity
+    );
+}
+
 function assertResultBounds(result: unknown): void {
   const serialized = JSON.stringify(result);
   if (serialized === undefined || Buffer.byteLength(serialized, 'utf8') > MAX_RESULT_BYTES) {
@@ -426,6 +537,53 @@ export class DatalogDatabase {
     return result as DatalogExplanation[];
   }
 
+  datalogPlan(input: string): SqliteDatalogPlan {
+    return this.withPortableSnapshot(() => {
+      const mode = sqliteDatalogExecutionMode(input);
+      const request = preparePortableRequest(input);
+      const derivedPredicates = derivedPredicatePlans(request.program);
+      const target = request.program[0]?.head;
+      const inputKind =
+        request.program.length > 0
+          ? 'rule_program'
+          : request.query.kind === 'aggregate'
+            ? 'aggregate_query'
+            : 'relational_query';
+      const variables =
+        target === undefined
+          ? queryVariables(request.query)
+          : target.args.map((term) => (term.type === 'var' ? term.name : '_'));
+      const baseRelations = request.basePredicates.map(({ predicate, arity }) =>
+        this.relationPlan(predicate, arity)
+      );
+      const nativeSqlEligible =
+        mode === 'native' &&
+        request.program.length === 1 &&
+        derivedPredicates.every(({ recursive }) => !recursive);
+      return {
+        mode,
+        executionBoundary:
+          mode === 'native' ? 'sqlite_scalar' : 'portable_snapshot',
+        inputKind,
+        result: {
+          ...(target === undefined ? {} : { predicate: target.predicate }),
+          variables,
+        },
+        derivedPredicates,
+        baseRelations,
+        ...(nativeSqlEligible ? { nativeSql: this.datalogSql(input) } : {}),
+        scansData: false,
+        bounds: {
+          ruleBytes: MAX_RULE_BYTES,
+          baseRows: MAX_BASE_ROWS,
+          derivedFacts: MAX_DERIVED_FACTS,
+          queryRows: MAX_QUERY_ROWS,
+          resultBytes: MAX_RESULT_BYTES,
+        },
+      };
+    });
+  }
+
   close(): void {
     this.database.close();
   }
@@ -460,25 +618,54 @@ export class DatalogDatabase {
     }
   }
 
+  private relationPlan(predicate: string, arity: number): SqliteDatalogPlanRelation {
+    const schema = this.database
+      .prepare(`PRAGMA table_xinfo('${predicate.replaceAll("'", "''")}')`)
+      .all() as Array<Record<string, unknown>>;
+    const columns = schema
+      .filter((column) => Number(column.hidden ?? 0) !== 1)
+      .map((column): SqliteDatalogPlanColumn | undefined => {
+        if (typeof column.name !== 'string') return undefined;
+        return {
+          name: column.name,
+          declaredType: typeof column.type === 'string' && column.type.length > 0
+            ? column.type
+            : null,
+          hidden: Number(column.hidden ?? 0),
+        };
+      })
+      .filter((column): column is SqliteDatalogPlanColumn => column !== undefined);
+    if (columns.length === 0) throw new Error(`predicate '${predicate}' is unavailable`);
+    if (columns.length !== arity) {
+      throw new Error(
+        `predicate '${predicate}' expects ${columns.length} columns but the query supplies ${arity}`
+      );
+    }
+    const object = this.database
+      .prepare(
+        `SELECT type, temporary FROM (
+           SELECT type, 1 AS temporary FROM sqlite_temp_schema WHERE name = ?
+           UNION ALL
+           SELECT type, 0 AS temporary FROM sqlite_schema WHERE name = ?
+         ) ORDER BY temporary DESC LIMIT 1`
+      )
+      .get(predicate, predicate) as
+      | { type: unknown; temporary: unknown }
+      | undefined;
+    return {
+      predicate,
+      arity,
+      objectType: object?.type === 'view' ? 'view' : 'table',
+      temporary: Number(object?.temporary ?? 0) === 1,
+      columns,
+    };
+  }
+
   private portableClauses(request: PortableRequest): Clause[] {
     const facts: Clause[] = [];
     let totalBytes = 0;
     for (const { predicate, arity } of request.basePredicates) {
-      const schema = this.database
-        .prepare(`PRAGMA table_xinfo('${predicate}')`)
-        .all() as Array<Record<string, unknown>>;
-      const columns = schema
-        .filter((column) => Number(column.hidden ?? 0) !== 1)
-        .map((column) => column.name)
-        .filter((name): name is string => typeof name === 'string');
-      if (columns.length === 0) {
-        throw new Error(`predicate '${predicate}' is unavailable`);
-      }
-      if (columns.length !== arity) {
-        throw new Error(
-          `predicate '${predicate}' expects ${columns.length} columns but the query supplies ${arity}`
-        );
-      }
+      const columns = this.relationPlan(predicate, arity).columns.map(({ name }) => name);
       const selected = columns
         .map((column, index) => `${quoteIdentifier(column)} AS ${quoteIdentifier(`c${index}`)}`)
         .join(', ');

@@ -155,6 +155,7 @@ Usage:
   rembero sqlite-sql <db> <rule>         Compile a Datalog rule against a SQLite database
   rembero sqlite-query <db> <program>    Execute a Datalog program against a SQLite database
   rembero sqlite-explain <db> <program>  Execute with one derivation proof per result
+  rembero sqlite-plan <db> <program>     Inspect routing and schema without scanning rows
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
@@ -1501,7 +1502,8 @@ async function main(): Promise<void> {
       return;
     case 'sqlite-sql':
     case 'sqlite-query':
-    case 'sqlite-explain': {
+    case 'sqlite-explain':
+    case 'sqlite-plan': {
       const [databasePath, ...ruleParts] = args.positional;
       const rule = ruleParts.join(' ');
       if (!databasePath || !rule) {
@@ -1516,9 +1518,11 @@ async function main(): Promise<void> {
         const result = command === 'sqlite-sql'
           ? database.datalogSql(rule)
           : stringifyBoundedResult(
-              command === 'sqlite-explain'
-                ? database.datalogExplain(rule)
-                : database.datalogQuery(rule),
+              command === 'sqlite-plan'
+                ? database.datalogPlan(rule)
+                : command === 'sqlite-explain'
+                  ? database.datalogExplain(rule)
+                  : database.datalogQuery(rule),
               'CLI result'
             );
         console.log(result);

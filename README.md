@@ -451,6 +451,8 @@ SQL
 npm run build
 node dist/cli.js sqlite-query world.db \
   'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'
+node dist/cli.js sqlite-plan world.db \
+  'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'
 ```
 
 The result is deterministic JSON:
@@ -462,6 +464,12 @@ The result is deterministic JSON:
 ]
 ```
 
+Version 0.37 adds schema-only `sqlite-plan` / `DatalogDatabase.datalogPlan(...)`.
+It reports native/portable routing, execution boundary, result variables, derived
+recursion, referenced tables/views, visible columns and declared types, optional native
+SQL, and active bounds inside a savepoint without scanning rows. See
+[SQLite Datalog planning](docs/SQLITE-PLANNING.md).
+
 The public library adapter exposes the same path:
 
 ```ts
@@ -470,6 +478,7 @@ import { openDatalogDatabase, sqliteDatalogExecutionMode } from 'rembero';
 const db = await openDatalogDatabase('world.db');
 const rule = 'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.';
 console.log(db.datalogSql(rule));   // inspect the generated SELECT
+console.log(db.datalogPlan(rule));  // inspect routing and referenced schema
 console.log(db.datalogQuery(rule)); // execute it and parse the JSON rows
 console.log(sqliteDatalogExecutionMode(rule)); // "native"
 db.close();

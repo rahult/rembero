@@ -26,6 +26,10 @@ distinct named variables. This preserves the existing native query-rule conventi
 allowing later rules to define multiple dependencies; reorder the first rule deliberately
 when choosing a different result relation.
 
+Version 0.37 adds `DatalogDatabase.datalogPlan(...)` and CLI `sqlite-plan`, which combine
+that semantic routing decision with savepoint-scoped schema, result-variable, recursion,
+and resource-bound inspection without scanning data. See [SQLite planning](SQLITE-PLANNING.md).
+
 ## Portable bridge contract
 
 The bridge opens a SQLite savepoint, validates every referenced table and its arity,

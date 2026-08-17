@@ -85,6 +85,164 @@ describe.skipIf(!hasSqliteCli)('SQLite loadable extension', () => {
 });
 
 describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
+  it('plans native execution from schema without scanning table data', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    try {
+      database.exec(`
+        CREATE TABLE score(
+          person TEXT,
+          points INTEGER,
+          doubled INTEGER GENERATED ALWAYS AS (points * 2) STORED
+        );
+        INSERT INTO score(person, points) VALUES ('alice', 20);
+      `);
+      const plan = database.datalogPlan(
+        'high(X) :- score(X, Points, Doubled), Points >= 10.'
+      );
+      expect(plan).toMatchObject({
+        mode: 'native',
+        executionBoundary: 'sqlite_scalar',
+        inputKind: 'rule_program',
+        result: { predicate: 'high', variables: ['X'] },
+        derivedPredicates: [{ predicate: 'high', arity: 1, recursive: false }],
+        baseRelations: [
+          {
+            predicate: 'score',
+            arity: 3,
+            objectType: 'table',
+            temporary: false,
+            columns: [
+              { name: 'person', declaredType: 'TEXT', hidden: 0 },
+              { name: 'points', declaredType: 'INTEGER', hidden: 0 },
+              { name: 'doubled', declaredType: 'INTEGER', hidden: 3 },
+            ],
+          },
+        ],
+        nativeSql: expect.stringContaining('SELECT DISTINCT'),
+        scansData: false,
+        bounds: {
+          ruleBytes: 65536,
+          baseRows: 100000,
+          derivedFacts: 10000,
+          queryRows: 10000,
+          resultBytes: 16777216,
+        },
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('plans portable raw queries over temporary tables and views', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    try {
+      database.exec(`
+        CREATE TEMP TABLE employee(person TEXT);
+        CREATE TABLE blocked(person TEXT);
+        CREATE VIEW suspended AS SELECT person FROM blocked;
+      `);
+      const plan = database.datalogPlan('employee(X), \\+ suspended(X)');
+      expect(plan).toMatchObject({
+        mode: 'portable',
+        executionBoundary: 'portable_snapshot',
+        inputKind: 'relational_query',
+        result: { variables: ['X'] },
+        derivedPredicates: [],
+        baseRelations: [
+          {
+            predicate: 'employee',
+            objectType: 'table',
+            temporary: true,
+            columns: [{ name: 'person', declaredType: 'TEXT', hidden: 0 }],
+          },
+          {
+            predicate: 'suspended',
+            objectType: 'view',
+            temporary: false,
+            columns: [{ name: 'person', declaredType: 'TEXT', hidden: 0 }],
+          },
+        ],
+      });
+      expect(plan.nativeSql).toBeUndefined();
+    } finally {
+      database.close();
+    }
+  });
+
+  it('plans multi-predicate recursion and aggregate result variables explicitly', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    try {
+      database.exec(`
+        CREATE TABLE seed(node TEXT);
+        CREATE TABLE edge(source TEXT, target TEXT);
+        CREATE TABLE employee(person TEXT);
+      `);
+      const recursive = database.datalogPlan(`
+        answer(X) :- reachable(X), X != a.
+        reachable(X) :- seed(X).
+        reachable(Y) :- reachable(X), edge(X, Y).
+      `);
+      expect(recursive).toMatchObject({
+        mode: 'portable',
+        result: { predicate: 'answer', variables: ['X'] },
+        derivedPredicates: [
+          { predicate: 'answer', arity: 1, recursive: false },
+          { predicate: 'reachable', arity: 1, recursive: true },
+        ],
+        baseRelations: [
+          { predicate: 'edge', arity: 2 },
+          { predicate: 'seed', arity: 1 },
+        ],
+      });
+      const nativeRecursive = database.datalogPlan(`
+        path(X, Y) :- edge(X, Y).
+        path(X, Y) :- edge(X, Z), path(Z, Y).
+      `);
+      expect(nativeRecursive).toMatchObject({
+        mode: 'native',
+        executionBoundary: 'sqlite_scalar',
+        result: { predicate: 'path', variables: ['X', 'Y'] },
+        derivedPredicates: [
+          { predicate: 'path', arity: 2, recursive: true },
+        ],
+      });
+      expect(nativeRecursive.nativeSql).toBeUndefined();
+      const aggregate = database.datalogPlan(
+        'count(*) as Count where employee(Person)'
+      );
+      expect(aggregate).toMatchObject({
+        mode: 'portable',
+        inputKind: 'aggregate_query',
+        result: { variables: ['Count'] },
+        baseRelations: [{ predicate: 'employee', arity: 1 }],
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('fails planning on missing or arity-incompatible schema but not unsupported row values', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    try {
+      database.exec(`
+        CREATE TABLE payload(value BLOB);
+        INSERT INTO payload VALUES (NULL), (x'00ff');
+      `);
+      expect(database.datalogPlan('result(X) :- payload(X).')).toMatchObject({
+        scansData: false,
+        baseRelations: [{ predicate: 'payload', arity: 1 }],
+      });
+      expect(() => database.datalogPlan('bad(X) :- payload(X, Y).')).toThrow(
+        /expects 1 columns but the query supplies 2/i
+      );
+      expect(() => database.datalogPlan('bad(X) :- missing(X).')).toThrow(
+        /predicate 'missing' is unavailable/i
+      );
+    } finally {
+      database.close();
+    }
+  });
+
   it('compiles and executes non-recursive Datalog through the public adapter', async () => {
     const database = await openDatalogDatabase(':memory:', { extensionPath });
     try {
@@ -696,6 +854,34 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
         { X: 'alice', Y: 'bob' },
         { X: 'bob', Y: 'alice' },
       ]);
+      const plan = spawnSync(
+        process.execPath,
+        [
+          'dist/cli.js',
+          'sqlite-plan',
+          databasePath,
+          'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+          '--extension',
+          extensionPath,
+        ],
+        { cwd: projectRoot, encoding: 'utf8' }
+      );
+      expect(plan.status, plan.stderr).toBe(0);
+      expect(JSON.parse(plan.stdout)).toMatchObject({
+        mode: 'native',
+        scansData: false,
+        result: { predicate: 'colleague', variables: ['X', 'Y'] },
+        baseRelations: [
+          {
+            predicate: 'works_at',
+            objectType: 'table',
+            columns: [
+              { name: 'person', declaredType: 'TEXT' },
+              { name: 'company', declaredType: 'TEXT' },
+            ],
+          },
+        ],
+      });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
