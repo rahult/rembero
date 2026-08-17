@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
 import {
   type Clause,
+  canonicalKey,
   isComparison,
   isNegation,
   parseQuery,
+  parseProgram,
   serializeTerm,
 } from '../engine/index.js';
 import { assertBoundedInput } from '../safety.js';
@@ -42,6 +45,11 @@ export interface KnowledgeCheck {
 export interface KnowledgeCheckSuite {
   version: typeof KNOWLEDGE_CHECK_SUITE_VERSION;
   checks: KnowledgeCheck[];
+  coverage?: KnowledgeCheckCoverageRequirement;
+}
+
+export interface KnowledgeCheckCoverageRequirement {
+  minimumPercent: number;
 }
 
 export interface KnowledgeCheckResult {
@@ -67,7 +75,27 @@ export interface KnowledgeCheckSuiteResult {
   checkCount: number;
   passedCount: number;
   failedCount: number;
+  coveragePassed: boolean;
+  coverage: KnowledgeRuleCoverage;
   checks: KnowledgeCheckResult[];
+}
+
+export interface KnowledgeRuleCoverageEntry {
+  id: string;
+  clause: string;
+  numbers: number[];
+  checkNames: string[];
+  covered: boolean;
+}
+
+export interface KnowledgeRuleCoverage {
+  totalRules: number;
+  coveredRules: number;
+  uncoveredRules: number;
+  percent: number;
+  minimumPercent?: number;
+  passed: boolean;
+  rules: KnowledgeRuleCoverageEntry[];
 }
 
 function exactKeys(value: Record<string, unknown>, keys: string[], label: string): void {
@@ -169,6 +197,22 @@ function normalizedExpectation(
   return { kind: 'rows', order: record.order, rows };
 }
 
+function normalizedCoverage(value: unknown): KnowledgeCheckCoverageRequirement {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('knowledge check suite coverage must be an object');
+  }
+  const record = value as Record<string, unknown>;
+  exactKeys(record, ['minimumPercent'], 'knowledge check suite coverage');
+  if (
+    !Number.isSafeInteger(record.minimumPercent) ||
+    (record.minimumPercent as number) < 0 ||
+    (record.minimumPercent as number) > 100
+  ) {
+    throw new Error('knowledge check suite coverage minimumPercent must be from 0 to 100');
+  }
+  return { minimumPercent: record.minimumPercent as number };
+}
+
 /** Parse and normalize a standalone suite before any query execution. */
 export function parseKnowledgeCheckSuite(
   value: KnowledgeCheckSuite | string
@@ -202,7 +246,13 @@ export function parseKnowledgeCheckSuite(
     throw new Error('knowledge check suite must be an object');
   }
   const record = parsed as Record<string, unknown>;
-  exactKeys(record, ['version', 'checks'], 'knowledge check suite');
+  exactKeys(
+    record,
+    record.coverage === undefined
+      ? ['version', 'checks']
+      : ['version', 'checks', 'coverage'],
+    'knowledge check suite'
+  );
   if (record.version !== KNOWLEDGE_CHECK_SUITE_VERSION) {
     throw new Error(`knowledge check suite version must be ${KNOWLEDGE_CHECK_SUITE_VERSION}`);
   }
@@ -238,7 +288,86 @@ export function parseKnowledgeCheckSuite(
     }
     return { name: check.name, query: check.query, expect: expectation };
   });
-  return { version: KNOWLEDGE_CHECK_SUITE_VERSION, checks };
+  return {
+    version: KNOWLEDGE_CHECK_SUITE_VERSION,
+    checks,
+    ...(record.coverage === undefined
+      ? {}
+      : { coverage: normalizedCoverage(record.coverage) }),
+  };
+}
+
+function collectRuleNumbers(value: unknown, result: Set<number>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectRuleNumbers(item, result);
+    return;
+  }
+  if (typeof value !== 'object' || value === null) return;
+  const record = value as Record<string, unknown>;
+  if (Number.isSafeInteger(record.rule) && (record.rule as number) > 0) {
+    result.add(record.rule as number);
+  }
+  for (const nested of Object.values(record)) collectRuleNumbers(nested, result);
+}
+
+function ruleCoverage(
+  explanations: Array<{ name: string; explanation: ExplainKnowledgeResult }>,
+  minimumPercent: number | undefined
+): KnowledgeRuleCoverage {
+  const ruleDefinitions = explanations[0]?.explanation.rules ?? [];
+  const groups = new Map<
+    string,
+    { clause: string; numbers: number[]; checkNames: Set<string> }
+  >();
+  const numberToKey = new Map<number, string>();
+  for (const rule of ruleDefinitions) {
+    const parsed = parseProgram(rule.clause);
+    if (parsed.length !== 1) throw new Error(`rule ${rule.number} is not canonical`);
+    const key = canonicalKey(parsed[0]);
+    const group = groups.get(key) ?? {
+      clause: rule.clause,
+      numbers: [],
+      checkNames: new Set<string>(),
+    };
+    group.numbers.push(rule.number);
+    groups.set(key, group);
+    numberToKey.set(rule.number, key);
+  }
+  for (const { name, explanation } of explanations) {
+    const numbers = new Set<number>();
+    collectRuleNumbers(explanation.rows, numbers);
+    for (const number of numbers) {
+      const key = numberToKey.get(number);
+      if (key !== undefined) groups.get(key)?.checkNames.add(name);
+    }
+  }
+  const rules: KnowledgeRuleCoverageEntry[] = [...groups]
+    .map(([key, group]) => {
+      const checkNames = [...group.checkNames].sort(compareText);
+      return {
+        id: `rule:${createHash('sha256').update(key).digest('hex')}`,
+        clause: group.clause,
+        numbers: group.numbers.sort((left, right) => left - right),
+        checkNames,
+        covered: checkNames.length > 0,
+      };
+    })
+    .sort((left, right) => compareText(left.clause, right.clause));
+  const coveredRules = rules.filter(({ covered }) => covered).length;
+  const percent =
+    rules.length === 0
+      ? 100
+      : Math.round((coveredRules / rules.length) * 10_000) / 100;
+  const passed = minimumPercent === undefined || percent >= minimumPercent;
+  return {
+    totalRules: rules.length,
+    coveredRules,
+    uncoveredRules: rules.length - coveredRules,
+    percent,
+    ...(minimumPercent === undefined ? {} : { minimumPercent }),
+    passed,
+    rules,
+  };
 }
 
 function rowDelta(
@@ -293,6 +422,7 @@ export function runKnowledgeChecks(
     throw new Error('includePassingEvidence must be a boolean');
   }
   const results: KnowledgeCheckResult[] = [];
+  const explanations: Array<{ name: string; explanation: ExplainKnowledgeResult }> = [];
   for (const check of suite.checks) {
     const explanation = explainKnowledge(
       clauses,
@@ -303,6 +433,7 @@ export function runKnowledgeChecks(
     const actualRows = explanation.rows.map(({ bindings }) =>
       normalizedRow(bindings, `knowledge check '${check.name}' actual row`)
     );
+    explanations.push({ name: check.name, explanation });
     let passed: boolean;
     let expectedRows: Record<string, string>[] = [];
     let orderMismatch = false;
@@ -351,11 +482,18 @@ export function runKnowledgeChecks(
     });
   }
   const passedCount = results.filter(({ status }) => status === 'passed').length;
+  const coverage = ruleCoverage(
+    explanations,
+    suite.coverage?.minimumPercent
+  );
   return {
-    status: passedCount === results.length ? 'passed' : 'failed',
+    status:
+      passedCount === results.length && coverage.passed ? 'passed' : 'failed',
     checkCount: results.length,
     passedCount,
     failedCount: results.length - passedCount,
+    coveragePassed: coverage.passed,
+    coverage,
     checks: results,
   };
 }

@@ -1463,7 +1463,7 @@ async function main(): Promise<void> {
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
-      if (result.failedCount > 0) process.exitCode = 2;
+      if (result.status === 'failed') process.exitCode = 2;
       return;
     }
     case 'export': {

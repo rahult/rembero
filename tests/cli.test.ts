@@ -755,8 +755,9 @@ describe('CLI ingress limits', () => {
     const home = join(root, 'home');
     const passingFile = join(root, 'passing.json');
     const failingFile = join(root, 'failing.json');
+    const coverageFile = join(root, 'coverage.json');
     const store = new MemoryStore(join(home, 'memory'));
-    store.assert('default', 'item(a). item(b).', { opId: 'items' });
+    store.assert('default', 'item(a). item(b). copy(X) :- item(X).', { opId: 'items' });
     writeFileSync(
       passingFile,
       JSON.stringify({
@@ -787,6 +788,24 @@ describe('CLI ingress limits', () => {
         ],
       })
     );
+    writeFileSync(
+      coverageFile,
+      JSON.stringify({
+        version: 1,
+        coverage: { minimumPercent: 100 },
+        checks: [
+          {
+            name: 'facts only',
+            query: 'item(X)',
+            expect: {
+              kind: 'rows',
+              order: 'set',
+              rows: [{ X: 'a' }, { X: 'b' }],
+            },
+          },
+        ],
+      })
+    );
     const run = (file: string) =>
       spawnSync(process.execPath, [resolve('dist/cli.js'), 'test-knowledge', file], {
         encoding: 'utf8',
@@ -811,6 +830,20 @@ describe('CLI ingress limits', () => {
           },
         },
       ],
+    });
+    const coverage = run(coverageFile);
+    expect(coverage.status).toBe(2);
+    expect(JSON.parse(coverage.stdout)).toMatchObject({
+      status: 'failed',
+      passedCount: 1,
+      failedCount: 0,
+      coveragePassed: false,
+      coverage: {
+        totalRules: 1,
+        coveredRules: 0,
+        minimumPercent: 100,
+        passed: false,
+      },
     });
   });
 

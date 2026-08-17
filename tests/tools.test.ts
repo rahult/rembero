@@ -804,6 +804,40 @@ describe('MCP tool handlers', () => {
     });
   });
 
+  it('keeps coverage-only suite failure distinct from row failures', () => {
+    store.assert('default', 'base(a). derived(X) :- base(X).', {
+      opId: 'coverage-program',
+    });
+    const result = runKnowledgeChecksTool(
+      { store },
+      {
+        suite: JSON.stringify({
+          version: 1,
+          coverage: { minimumPercent: 100 },
+          checks: [
+            {
+              name: 'base only',
+              query: 'base(a)',
+              expect: { kind: 'nonempty' },
+            },
+          ],
+        }),
+      }
+    );
+    expect(result).toMatchObject({
+      status: 'failed',
+      passedCount: 1,
+      failedCount: 0,
+      coveragePassed: false,
+      coverage: {
+        totalRules: 1,
+        coveredRules: 0,
+        percent: 0,
+        minimumPercent: 100,
+      },
+    });
+  });
+
   it('query and explain read deterministic recorded snapshots with past sources', () => {
     store.assert(
       'default',

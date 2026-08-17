@@ -327,9 +327,12 @@ export {
   type KnowledgeCheckExpectation,
   type KnowledgeCheck,
   type KnowledgeCheckSuite,
+  type KnowledgeCheckCoverageRequirement,
   type KnowledgeCheckResult,
   type RunKnowledgeChecksOptions,
   type KnowledgeCheckSuiteResult,
+  type KnowledgeRuleCoverageEntry,
+  type KnowledgeRuleCoverage,
 } from './knowledge/checks.js';
 export {
   TENTATIVE_PREDICATE,

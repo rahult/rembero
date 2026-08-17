@@ -321,6 +321,11 @@ or recorded views. Failures include row deltas and proof or why-not evidence; CL
 exit `2` without storing test metadata. See
 [the knowledge-check contract](docs/KNOWLEDGE-CHECKS.md).
 
+Version 0.36 adds semantic rule coverage to knowledge suites. Alpha-equivalent authored
+rules form one coverage unit; primary, alternative, recursive, and aggregate proofs record
+which named checks exercise it. An optional minimum percentage can fail CI after all row
+checks pass. See [the semantic-rule-coverage contract](docs/RULE-COVERAGE.md).
+
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
 complete selected namespaces. Empty or unanswerable results from a partial slice trigger

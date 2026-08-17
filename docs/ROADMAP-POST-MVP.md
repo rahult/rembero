@@ -421,6 +421,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    `2`, MCP, trust, identity, namespaces, proof limits, optional passing evidence, package,
    malformed-suite, and 16 MiB result boundaries share one immutable execution view.
 
+## Phase 39 — Semantic rule coverage  *(v0.36)*
+
+1. **Complete — proof-derived semantic hits**: primary, alternative, recursive, nested,
+   and aggregate proof trees contribute authored rule numbers, then alpha-equivalent
+   definitions collapse into one stable semantic coverage unit.
+2. **Complete — inspectable coverage report**: every rule group returns clause, authored
+   numbers, covering check names, covered flag, deterministic percentage, and uncovered
+   counts; programs without rules are 100% covered.
+3. **Complete — optional CI gate**: JSON v1 suites may require integer coverage 0–100;
+   coverage-only failure preserves passed row counts, runs all checks, exits CLI `2`, and
+   composes with current/recorded identity, trust, proof limits, MCP, and package paths.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

@@ -193,6 +193,100 @@ describe('deterministic knowledge regression suites', () => {
     });
   });
 
+  it('reports semantic rule coverage across nested, aggregate, duplicate, and alternative proofs', () => {
+    const clauses = parseProgram(`
+      base(a).
+      value(a, 2).
+      p(X) :- base(X).
+      p(Y) :- base(Y).
+      q(X) :- p(X).
+      counted(Count) :- count(*) as Count where value(Item, Number).
+      unused(X) :- missing(X).
+    `);
+    const coveredSuite: KnowledgeCheckSuite = {
+      version: 1,
+      coverage: { minimumPercent: 75 },
+      checks: [
+        {
+          name: 'nested derivation',
+          query: 'q(a)',
+          expect: { kind: 'nonempty' },
+        },
+        {
+          name: 'aggregate derivation',
+          query: 'counted(Count)',
+          expect: {
+            kind: 'rows',
+            order: 'exact',
+            rows: [{ Count: '1' }],
+          },
+        },
+      ],
+    };
+    const result = runKnowledgeChecks(clauses, new Map(), coveredSuite);
+    expect(result).toMatchObject({
+      status: 'passed',
+      failedCount: 0,
+      coveragePassed: true,
+      coverage: {
+        totalRules: 4,
+        coveredRules: 3,
+        uncoveredRules: 1,
+        percent: 75,
+        minimumPercent: 75,
+        passed: true,
+        rules: expect.arrayContaining([
+          expect.objectContaining({
+            clause: 'p(X) :- base(X).',
+            numbers: [1, 2],
+            checkNames: ['nested derivation'],
+            covered: true,
+          }),
+          expect.objectContaining({
+            clause: 'unused(X) :- missing(X).',
+            checkNames: [],
+            covered: false,
+          }),
+        ]),
+      },
+    });
+
+    const thresholdFailure = runKnowledgeChecks(clauses, new Map(), {
+      ...coveredSuite,
+      coverage: { minimumPercent: 100 },
+    });
+    expect(thresholdFailure).toMatchObject({
+      status: 'failed',
+      passedCount: 2,
+      failedCount: 0,
+      coveragePassed: false,
+      coverage: { percent: 75, minimumPercent: 100, passed: false },
+    });
+
+    const alternatives = runKnowledgeChecks(
+      parseProgram('left(a). right(a). answer(X) :- left(X). answer(X) :- right(X).'),
+      new Map(),
+      {
+        version: 1,
+        coverage: { minimumPercent: 100 },
+        checks: [
+          {
+            name: 'both proofs',
+            query: 'answer(a)',
+            expect: { kind: 'nonempty' },
+          },
+        ],
+      },
+      { maxProofsPerRow: 2 }
+    );
+    expect(alternatives.coverage).toMatchObject({
+      coveredRules: 2,
+      totalRules: 2,
+      percent: 100,
+      passed: true,
+    });
+  });
+
   it('normalizes standalone JSON and rejects malformed or ambiguous suites', () => {
     const normalized = parseKnowledgeCheckSuite(
       JSON.stringify(
@@ -273,6 +367,13 @@ describe('deterministic knowledge regression suites', () => {
         })),
       })
     ).toThrow(/1 to 64 checks/i);
+    expect(() =>
+      parseKnowledgeCheckSuite({
+        version: 1,
+        checks: [{ name: 'one', query: 'item(X)', expect: { kind: 'empty' } }],
+        coverage: { minimumPercent: 101 },
+      } as never)
+    ).toThrow(/minimumPercent must be from 0 to 100/i);
   });
 
   it('fails before execution when aggregate expected-row bounds are exceeded', () => {

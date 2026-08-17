@@ -36,6 +36,10 @@ Binding values are the same canonical serialized strings returned by query surfa
 `exact` compares deterministic row order; `set` sorts both sides by canonical binding key
 and rejects duplicate expected rows.
 
+Version 0.36 optionally adds top-level
+`"coverage": { "minimumPercent": 80 }`. Every run reports semantic rule coverage even
+without a threshold; see [semantic rule coverage](RULE-COVERAGE.md).
+
 ## Run
 
 ```bash
