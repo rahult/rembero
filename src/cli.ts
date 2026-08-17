@@ -25,6 +25,7 @@ import {
   rememberText,
   recallQuestion,
   type RecallAnswerMode,
+  type RecallRelatedKnowledgeOptions,
 } from './llm/pipeline.js';
 import { MAX_RECALL_SCHEMA_PREDICATES } from './llm/schema.js';
 import { MAX_INTEGRITY_VIOLATIONS } from './knowledge/integrity.js';
@@ -43,6 +44,7 @@ import {
 import {
   MAX_KNOWLEDGE_SEARCH_LIMIT,
   type KnowledgeSearchClauseKind,
+  type KnowledgeSearchResult,
 } from './knowledge/search.js';
 import {
   MAX_BROWSE_GRAPH_CLAIMS,
@@ -197,6 +199,9 @@ Options:
       --entity-identity <mode>  Read projection: off (default) or canonical
       --trust <mode>        Writes: accepted/tentative; reads: accepted/include_tentative
       --answer-mode <mode>  Recall phrasing: natural, deterministic, or evidence
+      --related           Include local discovery evidence when recall cannot answer
+      --related-limit <n> Maximum related matches (default: 20; max: ${MAX_KNOWLEDGE_SEARCH_LIMIT})
+      --related-kind <kind> Related fact, rule, or constraint filter; repeatable
       --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
       --assume <facts>     Ground facts to add in a what-if simulation; repeatable
       --without <pattern> Ground fact pattern to remove in a what-if simulation; repeatable
@@ -291,6 +296,9 @@ interface ParsedArgs {
   searchStates?: string;
   searchLimit?: string;
   searchKinds: string[];
+  related: boolean;
+  relatedLimit?: string;
+  relatedKinds: string[];
   browsePredicate?: string;
   browseDepth?: string;
   claimLimit?: string;
@@ -318,6 +326,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     assumedRules: [],
     withoutRules: [],
     searchKinds: [],
+    related: false,
+    relatedKinds: [],
     focusNumber: false,
     fromNumber: false,
     toNumber: false,
@@ -383,6 +393,14 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--answer-mode') {
       parsed.answerMode = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--related') {
+      parsed.related = true;
+    } else if (arg === '--related-limit') {
+      parsed.relatedLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--related-kind') {
+      parsed.relatedKinds.push(valueAfter(i, arg));
       i += 1;
     } else if (arg === '--op-id') {
       parsed.opId = valueAfter(i, arg);
@@ -561,16 +579,57 @@ function topologyDirectionOption(
 }
 
 function searchKindsOption(
-  values: string[]
+  values: string[],
+  flag = '--kind'
 ): KnowledgeSearchClauseKind[] | undefined {
   if (values.length === 0) return undefined;
   const kinds = [...new Set(values)];
   for (const kind of kinds) {
     if (kind !== 'fact' && kind !== 'rule' && kind !== 'constraint') {
-      throw new Error("--kind must be 'fact', 'rule', or 'constraint'");
+      throw new Error(`${flag} must be 'fact', 'rule', or 'constraint'`);
     }
   }
   return kinds as KnowledgeSearchClauseKind[];
+}
+
+function relatedKnowledgeOption(
+  args: ParsedArgs
+): boolean | RecallRelatedKnowledgeOptions | undefined {
+  if (!args.related && args.relatedLimit === undefined && args.relatedKinds.length === 0) {
+    return undefined;
+  }
+  const kinds = searchKindsOption(args.relatedKinds, '--related-kind');
+  let limit: number | undefined;
+  if (args.relatedLimit !== undefined) {
+    limit = integerOption(args.relatedLimit, 0, 'related knowledge limit');
+    if (limit < 1 || limit > MAX_KNOWLEDGE_SEARCH_LIMIT) {
+      throw new Error(
+        `related knowledge limit must be from 1 to ${MAX_KNOWLEDGE_SEARCH_LIMIT}`
+      );
+    }
+  }
+  if (limit === undefined && kinds === undefined) return true;
+  return {
+    ...(limit === undefined ? {} : { limit }),
+    ...(kinds === undefined ? {} : { kinds }),
+  };
+}
+
+function relatedKnowledgeText(result: KnowledgeSearchResult): string {
+  const lines = ['Related knowledge (discovery only; not an answer or proof):'];
+  if (result.status === 'no_match') {
+    lines.push('  No local lexical matches.');
+  } else {
+    for (const item of result.results) {
+      lines.push(`  ${item.rank}. ${item.clause} (score ${item.score})`);
+    }
+    if (result.truncated) {
+      lines.push(`  ... ${result.matchCount - result.returnedCount} more matches`);
+    }
+  }
+  const text = lines.join('\n');
+  assertBoundedOutput(text, 'CLI related knowledge');
+  return text;
 }
 
 function entityIdentityOption(
@@ -876,6 +935,17 @@ async function main(): Promise<void> {
     throw new Error('search limits and kinds are available only for search');
   }
   if (
+    (args.related ||
+      args.relatedLimit !== undefined ||
+      args.relatedKinds.length > 0) &&
+    command !== 'recall' &&
+    command !== 'recall-explain'
+  ) {
+    throw new Error(
+      'related knowledge options are available only for recall or recall-explain'
+    );
+  }
+  if (
     (args.browsePredicate !== undefined ||
       args.browseDepth !== undefined ||
       args.focusNumber) &&
@@ -1087,6 +1157,7 @@ async function main(): Promise<void> {
       return;
     }
     case 'recall': {
+      const relatedKnowledge = relatedKnowledgeOption(args);
       const result = await recallQuestion(
         {
           store,
@@ -1101,7 +1172,10 @@ async function main(): Promise<void> {
         },
         text,
         namespaces,
-        recordedSequence === undefined ? {} : { recordedSequence }
+        {
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+          ...(relatedKnowledge === undefined ? {} : { relatedKnowledge }),
+        }
       );
       assertBoundedOutput(result.answer, 'CLI recall answer');
       console.log(result.answer);
@@ -1111,10 +1185,14 @@ async function main(): Promise<void> {
       console.log(
         `  (status: ${result.status}, query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length}, trust: ${result.trustMode ?? 'accepted'}${recorded})`
       );
+      if (result.relatedKnowledge !== undefined) {
+        console.log(relatedKnowledgeText(result.relatedKnowledge));
+      }
       return;
     }
     case 'recall-explain': {
       const proofLimit = proofLimitOption(args.proofLimit);
+      const relatedKnowledge = relatedKnowledgeOption(args);
       const result = await recallQuestion(
         {
           store,
@@ -1134,6 +1212,7 @@ async function main(): Promise<void> {
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(graphSelector === undefined ? {} : { graphSelector }),
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
+          ...(relatedKnowledge === undefined ? {} : { relatedKnowledge }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

@@ -104,6 +104,10 @@ Natural-language recall returns an explicit status: `answered`, `no_match`,
 `unanswerable`, or `schema_budget_exhausted`. The last status is an honest bounded-result
 signal, not a claim that no relevant memory exists.
 
+Add `--related` to a recall command when a non-answer should also return the nearest local
+facts, rules, and policies. These suggestions use the exact same snapshot and fixed search
+scores; they are discovery evidence, not a replacement answer or proof.
+
 ### Optional ambient capture
 
 Manual `remember` remains the default. To opt into ambient capture at the end of Claude
@@ -424,6 +428,12 @@ Version 0.51 adds compact deterministic evidence answers. Positive recall can re
 bindings, claims, rules, absences, aggregates, projections, trust, temporal lineage, and
 durable sources locally, while negative recall keeps why-not summaries. No final phrasing
 model call is made. See [the evidence-answer contract](docs/EVIDENCE-ANSWER-MODE.md).
+
+Version 0.52 makes failed recall immediately actionable. Opt-in related knowledge attaches
+bounded deterministic local search results—with score reasons, provenance, trust, and a
+retrieval graph—to `no_match`, `unanswerable`, and schema-budget results from the exact
+same snapshot. It never changes answer authority or adds a model call. See
+[the related-knowledge recall contract](docs/RELATED-KNOWLEDGE-RECALL.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

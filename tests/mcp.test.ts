@@ -58,7 +58,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.51.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.52.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -1263,7 +1263,12 @@ describe('MCP explanation surfaces', () => {
     try {
       const recalled = await client.callTool({
         name: 'recall',
-        arguments: { question: 'Where does Zoe work?' },
+        arguments: {
+          question: 'Where does Zoe work?',
+          relatedKnowledge: true,
+          relatedLimit: 1,
+          relatedKinds: ['fact'],
+        },
       });
       const text = recalled.content.find((item) => item.type === 'text');
       const payload = JSON.parse(text?.type === 'text' ? text.text : '');
@@ -1275,6 +1280,16 @@ describe('MCP explanation surfaces', () => {
           status: 'blocked',
           summary:
             'No stored result matches works_at(zoe, Company). Required fact works_at(zoe, Company) is missing.',
+        },
+        relatedKnowledge: {
+          status: 'matches',
+          limit: 1,
+          results: [
+            {
+              clause: 'works_at(maya, acme).',
+              sources: [{ opId: 'maya-source' }],
+            },
+          ],
         },
       });
       expect(payload.answer).toBe(payload.whyNot.summary);

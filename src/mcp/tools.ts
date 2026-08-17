@@ -12,6 +12,7 @@ import {
 import {
   type RecallResult,
   type RecallAnswerMode,
+  type RecallRelatedKnowledgeOptions,
   type RememberResult,
   type PipelineDeps,
   recallQuestion,
@@ -314,6 +315,7 @@ export function recallTool(
     trustMode?: TrustViewMode;
     recordedSequence?: number;
     answerMode?: RecallAnswerMode;
+    relatedKnowledge?: boolean | RecallRelatedKnowledgeOptions;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -329,6 +331,9 @@ export function recallTool(
       ? {}
       : { recordedSequence: args.recordedSequence }),
     ...(args.answerMode === undefined ? {} : { answerMode: args.answerMode }),
+    ...(args.relatedKnowledge === undefined
+      ? {}
+      : { relatedKnowledge: args.relatedKnowledge }),
   });
 }
 
@@ -344,6 +349,7 @@ export function recallExplainTool(
     graphSelector?: ExplanationGraphSelector;
     recordedSequence?: number;
     answerMode?: RecallAnswerMode;
+    relatedKnowledge?: boolean | RecallRelatedKnowledgeOptions;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -362,6 +368,9 @@ export function recallExplainTool(
       ? {}
       : { recordedSequence: args.recordedSequence }),
     ...(args.answerMode === undefined ? {} : { answerMode: args.answerMode }),
+    ...(args.relatedKnowledge === undefined
+      ? {}
+      : { relatedKnowledge: args.relatedKnowledge }),
   });
 }
 

@@ -56,6 +56,11 @@ import {
   type KnowledgeTrust,
   type TrustViewMode,
 } from '../knowledge/trust.js';
+import {
+  searchKnowledge,
+  type KnowledgeSearchClauseKind,
+  type KnowledgeSearchResult,
+} from '../knowledge/search.js';
 import { assertBoundedOutput, assertSafeForExternalLlm } from '../safety.js';
 import {
   NOTHING_SENTINEL,
@@ -146,6 +151,8 @@ export interface RecallResult {
   recordedSnapshot?: RecordedSnapshotMetadata;
   trustMode?: TrustViewMode;
   answerMode?: RecallAnswerMode;
+  /** Local discovery evidence for a non-answer; never changes recall authority. */
+  relatedKnowledge?: KnowledgeSearchResult;
 }
 
 export interface RetrievalResult {
@@ -160,6 +167,8 @@ export interface RetrievalResult {
   pruning?: RecallPruningReport;
   recordedSnapshot?: RecordedSnapshotMetadata;
   trustMode?: TrustViewMode;
+  /** Local discovery evidence for a non-answer; never changes recall authority. */
+  relatedKnowledge?: KnowledgeSearchResult;
 }
 
 export interface RecallWhyNotUnavailable {
@@ -203,6 +212,11 @@ export type RecallStatus =
 
 export type RecallAnswerMode = 'natural' | 'deterministic' | 'evidence';
 
+export interface RecallRelatedKnowledgeOptions {
+  limit?: number;
+  kinds?: KnowledgeSearchClauseKind[];
+}
+
 export interface RecallOptions {
   queryPromptVariant?: QueryPromptVariant;
   explain?: boolean;
@@ -217,6 +231,8 @@ export interface RecallOptions {
   recordedSequence?: number;
   /** Natural LLM phrasing, exact local bindings, or compact local evidence. */
   answerMode?: RecallAnswerMode;
+  /** Add deterministic lexical/provenance discovery when recall cannot answer. */
+  relatedKnowledge?: boolean | RecallRelatedKnowledgeOptions;
 }
 
 /** Render successful recall bindings locally without granting an LLM phrasing authority. */
@@ -403,6 +419,17 @@ function resolvedRecallAnswerMode(value: unknown): RecallAnswerMode {
   if (value === undefined || value === 'natural') return 'natural';
   if (value === 'deterministic' || value === 'evidence') return value;
   throw new Error("recall answer mode must be 'natural', 'deterministic', or 'evidence'");
+}
+
+function resolvedRelatedKnowledgeOptions(
+  value: RecallOptions['relatedKnowledge']
+): RecallRelatedKnowledgeOptions | undefined {
+  if (value === undefined || value === false) return undefined;
+  if (value === true) return {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('recall related knowledge must be a boolean or options object');
+  }
+  return value;
 }
 
 function stripFences(text: string): string {
@@ -1150,6 +1177,27 @@ export async function retrieveQuestion(
     : literalKnowledge(literalClauses, literalSources, trustMode);
   const clauses = view.clauses;
   const trustResult = trustMode === 'accepted' ? {} : { trustMode };
+  const relatedOptions = resolvedRelatedKnowledgeOptions(options.relatedKnowledge);
+  const relatedResult = (): { relatedKnowledge?: KnowledgeSearchResult } =>
+    relatedOptions === undefined
+      ? {}
+      : {
+          relatedKnowledge: searchKnowledge(
+            literalClauses,
+            question,
+            literalSources,
+            {
+              ...(relatedOptions.limit === undefined
+                ? {}
+                : { limit: relatedOptions.limit }),
+              ...(relatedOptions.kinds === undefined
+                ? {}
+                : { kinds: relatedOptions.kinds }),
+              ...(entityIdentity === undefined ? {} : { entityIdentity }),
+              ...(trustMode === 'accepted' ? {} : { trustMode }),
+            }
+          ),
+        };
   const aggregatePredicates = new Map<
     string,
     Array<{ op: AggregateOperator; outputPosition: number }>
@@ -1168,6 +1216,7 @@ export async function retrieveQuestion(
       status: 'unanswerable',
       query: null,
       bindings: [],
+      ...relatedResult(),
       ...trustResult,
       ...(recordedSnapshot === undefined ? {} : { recordedSnapshot }),
     };
@@ -1198,6 +1247,7 @@ export async function retrieveQuestion(
           status: 'schema_budget_exhausted',
           query: null,
           bindings: [],
+          ...relatedResult(),
           ...trustResult,
           ...(recordedSnapshot === undefined ? {} : { recordedSnapshot }),
         };
@@ -1420,6 +1470,7 @@ export async function retrieveQuestion(
     return {
       status: 'schema_budget_exhausted',
       ...retrieval,
+      ...relatedResult(),
       ...reviewResult,
       ...pruning,
       ...trustResult,
@@ -1460,6 +1511,7 @@ export async function retrieveQuestion(
     status: outcome === 'empty' ? 'no_match' : 'unanswerable',
     ...retrieval,
     ...whyNotResult,
+    ...relatedResult(),
     ...reviewResult,
     ...pruning,
     ...trustResult,

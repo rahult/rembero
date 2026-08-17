@@ -15,6 +15,7 @@ import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { OpenRouterClient } from '../src/llm/client.js';
 import { wrapTentativeFacts } from '../src/knowledge/trust.js';
 import { assertTentativeFacts } from '../src/knowledge/trust-store.js';
+import { searchKnowledge } from '../src/knowledge/search.js';
 
 /** LlmClient returning scripted responses, recording every request. */
 class ScriptedLlm implements LlmClient {
@@ -1182,7 +1183,9 @@ describe('recallQuestion', () => {
         recallSchemaPredicateLimit: 2,
         recallSchemaByteLimit: 512,
       },
-      'What relationship is stored?'
+      'What relationship is stored?',
+      ['default'],
+      { relatedKnowledge: { limit: 1 } }
     );
 
     expect(result).toMatchObject({
@@ -1190,6 +1193,7 @@ describe('recallQuestion', () => {
       query: null,
       bindings: [],
       pruning: { catalogComplete: false },
+      relatedKnowledge: { status: 'no_match', limit: 1 },
     });
     expect(result.answer).toMatch(/schema budget/i);
     expect(llm.calls).toHaveLength(1);
@@ -1752,6 +1756,117 @@ describe('recallQuestion', () => {
     expect(result.bindings).toEqual([]);
     expect(result.answer).toMatch(/no (relevant )?memor/i);
     expect(llm.calls).toHaveLength(1);
+  });
+
+  it('adds deterministic related knowledge to an unanswerable recall without another model call', async () => {
+    store.assert('default', 'dentist(rahul, chen).', {
+      opId: 'dentist-source',
+      sourceText: 'Rahul dentist is Doctor Chen.',
+    });
+    const llm = new ScriptedLlm(['?- unanswerable.']);
+
+    const result = await recallQuestion(
+      { store, llm },
+      'Who is Rahul dentist?',
+      ['default'],
+      { relatedKnowledge: { limit: 2, kinds: ['fact'] } }
+    );
+
+    expect(result).toMatchObject({
+      status: 'unanswerable',
+      query: null,
+      bindings: [],
+      relatedKnowledge: {
+        status: 'matches',
+        limit: 2,
+      },
+    });
+    expect(result.relatedKnowledge?.results[0]).toMatchObject({
+      rank: 1,
+      clause: 'dentist(rahul, chen).',
+      sources: [{ opId: 'dentist-source' }],
+    });
+    expect(result.answer).toMatch(/no relevant memories/i);
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it('uses the exact recorded identity and trust view for related recall discovery', async () => {
+    const temporal = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-related-view-'))
+    );
+    temporal.assert(
+      'default',
+      `rembero_alias('Mira Patel', mira).
+       rembero_entity_position(works_at, 2, 0).
+       works_at('Mira Patel', acme).`,
+      { opId: 'identity-source' }
+    );
+    assertTentativeFacts(temporal, 'default', 'status(mira, paused).', {
+      opId: 'tentative-source',
+    });
+    temporal.assert('default', 'status(mira, active).', { opId: 'later-source' });
+    const snapshot = temporal.recordedSnapshot(['default'], 2);
+    const expected = searchKnowledge(
+      snapshot.clauses,
+      'Mira paused work',
+      snapshot.sources,
+      {
+        limit: 5,
+        kinds: ['fact'],
+        entityIdentity: 'canonical',
+        trustMode: 'include_tentative',
+      }
+    );
+    const llm = new ScriptedLlm(['?- unanswerable.']);
+
+    const result = await recallQuestion(
+      { store: temporal, llm },
+      'Mira paused work',
+      ['default'],
+      {
+        recordedSequence: 2,
+        entityIdentity: 'canonical',
+        trustMode: 'include_tentative',
+        relatedKnowledge: { limit: 5, kinds: ['fact'] },
+      }
+    );
+
+    expect(result.relatedKnowledge).toEqual(expected);
+    expect(result.recordedSnapshot).toMatchObject({ sequence: 2 });
+    expect(result.relatedKnowledge?.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          clause: 'works_at(mira, acme).',
+          sources: [expect.objectContaining({ projectedFrom: "works_at('Mira Patel', acme)." })],
+        }),
+        expect.objectContaining({
+          clause: 'status(mira, paused).',
+          trust: 'tentative',
+        }),
+      ])
+    );
+    expect(result.relatedKnowledge?.results.some(({ clause }) =>
+      clause === 'status(mira, active).'
+    )).toBe(false);
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it('does not attach related discovery to an answered recall', async () => {
+    const llm = new ScriptedLlm([
+      '?- works_at(rahul, Company).',
+      'Rahul works at Acme.',
+    ]);
+    const result = await recallQuestion(
+      { store, llm },
+      'Where does Rahul work?',
+      ['default'],
+      { relatedKnowledge: true }
+    );
+
+    expect(result.status).toBe('answered');
+    expect(result.relatedKnowledge).toBeUndefined();
+    expect(result.answer).toBe('Rahul works at Acme.');
+    expect(llm.calls).toHaveLength(2);
   });
 
   it('retries when the generated query uses an unknown predicate', async () => {

@@ -9,7 +9,10 @@ import {
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
 } from '../env.js';
-import type { PipelineDeps } from '../llm/pipeline.js';
+import type {
+  PipelineDeps,
+  RecallRelatedKnowledgeOptions,
+} from '../llm/pipeline.js';
 import { MAX_RECALL_SCHEMA_PREDICATES } from '../llm/schema.js';
 import { MAX_PROOFS_PER_ROW } from '../engine/index.js';
 import {
@@ -88,7 +91,10 @@ import {
   MAX_REPAIR_SEARCH_STATES,
   MAX_REPAIR_STEPS,
 } from '../knowledge/repair.js';
-import { MAX_KNOWLEDGE_SEARCH_LIMIT } from '../knowledge/search.js';
+import {
+  MAX_KNOWLEDGE_SEARCH_LIMIT,
+  type KnowledgeSearchClauseKind,
+} from '../knowledge/search.js';
 import {
   MAX_BROWSE_ENTITY_FOCUS_BYTES,
   MAX_BROWSE_GRAPH_CLAIMS,
@@ -225,6 +231,23 @@ const knowledgeSearchKindsField = z
   .max(3)
   .optional()
   .describe('Optional fact, rule, or constraint filters');
+const relatedKnowledgeField = z
+  .boolean()
+  .optional()
+  .describe('Include local discovery evidence when recall cannot answer');
+const relatedKnowledgeLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_KNOWLEDGE_SEARCH_LIMIT)
+  .optional()
+  .describe('Maximum related local knowledge matches (default: 20)');
+const relatedKnowledgeKindsField = z
+  .array(z.enum(['fact', 'rule', 'constraint']))
+  .min(1)
+  .max(3)
+  .optional()
+  .describe('Optional related fact, rule, or constraint filters');
 const browseEntityFocusField = z
   .union([
     z.string().max(MAX_BROWSE_ENTITY_FOCUS_BYTES),
@@ -435,6 +458,27 @@ function requestedIntegrity(
   };
 }
 
+function requestedRelatedKnowledge(
+  enabled: boolean | undefined,
+  limit: number | undefined,
+  kinds: KnowledgeSearchClauseKind[] | undefined
+): boolean | RecallRelatedKnowledgeOptions | undefined {
+  if (enabled === false) {
+    if (limit !== undefined || kinds !== undefined) {
+      throw new Error(
+        'related knowledge limits or kinds cannot be used when relatedKnowledge is false'
+      );
+    }
+    return false;
+  }
+  if (enabled !== true && limit === undefined && kinds === undefined) return undefined;
+  if (limit === undefined && kinds === undefined) return true;
+  return {
+    ...(limit === undefined ? {} : { limit }),
+    ...(kinds === undefined ? {} : { kinds }),
+  };
+}
+
 export function createServer(deps: PipelineDeps): McpServer {
   const entityIdentity = deps.entityIdentity ?? entityIdentityFromEnv();
   const configuredIntegrity = deps.integrityEnforcement ?? integrityEnforcementFromEnv();
@@ -458,7 +502,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     knowledgeCheckEnforcement: configuredChecks,
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.51.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.52.0' });
 
   server.registerTool(
     'remember',
@@ -665,7 +709,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Recall',
       description:
-        "Answer a question from current or explicitly selected recorded long-term memory using logical inference over stored facts and rules. Use when the user asks about anything previously discussed or personal ('who is my dentist?', 'what did we decide about the database?'), and at the start of tasks where remembered context would help. Returns an explicit recall status plus the query, bindings, and bounded schema diagnostics when pruning activates.",
+        "Answer a question from current or explicitly selected recorded long-term memory using logical inference over stored facts and rules. Use when the user asks about anything previously discussed or personal ('who is my dentist?', 'what did we decide about the database?'), and at the start of tasks where remembered context would help. Returns an explicit recall status plus the query, bindings, and bounded schema diagnostics when pruning activates. Optional related knowledge is same-snapshot local discovery evidence only; it never changes the answer status or adds a model call.",
       inputSchema: {
         question: boundedText(),
         namespaces: namespacesField,
@@ -673,6 +717,9 @@ export function createServer(deps: PipelineDeps): McpServer {
         entityIdentity: entityIdentityField,
         trustMode: trustViewField,
         answerMode: recallAnswerModeField,
+        relatedKnowledge: relatedKnowledgeField,
+        relatedLimit: relatedKnowledgeLimitField,
+        relatedKinds: relatedKnowledgeKindsField,
         recordedSequence: recordedSequenceField,
       },
     },
@@ -683,9 +730,17 @@ export function createServer(deps: PipelineDeps): McpServer {
       entityIdentity,
       trustMode,
       answerMode,
+      relatedKnowledge,
+      relatedLimit,
+      relatedKinds,
       recordedSequence,
     }) => {
       try {
+        const related = requestedRelatedKnowledge(
+          relatedKnowledge,
+          relatedLimit,
+          relatedKinds
+        );
         return asContent(
           await recallTool(resolvedDeps, {
             question,
@@ -694,6 +749,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             entityIdentity,
             trustMode,
             answerMode,
+            ...(related === undefined ? {} : { relatedKnowledge: related }),
             recordedSequence,
           })
         );
@@ -708,7 +764,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Recall with explanation',
       description:
-        'Answer from long-term memory and return the recall status, generated query, bindings, deterministic derivation proofs, durable source statements, query-scoped knowledge graph, and bounded schema diagnostics when pruning activates.',
+        'Answer from long-term memory and return the recall status, generated query, bindings, deterministic derivation proofs, durable source statements, query-scoped knowledge graph, and bounded schema diagnostics when pruning activates. Optional related knowledge is same-snapshot local discovery evidence only; it never changes the answer status or adds a model call.',
       inputSchema: {
         question: boundedText(),
         namespaces: namespacesField,
@@ -717,6 +773,9 @@ export function createServer(deps: PipelineDeps): McpServer {
         entityIdentity: entityIdentityField,
         trustMode: trustViewField,
         answerMode: recallAnswerModeField,
+        relatedKnowledge: relatedKnowledgeField,
+        relatedLimit: relatedKnowledgeLimitField,
+        relatedKinds: relatedKnowledgeKindsField,
         graphSelector: graphSelectorField,
         recordedSequence: recordedSequenceField,
       },
@@ -729,10 +788,18 @@ export function createServer(deps: PipelineDeps): McpServer {
       entityIdentity,
       trustMode,
       answerMode,
+      relatedKnowledge,
+      relatedLimit,
+      relatedKinds,
       graphSelector,
       recordedSequence,
     }) => {
       try {
+        const related = requestedRelatedKnowledge(
+          relatedKnowledge,
+          relatedLimit,
+          relatedKinds
+        );
         return asContent(
           await recallExplainTool(resolvedDeps, {
             question,
@@ -742,6 +809,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             entityIdentity,
             trustMode,
             answerMode,
+            ...(related === undefined ? {} : { relatedKnowledge: related }),
             graphSelector,
             recordedSequence,
           })

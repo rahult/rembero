@@ -652,6 +652,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    default, accepted/tentative, aggregate/absence/source tests, package install, canonical
    value formatting, and 16 MiB output bound share one mode.
 
+## Phase 55 — Deterministic related-knowledge recall  *(v0.52)*
+
+1. **Complete — actionable non-answers**: opt-in related local search accompanies final
+   no-match, unanswerable, and schema-budget states without changing their status, query,
+   bindings, why-not evidence, or answer.
+2. **Complete — exact view continuity**: suggestions use the same captured clauses,
+   sources, namespaces, canonical identity, tentative trust, and recorded coordinate as
+   the primary recall attempt.
+3. **Complete — explicit discovery boundary**: fixed lexical scores, reasons, provenance,
+   and the retrieval graph remain visibly separate from logical proof and answer authority;
+   no vector, graph sidecar, or extra LLM call participates.
+4. **Complete — operational parity**: library options/result types, CLI text and JSON,
+   MCP fields, package installs, current/recorded tests, kind/result limits, and fail-closed
+   search/output bounds share one contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

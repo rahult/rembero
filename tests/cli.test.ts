@@ -83,7 +83,14 @@ describe('CLI ingress limits', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-recall-status-'));
     const result = spawnSync(
       process.execPath,
-      [resolve('dist/cli.js'), 'recall', 'What is remembered?'],
+      [
+        resolve('dist/cli.js'),
+        'recall',
+        'What is remembered?',
+        '--related',
+        '--related-limit',
+        '2',
+      ],
       {
         encoding: 'utf8',
         env: {
@@ -97,6 +104,10 @@ describe('CLI ingress limits', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('status: unanswerable');
+    expect(result.stdout).toContain(
+      'Related knowledge (discovery only; not an answer or proof):'
+    );
+    expect(result.stdout).toContain('No local lexical matches.');
   });
 
   it('routes proposal-first memory through local secret rejection without writing', () => {

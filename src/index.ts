@@ -81,6 +81,7 @@ export {
   type RecallQueryReview,
   type RecallQueryReviewReason,
   type RecallResult,
+  type RecallRelatedKnowledgeOptions,
   type RecallWhyNotUnavailable,
   type RecallSchemaAttempt,
   type RecallSchemaAttemptOutcome,
