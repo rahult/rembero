@@ -156,6 +156,8 @@ node dist/cli.js query    'count(*) as Count where works_at(Person, acme)'
 node dist/cli.js explain  'colleague(rahul, X)'      # proof + source + graph, no LLM call
 node dist/cli.js what-if  'colleague(mira, Who)' \
   --without 'works_at(rahul, _)' --assume 'works_at(rahul, acme).'
+node dist/cli.js what-if 'derived(X)' \
+  --assume-rule 'derived(X) :- base(X).' --check-suite checks.json
 node dist/cli.js why-not  'colleague(mira, rahul)' # missing premises + nearby evidence
 node dist/cli.js topology 'colleague' --direction upstream # rule dependency closure
 node dist/cli.js diff 17 23 --query 'status(mira, State)' # semantic + consequence diff
@@ -361,6 +363,12 @@ bounded fixpoint, then attaches sourced proofs and only the rules actually used 
 selected path claim. Recursion, negation, aggregates, aliases, tentative premises, and
 recorded views keep the ordinary explanation semantics. See
 [the proof-carrying knowledge-path contract](docs/KNOWLEDGE-PATHS.md).
+
+Version 0.43 previews rule changes before they become authority. `what-if` can add or
+remove exact alpha-equivalent rules, compare query proofs, integrity, topology, and rule
+health, then run the same knowledge checks and semantic coverage against both programs.
+Current or exact recorded baselines remain immutable and proposed rules carry hypothetical
+provenance. See [the rule-change impact contract](docs/RULE-CHANGE-IMPACT.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

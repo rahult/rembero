@@ -17,6 +17,8 @@ import type {
   CurrentKnowledgeSnapshot,
   MemorySource,
   MemoryStore,
+  RecordedKnowledgeSnapshot,
+  RecordedSnapshotMetadata,
 } from '../store/store.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 import {
@@ -29,11 +31,23 @@ import {
   checkIntegrity,
   type IntegrityCheckResult,
 } from './integrity.js';
+import {
+  auditKnowledgeRules,
+  type RuleAuditFinding,
+  type RuleAuditResult,
+} from './rule-audit.js';
+import {
+  runKnowledgeChecks,
+  type KnowledgeCheckSuite,
+  type KnowledgeCheckSuiteResult,
+} from './checks.js';
 import { isEntityMetadataPredicate } from './identity.js';
 import { isTrustMetadataPredicate } from './trust.js';
 
 export const MAX_COUNTERFACTUAL_ASSUMPTIONS = 64;
 export const MAX_COUNTERFACTUAL_RETRACTIONS = 64;
+export const MAX_COUNTERFACTUAL_RULE_ADDITIONS = 64;
+export const MAX_COUNTERFACTUAL_RULE_REMOVALS = 64;
 const HYPOTHETICAL_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
 export interface CounterfactualKnowledgeOptions
@@ -46,6 +60,14 @@ export interface CounterfactualKnowledgeOptions
   assume?: string;
   /** Ground-fact patterns to retract from the target namespace before assumptions. */
   without?: string[];
+  /** Ordinary or aggregate rules to append after exact rule removals. */
+  assumeRules?: string;
+  /** Exact alpha-equivalent ordinary or aggregate rules to remove. */
+  withoutRules?: string;
+  /** Optional deterministic knowledge suite evaluated against both programs. */
+  checkSuite?: KnowledgeCheckSuite | string;
+  /** Simulate from an exact recorded journal position instead of current files. */
+  recordedSequence?: number;
   /** Complete integrity-row cap applied independently to each view. */
   maxViolations?: number;
 }
@@ -55,6 +77,9 @@ export interface CounterfactualViewOptions {
   namespaces?: string[] | '*';
   assume?: string;
   without?: string[];
+  assumeRules?: string;
+  withoutRules?: string;
+  recordedSequence?: number;
 }
 
 export interface CounterfactualBaseline {
@@ -63,6 +88,7 @@ export interface CounterfactualBaseline {
   clauses: Clause[];
   clausesByNamespace: Map<string, Clause[]>;
   sources: Map<string, MemorySource[]>;
+  recordedSnapshot?: RecordedSnapshotMetadata;
 }
 
 export interface CounterfactualKnowledgeView {
@@ -79,6 +105,10 @@ export interface CounterfactualApplication {
   duplicateAssumptions: string[];
   retracted: string[];
   unmatchedRetractions: string[];
+  assumedRules: string[];
+  duplicateRuleAssumptions: string[];
+  retractedRules: string[];
+  unmatchedRuleRetractions: string[];
 }
 
 export interface CounterfactualResultDelta {
@@ -104,6 +134,31 @@ export interface CounterfactualIntegrityDelta {
   resolved: CounterfactualIntegrityViolation[];
 }
 
+export interface CounterfactualRuleAuditDelta {
+  baseline: RuleAuditResult;
+  candidate: RuleAuditResult;
+  introduced: RuleAuditFinding[];
+  resolved: RuleAuditFinding[];
+  addedTopologyNodeIds: string[];
+  removedTopologyNodeIds: string[];
+  changedTopologyNodeIds: string[];
+  addedTopologyEdgeIds: string[];
+  removedTopologyEdgeIds: string[];
+  changedTopologyEdgeIds: string[];
+}
+
+export interface CounterfactualCheckDelta {
+  baseline: KnowledgeCheckSuiteResult;
+  candidate: KnowledgeCheckSuiteResult;
+  regressed: string[];
+  fixed: string[];
+  coveragePercentBefore: number;
+  coveragePercentAfter: number;
+  coveragePercentDelta: number;
+  coverageRegressed: boolean;
+  coverageFixed: boolean;
+}
+
 export interface CounterfactualKnowledgeResult {
   changed: boolean;
   application: CounterfactualApplication;
@@ -111,6 +166,9 @@ export interface CounterfactualKnowledgeResult {
   candidate: ExplainKnowledgeResult;
   resultDelta: CounterfactualResultDelta;
   integrityDelta: CounterfactualIntegrityDelta;
+  ruleAuditDelta?: CounterfactualRuleAuditDelta;
+  checkDelta?: CounterfactualCheckDelta;
+  recordedSnapshot?: RecordedSnapshotMetadata;
 }
 
 function isReservedPredicate(predicate: string): boolean {
@@ -144,6 +202,44 @@ function assumptionFacts(source: string | undefined): Clause[] {
     }
   }
   return clauses;
+}
+
+function proposalRules(
+  source: string | undefined,
+  maximum: number,
+  label: string
+): Clause[] {
+  if (source === undefined || source.trim() === '') return [];
+  assertBoundedInput(source, label);
+  const clauses = parseProgram(source);
+  if (clauses.length > maximum) {
+    throw new Error(`${label} exceed ${maximum} rules`);
+  }
+  for (const clause of clauses) {
+    if (isIntegrityConstraint(clause) || clause.body.length === 0) {
+      throw new Error(`${label} must contain ordinary or aggregate rules only`);
+    }
+    if (isReservedPredicate(clause.head.predicate)) {
+      throw new Error(`${label} may not define reserved metadata`);
+    }
+  }
+  return clauses;
+}
+
+function assumptionRules(source: string | undefined): Clause[] {
+  return proposalRules(
+    source,
+    MAX_COUNTERFACTUAL_RULE_ADDITIONS,
+    'counterfactual rule assumptions'
+  );
+}
+
+function removalRules(source: string | undefined): Clause[] {
+  return proposalRules(
+    source,
+    MAX_COUNTERFACTUAL_RULE_REMOVALS,
+    'counterfactual rule removals'
+  );
 }
 
 function retractionPatterns(values: string[] | undefined): Array<{
@@ -295,6 +391,98 @@ function integrityDelta(
   };
 }
 
+function idDelta<T extends { id: string }>(
+  baseline: readonly T[],
+  candidate: readonly T[]
+): { added: string[]; removed: string[] } {
+  const before = new Set(baseline.map(({ id }) => id));
+  const after = new Set(candidate.map(({ id }) => id));
+  return {
+    added: [...after].filter((id) => !before.has(id)).sort(),
+    removed: [...before].filter((id) => !after.has(id)).sort(),
+  };
+}
+
+function changedIds<T extends { id: string }>(
+  baseline: readonly T[],
+  candidate: readonly T[]
+): string[] {
+  const before = new Map(baseline.map((value) => [value.id, value]));
+  return candidate
+    .filter((value) => {
+      const prior = before.get(value.id);
+      return prior !== undefined && JSON.stringify(prior) !== JSON.stringify(value);
+    })
+    .map(({ id }) => id)
+    .sort();
+}
+
+function ruleAuditDelta(
+  baseline: RuleAuditResult,
+  candidate: RuleAuditResult
+): CounterfactualRuleAuditDelta {
+  const findings = idDelta(baseline.findings, candidate.findings);
+  const baselineFindings = new Map(
+    baseline.findings.map((finding) => [finding.id, finding])
+  );
+  const candidateFindings = new Map(
+    candidate.findings.map((finding) => [finding.id, finding])
+  );
+  const topologyNodes = idDelta(
+    baseline.topology.graph.nodes,
+    candidate.topology.graph.nodes
+  );
+  const topologyEdges = idDelta(
+    baseline.topology.graph.edges,
+    candidate.topology.graph.edges
+  );
+  return {
+    baseline,
+    candidate,
+    introduced: findings.added.map((id) => candidateFindings.get(id)!),
+    resolved: findings.removed.map((id) => baselineFindings.get(id)!),
+    addedTopologyNodeIds: topologyNodes.added,
+    removedTopologyNodeIds: topologyNodes.removed,
+    changedTopologyNodeIds: changedIds(
+      baseline.topology.graph.nodes,
+      candidate.topology.graph.nodes
+    ),
+    addedTopologyEdgeIds: topologyEdges.added,
+    removedTopologyEdgeIds: topologyEdges.removed,
+    changedTopologyEdgeIds: changedIds(
+      baseline.topology.graph.edges,
+      candidate.topology.graph.edges
+    ),
+  };
+}
+
+function checkDelta(
+  baseline: KnowledgeCheckSuiteResult,
+  candidate: KnowledgeCheckSuiteResult
+): CounterfactualCheckDelta {
+  const before = new Map(
+    baseline.checks.map((check) => [check.name, check.status])
+  );
+  const after = new Map(
+    candidate.checks.map((check) => [check.name, check.status])
+  );
+  return {
+    baseline,
+    candidate,
+    regressed: [...before]
+      .filter(([name, status]) => status === 'passed' && after.get(name) === 'failed')
+      .map(([name]) => name),
+    fixed: [...before]
+      .filter(([name, status]) => status === 'failed' && after.get(name) === 'passed')
+      .map(([name]) => name),
+    coveragePercentBefore: baseline.coverage.percent,
+    coveragePercentAfter: candidate.coverage.percent,
+    coveragePercentDelta: candidate.coverage.percent - baseline.coverage.percent,
+    coverageRegressed: baseline.coveragePassed && !candidate.coveragePassed,
+    coverageFixed: !baseline.coveragePassed && candidate.coveragePassed,
+  };
+}
+
 function baselineFromSnapshot(
   snapshot: CurrentKnowledgeSnapshot,
   namespace: string
@@ -318,12 +506,67 @@ function baselineFromSnapshot(
   };
 }
 
+function baselineFromRecordedSnapshot(
+  snapshot: RecordedKnowledgeSnapshot,
+  namespace: string
+): CounterfactualBaseline {
+  const clausesByNamespace = new Map(
+    snapshot.namespaces.map((name) => [name, [] as Clause[]])
+  );
+  for (const clause of snapshot.clauses) {
+    const key = canonicalKey(clause);
+    const sourceNamespaces = new Set(
+      (snapshot.sources.get(key) ?? []).map((source) => source.namespace)
+    );
+    for (const name of snapshot.namespaces) {
+      if (sourceNamespaces.has(name)) clausesByNamespace.get(name)!.push(clause);
+    }
+  }
+  return {
+    namespace,
+    namespaces: [...snapshot.namespaces],
+    clauses: structuredClone(snapshot.clauses),
+    clausesByNamespace: new Map(
+      [...clausesByNamespace].map(([name, clauses]) => [
+        name,
+        structuredClone(clauses),
+      ])
+    ),
+    sources: new Map(
+      [...snapshot.sources].map(([key, sources]) => [
+        key,
+        sources.map((source) => structuredClone(source)),
+      ])
+    ),
+    recordedSnapshot: {
+      sequence: snapshot.sequence,
+      journalEntries: snapshot.journalEntries,
+      namespaces: [...snapshot.namespaces],
+    },
+  };
+}
+
 /** Capture one coherent current view for one or more hypothetical applications. */
 export function captureCounterfactualBaseline(
   store: MemoryStore,
-  options: Pick<CounterfactualViewOptions, 'namespace' | 'namespaces'> = {}
+  options: Pick<
+    CounterfactualViewOptions,
+    'namespace' | 'namespaces' | 'recordedSequence'
+  > = {}
 ): CounterfactualBaseline {
   const namespace = options.namespace ?? 'default';
+  if (options.recordedSequence !== undefined) {
+    const requested = options.namespaces ?? [namespace];
+    assertNamespaceCount(requested);
+    let snapshot = store.recordedSnapshot(requested, options.recordedSequence);
+    if (!snapshot.namespaces.includes(namespace)) {
+      snapshot = store.recordedSnapshot(
+        [...snapshot.namespaces, namespace],
+        options.recordedSequence
+      );
+    }
+    return baselineFromRecordedSnapshot(snapshot, namespace);
+  }
   const names = selectedNamespaces(store, namespace, options.namespaces);
   return baselineFromSnapshot(store.knowledgeSnapshot(names), namespace);
 }
@@ -331,7 +574,10 @@ export function captureCounterfactualBaseline(
 /** Apply validated fact-only changes to an already captured in-memory baseline. */
 export function applyCounterfactualChanges(
   baseline: CounterfactualBaseline,
-  options: Pick<CounterfactualViewOptions, 'assume' | 'without'> = {}
+  options: Pick<
+    CounterfactualViewOptions,
+    'assume' | 'without' | 'assumeRules' | 'withoutRules'
+  > = {}
 ): CounterfactualKnowledgeView {
   const namespace = baseline.namespace;
   if (!baseline.namespaces.includes(namespace)) {
@@ -342,6 +588,8 @@ export function applyCounterfactualChanges(
   );
   const assumptions = assumptionFacts(options.assume);
   const patterns = retractionPatterns(options.without);
+  const proposedRules = assumptionRules(options.assumeRules);
+  const requestedRuleRemovals = removalRules(options.withoutRules);
   const targetBaseline = baseline.clausesByNamespace.get(namespace) ?? [];
   const matchingPatterns = patterns.map(({ literal }) =>
     targetBaseline.some(
@@ -354,8 +602,23 @@ export function applyCounterfactualChanges(
       patterns.some(({ literal }) => literalMatches(literal, clause.head))
   );
   const retractedKeys = new Set(retracted.map(canonicalKey));
+  const targetRuleKeys = new Set(
+    targetBaseline
+      .filter((clause) => clause.body.length > 0 && !isIntegrityConstraint(clause))
+      .map(canonicalKey)
+  );
+  const requestedRuleKeys = new Set(requestedRuleRemovals.map(canonicalKey));
+  const retractedRules = targetBaseline.filter(
+    (clause) =>
+      clause.body.length > 0 &&
+      !isIntegrityConstraint(clause) &&
+      requestedRuleKeys.has(canonicalKey(clause))
+  );
+  const retractedRuleKeys = new Set(retractedRules.map(canonicalKey));
   const targetAfterRetractions = targetBaseline.filter(
-    (clause) => !retractedKeys.has(canonicalKey(clause))
+    (clause) =>
+      !retractedKeys.has(canonicalKey(clause)) &&
+      !retractedRuleKeys.has(canonicalKey(clause))
   );
   const targetKeys = new Set(targetAfterRetractions.map(canonicalKey));
   const assumed: Clause[] = [];
@@ -368,7 +631,21 @@ export function applyCounterfactualChanges(
       assumed.push(clause);
     }
   }
-  const candidateTarget = [...targetAfterRetractions, ...assumed];
+  const assumedRules: Clause[] = [];
+  const duplicateRules: Clause[] = [];
+  for (const clause of proposedRules) {
+    const key = canonicalKey(clause);
+    if (targetKeys.has(key)) duplicateRules.push(clause);
+    else {
+      targetKeys.add(key);
+      assumedRules.push(clause);
+    }
+  }
+  const candidateTarget = [
+    ...targetAfterRetractions,
+    ...assumed,
+    ...assumedRules,
+  ];
   const candidateClauses = baseline.namespaces.flatMap((name) =>
     name === namespace
       ? candidateTarget
@@ -381,7 +658,7 @@ export function applyCounterfactualChanges(
       baseline.sources,
       namespace,
       candidateTarget,
-      assumed,
+      [...assumed, ...assumedRules],
       namespaceOrder
     ),
     application: {
@@ -393,6 +670,12 @@ export function applyCounterfactualChanges(
       unmatchedRetractions: patterns
         .filter((_pattern, index) => !matchingPatterns[index])
         .map(({ serialized }) => serialized),
+      assumedRules: assumedRules.map(serializeClause),
+      duplicateRuleAssumptions: duplicateRules.map(serializeClause),
+      retractedRules: retractedRules.map(serializeClause),
+      unmatchedRuleRetractions: requestedRuleRemovals
+        .filter((clause) => !targetRuleKeys.has(canonicalKey(clause)))
+        .map(serializeClause),
     },
   };
 }
@@ -408,10 +691,19 @@ export function buildCounterfactualKnowledgeView(
 export function evaluateCounterfactualKnowledgeView(
   view: CounterfactualKnowledgeView,
   query: string,
-  options: Omit<CounterfactualKnowledgeOptions, 'namespace' | 'namespaces' | 'assume' | 'without'> = {}
+  options: Omit<
+    CounterfactualKnowledgeOptions,
+    | 'namespace'
+    | 'namespaces'
+    | 'assume'
+    | 'without'
+    | 'assumeRules'
+    | 'withoutRules'
+    | 'recordedSequence'
+  > = {}
 ): CounterfactualKnowledgeResult {
   assertBoundedInput(query, 'counterfactual query');
-  const { maxViolations, ...explainOptions } = options;
+  const { maxViolations, checkSuite, ...explainOptions } = options;
   const baselineExplanation = explainKnowledge(
     view.baseline.clauses,
     query,
@@ -444,15 +736,72 @@ export function evaluateCounterfactualKnowledgeView(
     view.candidateSources,
     integrityOptions
   );
+  const rulesChanged =
+    view.application.assumedRules.length > 0 ||
+    view.application.retractedRules.length > 0;
+  let auditDelta: CounterfactualRuleAuditDelta | undefined;
+  if (rulesChanged) {
+    const auditOptions = {
+      ...(explainOptions.maxFacts === undefined
+        ? {}
+        : { maxFacts: explainOptions.maxFacts }),
+      ...(explainOptions.maxIterations === undefined
+        ? {}
+        : { maxIterations: explainOptions.maxIterations }),
+      ...(explainOptions.relationIndex === undefined
+        ? {}
+        : { relationIndex: explainOptions.relationIndex }),
+      ...(explainOptions.entityIdentity === undefined
+        ? {}
+        : { entityIdentity: explainOptions.entityIdentity }),
+      ...(explainOptions.trustMode === undefined
+        ? {}
+        : { trustMode: explainOptions.trustMode }),
+    };
+    auditDelta = ruleAuditDelta(
+      auditKnowledgeRules(
+        view.baseline.clauses,
+        view.baseline.sources,
+        auditOptions
+      ),
+      auditKnowledgeRules(
+        view.candidateClauses,
+        view.candidateSources,
+        auditOptions
+      )
+    );
+  }
+  const suiteDelta = checkSuite === undefined
+    ? undefined
+    : checkDelta(
+        runKnowledgeChecks(
+          view.baseline.clauses,
+          view.baseline.sources,
+          checkSuite,
+          explainOptions
+        ),
+        runKnowledgeChecks(
+          view.candidateClauses,
+          view.candidateSources,
+          checkSuite,
+          explainOptions
+        )
+      );
   return {
     changed:
       view.application.assumed.length > 0 ||
-      view.application.retracted.length > 0,
+      view.application.retracted.length > 0 ||
+      rulesChanged,
     application: structuredClone(view.application),
     baseline: baselineExplanation,
     candidate,
     resultDelta: resultDelta(baselineExplanation, candidate),
     integrityDelta: integrityDelta(baselineIntegrity, candidateIntegrity),
+    ...(auditDelta === undefined ? {} : { ruleAuditDelta: auditDelta }),
+    ...(suiteDelta === undefined ? {} : { checkDelta: suiteDelta }),
+    ...(view.baseline.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: structuredClone(view.baseline.recordedSnapshot) }),
   };
 }
 
@@ -470,6 +819,9 @@ export function simulateKnowledge(
     namespaces,
     assume,
     without,
+    assumeRules,
+    withoutRules,
+    recordedSequence,
     ...explainOptions
   } = options;
   const view = buildCounterfactualKnowledgeView(store, {
@@ -477,6 +829,9 @@ export function simulateKnowledge(
     namespaces,
     assume,
     without,
+    assumeRules,
+    withoutRules,
+    recordedSequence,
   });
   return evaluateCounterfactualKnowledgeView(view, query, explainOptions);
 }

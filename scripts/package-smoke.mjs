@@ -106,6 +106,8 @@ try {
         "if (recordedDiff.clauses.added[0]?.clause !== 'status(mira, active).' || recordedDiff.queryImpact?.added[0]?.bindings?.State !== 'active') throw new Error('public recorded diff API failed'); " +
         "const simulated = simulateKnowledge(trustStore, 'status(mira, State)', { assume: 'status(mira, paused).' }); " +
         "if (!simulated.changed || simulated.resultDelta.added[0]?.bindings?.State !== 'paused' || trustStore.clausesFor(['default']).length !== 1) throw new Error('public counterfactual API failed'); " +
+        "const simulatedRule = simulateKnowledge(trustStore, 'active(Person)', { assumeRules: 'active(Person) :- status(Person, active).', checkSuite: { version: 1, coverage: { minimumPercent: 100 }, checks: [{ name: 'active Mira', query: 'active(mira)', expect: { kind: 'nonempty' } }] } }); " +
+        "if (simulatedRule.candidate.rows[0]?.bindings?.Person !== 'mira' || simulatedRule.ruleAuditDelta?.candidate.topology.ruleCount !== 1 || simulatedRule.checkDelta?.candidate.status !== 'passed') throw new Error('public rule counterfactual API failed'); " +
         "const checkpoint = trustStore.compactJournal({ opId: 'package-checkpoint', at: new Date('2026-08-17T02:00:00.000Z') }); " +
         "if (checkpoint.sequence !== 2 || trustStore.listJournalCheckpoints().length !== 1 || trustStore.recordedSnapshot(['default'], 1).clauses.length !== 1) throw new Error('public journal checkpoint API failed'); " +
         "const bundle = createKnowledgeBundle(trustStore); const bundleText = serializeKnowledgeBundle(bundle); const bundleVerification = verifyKnowledgeBundle(bundleText); " +
@@ -307,6 +309,25 @@ try {
     simulatedTrust.candidate?.rows?.length !== 2
   ) {
     throw new Error('packaged counterfactual simulation failed');
+  }
+  const simulatedRuleTrust = JSON.parse(
+    run(
+      process.execPath,
+      [
+        installedCli,
+        'what-if',
+        'active(Person)',
+        '--assume-rule',
+        'active(Person) :- status(Person, active).',
+      ],
+      { cwd: directory, env: trustEnv }
+    )
+  );
+  if (
+    simulatedRuleTrust.candidate?.rows?.[0]?.bindings?.Person !== 'mira' ||
+    simulatedRuleTrust.ruleAuditDelta?.candidate?.topology?.ruleCount !== 1
+  ) {
+    throw new Error('packaged rule counterfactual simulation failed');
   }
   const checkpointOutput = JSON.parse(
     run(
@@ -782,7 +803,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, proof-carrying derived personal knowledge paths, deterministic explicit personal knowledge paths, exact personal knowledge extraction evaluation, verified cross-model recall ranking, indexed-versus-scan deterministic query profiling, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, proposal-only deterministic rule change impact, proof-carrying derived personal knowledge paths, deterministic explicit personal knowledge paths, exact personal knowledge extraction evaluation, verified cross-model recall ranking, indexed-versus-scan deterministic query profiling, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

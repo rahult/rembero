@@ -136,7 +136,7 @@ Usage:
   rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
   rembero check                          Check explicit integrity constraints with evidence
   rembero conflicts [focus]              Group conflicts by authored focus with evidence
-  rembero what-if <query>                Preview fact changes with proofs and integrity impact
+  rembero what-if <query>                Preview fact or rule changes with deterministic impact
   rembero why-not <query>                Explain deterministic blockers for a query
   rembero topology [predicate]           Map rules, policies, strata, and influence
   rembero diff <from> <to>               Compare two exact recorded knowledge states
@@ -167,7 +167,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/profile/why-not/topology/diff/audit-rules/search/browse/connect/test-knowledge/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/profile/what-if/why-not/topology/diff/audit-rules/search/browse/connect/test-knowledge/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -180,6 +180,9 @@ Options:
       --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
       --assume <facts>     Ground facts to add in a what-if simulation; repeatable
       --without <pattern> Ground fact pattern to remove in a what-if simulation; repeatable
+      --assume-rule <rule> Rule to add in a what-if simulation; repeatable
+      --without-rule <rule> Exact alpha-equivalent rule to remove; repeatable
+      --check-suite <file> Evaluate a knowledge check/coverage suite before and after
       --failure-limit <n> Why-not blocker limit (default: 32; max: ${MAX_WHY_NOT_FAILURES})
       --diagnostic-depth <n> Why-not rule depth (default: 8; max: ${MAX_WHY_NOT_DEPTH})
       --candidate-limit <n> Nearby facts per blocker (default: 4; max: ${MAX_WHY_NOT_CANDIDATES})
@@ -254,6 +257,9 @@ interface ParsedArgs {
   patterns: string[];
   assumptions: string[];
   without: string[];
+  assumedRules: string[];
+  withoutRules: string[];
+  checkSuitePath?: string;
   failureLimit?: string;
   diagnosticDepth?: string;
   candidateLimit?: string;
@@ -289,6 +295,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     patterns: [],
     assumptions: [],
     without: [],
+    assumedRules: [],
+    withoutRules: [],
     searchKinds: [],
     focusNumber: false,
     fromNumber: false,
@@ -367,6 +375,15 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--without') {
       parsed.without.push(valueAfter(i, arg));
+      i += 1;
+    } else if (arg === '--assume-rule') {
+      parsed.assumedRules.push(valueAfter(i, arg));
+      i += 1;
+    } else if (arg === '--without-rule') {
+      parsed.withoutRules.push(valueAfter(i, arg));
+      i += 1;
+    } else if (arg === '--check-suite') {
+      parsed.checkSuitePath = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--failure-limit') {
       parsed.failureLimit = valueAfter(i, arg);
@@ -789,6 +806,14 @@ async function main(): Promise<void> {
     throw new Error('--without is available only for what-if');
   }
   if (
+    (args.assumedRules.length > 0 ||
+      args.withoutRules.length > 0 ||
+      args.checkSuitePath !== undefined) &&
+    command !== 'what-if'
+  ) {
+    throw new Error('rule and check-suite simulation options are available only for what-if');
+  }
+  if (
     [args.failureLimit, args.diagnosticDepth, args.candidateLimit, args.evidenceLimit].some(
       (value) => value !== undefined
     ) &&
@@ -860,10 +885,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'profile', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'profile', 'what-if', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, profile, why-not, topology, audit-rules, search, browse, connect, bundle, test-knowledge, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, profile, what-if, why-not, topology, audit-rules, search, browse, connect, bundle, test-knowledge, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1100,6 +1125,20 @@ async function main(): Promise<void> {
     case 'what-if': {
       const proofLimit = proofLimitOption(args.proofLimit);
       const maxViolations = maxViolationsOption(args.maxViolations);
+      let checkSuite: string | undefined;
+      if (args.checkSuitePath !== undefined) {
+        const file = resolve(args.checkSuitePath);
+        const stat = lstatSync(file);
+        if (stat.isSymbolicLink() || !stat.isFile()) {
+          throw new Error('refusing non-regular counterfactual knowledge check suite file');
+        }
+        if (stat.size > MAX_KNOWLEDGE_CHECK_SUITE_BYTES) {
+          throw new Error(
+            `counterfactual knowledge check suite exceeds ${MAX_KNOWLEDGE_CHECK_SUITE_BYTES} bytes`
+          );
+        }
+        checkSuite = readFileSync(file, 'utf8');
+      }
       const result = whatIfTool(
         {
           store,
@@ -1110,10 +1149,14 @@ async function main(): Promise<void> {
           query: text,
           assume: args.assumptions.join('\n'),
           without: args.without,
+          assumeRules: args.assumedRules.join('\n'),
+          withoutRules: args.withoutRules.join('\n'),
+          ...(checkSuite === undefined ? {} : { checkSuite }),
           namespace: args.namespace,
           namespaces,
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(maxViolations === undefined ? {} : { maxViolations }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

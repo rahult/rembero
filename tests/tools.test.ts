@@ -513,6 +513,45 @@ describe('MCP tool handlers', () => {
     expect(store.clausesFor(['default'])).toHaveLength(2);
   });
 
+  it('simulates rule and coverage impact from an exact recorded baseline', () => {
+    store.assert('default', 'base(a).', { opId: 'recorded-base' });
+    store.assert('default', 'base(b).', { opId: 'later-base' });
+    const result = whatIfTool(
+      { store },
+      {
+        query: 'derived(X)',
+        assumeRules: 'derived(X) :- base(X).',
+        recordedSequence: 1,
+        checkSuite: JSON.stringify({
+          version: 1,
+          coverage: { minimumPercent: 100 },
+          checks: [
+            {
+              name: 'recorded derivation',
+              query: 'derived(a)',
+              expect: { kind: 'nonempty' },
+            },
+          ],
+        }),
+      }
+    );
+
+    expect(result).toMatchObject({
+      changed: true,
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+      candidate: { rows: [{ bindings: { X: 'a' } }] },
+      ruleAuditDelta: {
+        baseline: { topology: { ruleCount: 0 } },
+        candidate: { topology: { ruleCount: 1 } },
+      },
+      checkDelta: {
+        baseline: { status: 'failed' },
+        candidate: { status: 'passed', coverage: { percent: 100 } },
+        fixed: ['recorded derivation'],
+      },
+    });
+  });
+
   it('explains current and recorded query blockers through the tool boundary', () => {
     store.assert('default', 'status(mira, active).', { opId: 'before' });
     store.replace('default', ['status(mira, _)'], 'status(mira, paused).', {

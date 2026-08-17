@@ -33,11 +33,12 @@ All surfaces return the same shape:
 
 ## Authority and provenance
 
-The store captures clauses and durable sources under the normal mutation lock before
-evaluation, so every supported writer is excluded while the baseline snapshot is formed.
-Evaluation happens on immutable in-memory arrays after that point. No `.dl` file, journal,
-checkpoint, persistent cache, or source record is written by the simulation. As with
-opening a store, pre-existing interrupted mutations are recovered before the snapshot.
+For a current view, the store captures clauses and durable sources under the normal
+mutation lock, excluding supported writers while the baseline is formed. A recorded view
+reconstructs and reconciles the exact journal position under the journal lock. Evaluation
+happens on immutable in-memory arrays after that point. No `.dl` file, journal, checkpoint,
+persistent cache, or source record is written by the simulation. As with opening a store,
+pre-existing interrupted mutations are recovered before the snapshot.
 
 Assumed facts receive deterministic in-memory sources marked `hypothetical: true`.
 Their fixed sentinel timestamp has no valid-time or recorded-time meaning. Existing
@@ -49,6 +50,10 @@ Version 0.27 exposes capture, apply, and evaluate phases separately so repair se
 reuse one coherent baseline across multiple candidates. `simulateKnowledge(...)` remains
 the unchanged one-call surface.
 
+Version 0.43 extends the same immutable sandbox to exact rule additions/removals, rule
+audit/topology comparison, optional knowledge-suite and semantic coverage deltas, and
+exact recorded baselines. See [proposal-only rule change impact](RULE-CHANGE-IMPACT.md).
+
 ## Namespace semantics
 
 `namespace` is the one namespace hypothetically changed. `namespaces` is the complete
@@ -59,8 +64,9 @@ the result binding; `evidenceChanged` reports that distinction.
 
 ## Safety boundaries
 
-- Assumptions are limited to 64 ordinary ground facts. Rules, constraints, variables,
-  tentative declarations, and identity metadata are rejected.
+- Fact assumptions remain limited to 64 ordinary ground facts. Rules use separate bounded
+  rule proposal fields; constraints, tentative declarations, and identity metadata remain
+  rejected.
 - Retractions are limited to 64 single positive fact patterns and cannot target reserved
   trust or identity metadata. Rules and constraints cannot be removed by this surface.
 - Inputs retain the 64 KiB ingress bound; results retain the 16 MiB output bound.

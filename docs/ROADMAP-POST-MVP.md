@@ -519,6 +519,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    MCP `includeDerived`, packaged installs, and cross-interface regressions share the same
    non-mutating proof-carrying contract.
 
+## Phase 46 — Proposal-only deterministic rule change impact  *(v0.43)*
+
+1. **Complete — exact program proposals**: up to 64 ordinary/aggregate rules may be
+   appended and 64 alpha-equivalent rules removed from one target namespace on a coherent
+   current or exact recorded baseline; facts and policy authority remain separate.
+2. **Complete — consequence and structure evidence**: baseline/candidate query proofs,
+   provenance, integrity, full rule audits/topologies, stable finding changes, and topology
+   node/edge deltas share one immutable candidate.
+3. **Complete — regression and semantic coverage gate**: an optional portable JSON v1
+   suite runs against both programs and reports fixed/regressed checks, coverage movement,
+   and coverage pass/fail regression without storing test or proposal state.
+4. **Complete — operational and authority parity**: library, CLI `what-if` rule flags, MCP
+   `what_if`, namespaces, identity, trust, recorded coordinates, hypothetical rule sources,
+   packages, and fail-closed bounds remain proposal-only and non-mutating.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

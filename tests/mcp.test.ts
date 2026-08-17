@@ -57,7 +57,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.42.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.43.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -168,6 +168,47 @@ describe('MCP explanation surfaces', () => {
         },
         queryImpact: {
           added: [{ bindings: { Name: 'luna' } }],
+        },
+      });
+
+      const simulatedRule = await client.callTool({
+        name: 'what_if',
+        arguments: {
+          query: 'connected(a, Y)',
+          assumeRules: 'connected(X, Y) :- edge(X, Y).',
+          checkSuite: JSON.stringify({
+            version: 1,
+            coverage: { minimumPercent: 1 },
+            checks: [
+              {
+                name: 'direct connection',
+                query: 'connected(a, b)',
+                expect: { kind: 'nonempty' },
+              },
+            ],
+          }),
+        },
+      });
+      const simulatedRuleText = simulatedRule.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          simulatedRuleText?.type === 'text' ? simulatedRuleText.text : ''
+        )
+      ).toMatchObject({
+        changed: true,
+        application: {
+          assumedRules: ['connected(X, Y) :- edge(X, Y).'],
+        },
+        candidate: { rows: [{ bindings: { Y: 'b' } }] },
+        ruleAuditDelta: {
+          candidate: { topology: { rules: expect.any(Array) } },
+        },
+        checkDelta: {
+          baseline: { status: 'failed' },
+          candidate: { status: 'passed' },
+          fixed: ['direct connection'],
         },
       });
 

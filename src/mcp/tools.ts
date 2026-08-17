@@ -81,6 +81,7 @@ import {
   type KnowledgeBundleVerification,
 } from '../knowledge/bundle.js';
 import {
+  MAX_KNOWLEDGE_CHECK_SUITE_BYTES,
   runKnowledgeChecks,
   type KnowledgeCheckSuiteResult,
 } from '../knowledge/checks.js';
@@ -558,12 +559,16 @@ export function whatIfTool(
     query: string;
     assume?: string;
     without?: string[];
+    assumeRules?: string;
+    withoutRules?: string;
+    checkSuite?: string;
     namespace?: string;
     namespaces?: string[] | '*';
     proofLimit?: number;
     maxViolations?: number;
     entityIdentity?: EntityIdentityMode;
     trustMode?: TrustViewMode;
+    recordedSequence?: number;
   }
 ): CounterfactualKnowledgeResult {
   assertBoundedInput(args.query, 'counterfactual query');
@@ -573,12 +578,33 @@ export function whatIfTool(
   for (const [index, pattern] of (args.without ?? []).entries()) {
     assertBoundedInput(pattern, `counterfactual retraction ${index + 1}`);
   }
+  if (args.assumeRules !== undefined) {
+    assertBoundedInput(args.assumeRules, 'counterfactual rule assumptions');
+  }
+  if (args.withoutRules !== undefined) {
+    assertBoundedInput(args.withoutRules, 'counterfactual rule removals');
+  }
+  if (
+    args.checkSuite !== undefined &&
+    Buffer.byteLength(args.checkSuite, 'utf8') > MAX_KNOWLEDGE_CHECK_SUITE_BYTES
+  ) {
+    throw new Error(
+      `counterfactual knowledge check suite exceeds ${MAX_KNOWLEDGE_CHECK_SUITE_BYTES} bytes`
+    );
+  }
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
   const trustMode = configuredTrustMode(deps, args.trustMode);
   return simulateKnowledge(deps.store, args.query, {
     ...(args.assume === undefined ? {} : { assume: args.assume }),
     ...(args.without === undefined ? {} : { without: args.without }),
+    ...(args.assumeRules === undefined
+      ? {}
+      : { assumeRules: args.assumeRules }),
+    ...(args.withoutRules === undefined
+      ? {}
+      : { withoutRules: args.withoutRules }),
+    ...(args.checkSuite === undefined ? {} : { checkSuite: args.checkSuite }),
     ...(args.namespace === undefined ? {} : { namespace: args.namespace }),
     ...(args.namespaces === undefined ? {} : { namespaces: args.namespaces }),
     ...(args.proofLimit === undefined
@@ -589,6 +615,9 @@ export function whatIfTool(
       : { maxViolations: args.maxViolations }),
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
     ...(trustMode === 'accepted' ? {} : { trustMode }),
+    ...(args.recordedSequence === undefined
+      ? {}
+      : { recordedSequence: args.recordedSequence }),
   });
 }
 

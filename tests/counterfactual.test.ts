@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_COUNTERFACTUAL_ASSUMPTIONS,
+  MAX_COUNTERFACTUAL_RULE_ADDITIONS,
   simulateKnowledge,
 } from '../src/knowledge/counterfactual.js';
 import { assertTentativeFacts } from '../src/knowledge/trust-store.js';
@@ -196,6 +197,189 @@ describe('deterministic counterfactual knowledge', () => {
     });
   });
 
+  it('previews a proposed rule with query, topology, audit, checks, and provenance', () => {
+    const root = storeRoot('rule-addition');
+    const store = new MemoryStore(root);
+    store.assert(
+      'default',
+      'works_at(mira, acme). works_at(rahul, acme).',
+      { opId: 'employment-baseline' }
+    );
+    const journalBefore = readFileSync(join(root, 'journal.log'), 'utf8');
+
+    const result = simulateKnowledge(store, 'colleague(mira, Who)', {
+      assumeRules:
+        'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+      checkSuite: {
+        version: 1,
+        coverage: { minimumPercent: 100 },
+        checks: [
+          {
+            name: 'Mira and Rahul are colleagues',
+            query: 'colleague(mira, rahul)',
+            expect: { kind: 'nonempty' },
+          },
+        ],
+      },
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.application).toMatchObject({
+      assumedRules: [
+        'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+      ],
+      duplicateRuleAssumptions: [],
+      retractedRules: [],
+      unmatchedRuleRetractions: [],
+    });
+    expect(result.baseline.rows).toEqual([]);
+    expect(result.candidate.rows).toMatchObject([
+      { bindings: { Who: 'rahul' }, proofs: [{ rule: 1 }] },
+    ]);
+    expect(result.resultDelta.added).toMatchObject([
+      { bindings: { Who: 'rahul' } },
+    ]);
+    expect(result.ruleAuditDelta).toMatchObject({
+      baseline: { topology: { ruleCount: 0 } },
+      candidate: {
+        topology: {
+          ruleCount: 1,
+          rules: [
+            {
+              clause:
+                'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+              sources: [expect.objectContaining({ hypothetical: true })],
+            },
+          ],
+        },
+      },
+      addedTopologyNodeIds: expect.arrayContaining([
+        expect.stringMatching(/^predicate:colleague\/2$/),
+        expect.stringMatching(/^rule:/),
+      ]),
+      removedTopologyNodeIds: [],
+      changedTopologyNodeIds: expect.arrayContaining(['predicate:works_at/2']),
+    });
+    expect(result.checkDelta).toMatchObject({
+      baseline: { status: 'failed', failedCount: 1, coverage: { percent: 100 } },
+      candidate: { status: 'passed', passedCount: 1, coverage: { percent: 100 } },
+      fixed: ['Mira and Rahul are colleagues'],
+      regressed: [],
+      coveragePercentDelta: 0,
+      coverageRegressed: false,
+      coverageFixed: false,
+    });
+    expect(readFileSync(join(root, 'journal.log'), 'utf8')).toBe(journalBefore);
+    expect(store.clausesFor(['default'])).toHaveLength(2);
+  });
+
+  it('removes an alpha-equivalent rule and reports the lost consequence', () => {
+    const store = new MemoryStore(storeRoot('rule-removal'));
+    store.assert(
+      'default',
+      `works_at(mira, acme). works_at(rahul, acme).
+       colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.`,
+      { opId: 'baseline-rule' }
+    );
+
+    const result = simulateKnowledge(store, 'colleague(mira, Who)', {
+      withoutRules:
+        'colleague(Person, Peer) :- works_at(Person, Company), works_at(Peer, Company), Person != Peer.',
+    });
+
+    expect(result.application).toMatchObject({
+      assumedRules: [],
+      retractedRules: [
+        'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.',
+      ],
+      unmatchedRuleRetractions: [],
+    });
+    expect(result.baseline.rows).toMatchObject([{ bindings: { Who: 'rahul' } }]);
+    expect(result.candidate.rows).toEqual([]);
+    expect(result.resultDelta.removed).toMatchObject([
+      { bindings: { Who: 'rahul' } },
+    ]);
+    expect(result.ruleAuditDelta).toMatchObject({
+      baseline: { topology: { ruleCount: 1 } },
+      candidate: { topology: { ruleCount: 0 } },
+      removedTopologyNodeIds: expect.arrayContaining([
+        expect.stringMatching(/^predicate:colleague\/2$/),
+        expect.stringMatching(/^rule:/),
+      ]),
+    });
+  });
+
+  it('simulates a rule proposal from one exact recorded baseline', () => {
+    const store = new MemoryStore(storeRoot('recorded-rule'));
+    store.assert('default', 'base(a).', { opId: 'recorded-base' });
+    store.assert('default', 'base(b).', { opId: 'later-base' });
+
+    const result = simulateKnowledge(store, 'derived(X)', {
+      recordedSequence: 1,
+      assumeRules: 'derived(X) :- base(X).',
+    });
+
+    expect(result).toMatchObject({
+      changed: true,
+      recordedSnapshot: {
+        sequence: 1,
+        journalEntries: 2,
+        namespaces: ['default'],
+      },
+      baseline: { rows: [] },
+      candidate: { rows: [{ bindings: { X: 'a' } }] },
+      application: { assumedRules: ['derived(X) :- base(X).'] },
+    });
+    expect(result.candidate.rows.map((row) => row.bindings.X)).not.toContain('b');
+    expect(store.clausesFor(['default'])).toHaveLength(2);
+  });
+
+  it('reports rule duplicates, unmatched removals, and coverage regressions exactly', () => {
+    const store = new MemoryStore(storeRoot('rule-noop-coverage'));
+    store.assert(
+      'default',
+      'base(a). derived(X) :- base(X).',
+      { opId: 'covered-rule' }
+    );
+
+    const result = simulateKnowledge(store, 'derived(X)', {
+      assumeRules: `
+        derived(Value) :- base(Value).
+        unused(X) :- missing(X).
+      `,
+      withoutRules: 'other(X) :- base(X).',
+      checkSuite: {
+        version: 1,
+        coverage: { minimumPercent: 100 },
+        checks: [
+          {
+            name: 'derived remains true',
+            query: 'derived(a)',
+            expect: { kind: 'nonempty' },
+          },
+        ],
+      },
+    });
+
+    expect(result.application).toMatchObject({
+      assumedRules: ['unused(X) :- missing(X).'],
+      duplicateRuleAssumptions: ['derived(Value) :- base(Value).'],
+      unmatchedRuleRetractions: ['other(X) :- base(X).'],
+    });
+    expect(result.checkDelta).toMatchObject({
+      baseline: { status: 'passed', coverage: { percent: 100, passed: true } },
+      candidate: { status: 'failed', coverage: { percent: 50, passed: false } },
+      regressed: [],
+      fixed: [],
+      coveragePercentDelta: -50,
+      coverageRegressed: true,
+      coverageFixed: false,
+    });
+    expect(result.ruleAuditDelta?.introduced.map(({ code }) => code)).toEqual(
+      expect.arrayContaining(['open_positive_input', 'inactive_derived_predicate'])
+    );
+  });
+
   it('rejects rules, reserved metadata, invalid retractions, and oversized batches', () => {
     const store = new MemoryStore(storeRoot('validation'));
     expect(() =>
@@ -221,5 +405,41 @@ describe('deterministic counterfactual knowledge', () => {
         ).join('\n'),
       })
     ).toThrow(/exceed/i);
+    expect(() =>
+      simulateKnowledge(store, 'item(X)', {
+        assumeRules: 'item(a).',
+      })
+    ).toThrow(/rules only/i);
+    expect(() =>
+      simulateKnowledge(store, 'item(X)', {
+        assumeRules: ':- item(X), blocked(X).',
+      })
+    ).toThrow(/rules only/i);
+    expect(() =>
+      simulateKnowledge(store, 'item(X)', {
+        assumeRules: 'rembero_alias(X, Y) :- same_name(X, Y).',
+      })
+    ).toThrow(/reserved metadata/i);
+    expect(() =>
+      simulateKnowledge(store, 'item(X)', {
+        withoutRules: 'item(a).',
+      })
+    ).toThrow(/rules only/i);
+    expect(() =>
+      simulateKnowledge(store, 'item(X)', {
+        assumeRules: Array.from(
+          { length: MAX_COUNTERFACTUAL_RULE_ADDITIONS + 1 },
+          (_, index) => `derived_${index}(X) :- item(X).`
+        ).join('\n'),
+      })
+    ).toThrow(/exceed/i);
+    expect(() =>
+      simulateKnowledge(store, 'item(X)', {
+        assumeRules: `
+          allowed(X) :- item(X), \\+ blocked(X).
+          blocked(X) :- item(X), \\+ allowed(X).
+        `,
+      })
+    ).toThrow(/not stratifiable|recursion through negation/i);
   });
 });

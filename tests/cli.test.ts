@@ -387,6 +387,69 @@ describe('CLI ingress limits', () => {
     ]);
   });
 
+  it('previews rule, topology, audit, and coverage changes without writing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-rule-what-if-'));
+    const home = join(root, 'home');
+    const suite = join(root, 'checks.json');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('default', 'base(a).', { opId: 'rule-baseline' });
+    writeFileSync(
+      suite,
+      JSON.stringify({
+        version: 1,
+        coverage: { minimumPercent: 100 },
+        checks: [
+          {
+            name: 'derived fact',
+            query: 'derived(a)',
+            expect: { kind: 'nonempty' },
+          },
+        ],
+      })
+    );
+    const journalBefore = readFileSync(join(home, 'memory', 'journal.log'), 'utf8');
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'what-if',
+        'derived(X)',
+        '--assume-rule',
+        'derived(X) :- base(X).',
+        '--check-suite',
+        suite,
+        '--as-of-sequence',
+        '1',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      changed: true,
+      recordedSnapshot: { sequence: 1, journalEntries: 1 },
+      application: { assumedRules: ['derived(X) :- base(X).'] },
+      candidate: { rows: [{ bindings: { X: 'a' } }] },
+      ruleAuditDelta: {
+        baseline: { topology: { ruleCount: 0 } },
+        candidate: { topology: { ruleCount: 1 } },
+      },
+      checkDelta: {
+        baseline: { status: 'failed' },
+        candidate: { status: 'passed', coverage: { percent: 100 } },
+        fixed: ['derived fact'],
+      },
+    });
+    expect(readFileSync(join(home, 'memory', 'journal.log'), 'utf8')).toBe(
+      journalBefore
+    );
+    expect(store.clausesFor(['default'])).toHaveLength(1);
+  });
+
   it('explains rule blockers and sourced nearby facts without an LLM', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-why-not-'));
     const home = join(root, 'home');

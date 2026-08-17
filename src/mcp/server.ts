@@ -59,6 +59,8 @@ import { MAX_CONFLICT_FOCUS_BYTES } from '../knowledge/conflicts.js';
 import {
   MAX_COUNTERFACTUAL_ASSUMPTIONS,
   MAX_COUNTERFACTUAL_RETRACTIONS,
+  MAX_COUNTERFACTUAL_RULE_ADDITIONS,
+  MAX_COUNTERFACTUAL_RULE_REMOVALS,
 } from '../knowledge/counterfactual.js';
 import {
   MAX_WHY_NOT_CANDIDATES,
@@ -432,7 +434,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.42.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.43.0' });
 
   server.registerTool(
     'remember',
@@ -1517,7 +1519,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Simulate knowledge changes',
       description:
-        'Read-only deterministic counterfactual: retract target-namespace fact patterns, assume ordinary ground facts, then compare query rows, proofs, provenance, graphs, and integrity violations with the unchanged baseline. No LLM is used and nothing is persisted.',
+        'Read-only deterministic counterfactual over one current or recorded baseline. Retract/assume facts or exact alpha-equivalent rules, then compare query proofs, provenance, integrity, rule audit/topology, and an optional knowledge-suite/coverage result. Proposed rules receive hypothetical sources; no LLM is used and nothing is persisted.',
       inputSchema: {
         query: boundedText('Datalog query whose result impact should be explained'),
         assume: boundedText(
@@ -1527,24 +1529,40 @@ export function createServer(deps: PipelineDeps): McpServer {
           .array(boundedText('One positive ground-fact pattern'))
           .max(MAX_COUNTERFACTUAL_RETRACTIONS)
           .optional(),
+        assumeRules: boundedText(
+          `Ordinary or aggregate Datalog rules to assume (maximum ${MAX_COUNTERFACTUAL_RULE_ADDITIONS})`
+        ).optional(),
+        withoutRules: boundedText(
+          `Exact alpha-equivalent rules to remove (maximum ${MAX_COUNTERFACTUAL_RULE_REMOVALS})`
+        ).optional(),
+        checkSuite: z
+          .string()
+          .max(MAX_KNOWLEDGE_CHECK_SUITE_BYTES)
+          .optional()
+          .describe('Optional serialized JSON v1 knowledge check and coverage suite'),
         namespace: namespaceField,
         namespaces: namespacesField,
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
         trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
       },
     },
     async ({
       query,
       assume,
       without,
+      assumeRules,
+      withoutRules,
+      checkSuite,
       namespace,
       namespaces,
       proofLimit,
       maxViolations,
       entityIdentity,
       trustMode,
+      recordedSequence,
     }) => {
       try {
         return asContent(
@@ -1552,12 +1570,16 @@ export function createServer(deps: PipelineDeps): McpServer {
             query,
             assume,
             without,
+            assumeRules,
+            withoutRules,
+            checkSuite,
             namespace,
             namespaces,
             proofLimit,
             maxViolations,
             entityIdentity,
             trustMode,
+            recordedSequence,
           })
         );
       } catch (e) {

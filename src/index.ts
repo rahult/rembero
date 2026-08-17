@@ -175,6 +175,8 @@ export {
   evaluateCounterfactualKnowledgeView,
   MAX_COUNTERFACTUAL_ASSUMPTIONS,
   MAX_COUNTERFACTUAL_RETRACTIONS,
+  MAX_COUNTERFACTUAL_RULE_ADDITIONS,
+  MAX_COUNTERFACTUAL_RULE_REMOVALS,
   type CounterfactualKnowledgeOptions,
   type CounterfactualViewOptions,
   type CounterfactualBaseline,
@@ -184,6 +186,8 @@ export {
   type CounterfactualResultDelta,
   type CounterfactualIntegrityDelta,
   type CounterfactualIntegrityViolation,
+  type CounterfactualRuleAuditDelta,
+  type CounterfactualCheckDelta,
 } from './knowledge/counterfactual.js';
 export {
   explainWhyNot,
