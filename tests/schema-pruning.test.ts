@@ -127,6 +127,30 @@ describe('deterministic recall schema pruning', () => {
     );
   });
 
+  it('ranks inverse kinship wording with its derived rule under distractors', () => {
+    const clauses = parseProgram(`${distractors(100)}
+      parent(alice, bob).
+      parent(bob, carol).
+      grandparent(X, Y) :- parent(X, Z), parent(Z, Y).`);
+
+    const selection = selectRecallSchema(clauses, "Who is Alice's grandchild?", {
+      predicateLimit: 4,
+    });
+
+    expect(selection.selectedPredicates.slice(0, 2)).toEqual([
+      'grandparent/2',
+      'parent/2',
+    ]);
+    expect(selection.summary).toContain(
+      'grandparent(X, Y) :- parent(X, Z), parent(Z, Y).'
+    );
+
+    const plural = selectRecallSchema(clauses, "Who are Alice's grandchildren?", {
+      predicateLimit: 4,
+    });
+    expect(plural.selectedPredicates[0]).toBe('grandparent/2');
+  });
+
   it('keeps current and archived temporal predicates together for past questions', () => {
     const clauses = parseProgram(`${distractors(100)}
       works_at(mira, initech).

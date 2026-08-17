@@ -57,14 +57,20 @@ facts are held out from the sample facts included in the model-visible schema su
 
 ## Last live comparison
 
-Measured on 2026-08-17 AEST (2026-08-16 UTC) with `openai/gpt-5.6-luna`. The pre-v0.19
-grounded prompt passed all 20 then-current labeled cases among 100 distractor predicates
-without schema-budget exhaustion. This checkpoint predates the six cases added in 0.19
-through 0.21:
+Measured on 2026-08-17 AEST with the v0.39 grounded prompt and deterministic schema
+ranker. All 26 current cases ran among 100 distractor predicates with no schema-budget
+exhaustion or transport errors:
 
-| Corpus | Prompt | Accuracy | Precision | Recall | F1 | Answerability | Budget exhausted |
-|---|---|---:|---:|---:|---:|---:|---:|
-| v0.7 scaled, 20 cases | grounded | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
+| Model | Cases | Accuracy | Precision | Recall | F1 | Answerability | Budget exhausted |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `openai/gpt-5.6-luna` | 26 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
+| `google/gemini-3.7-flash` | 26 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
+| `anthropic/claude-sonnet-5` | 26 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0** |
+| `openai/gpt-5.4-mini` | 26 | 92.3% | 92.0% | 92.0% | 92.0% | **100.0%** | **0** |
+
+GPT-5.4 Mini exposed helper variables while inlining the `colleague` and `grandparent`
+rule bodies. See [model compatibility](MODEL-COMPATIBILITY.md) for the recommendation,
+observed catalog prices, latency, and evidence boundary.
 
 The earlier pre-0.4, pre-scale baseline comparison was:
 

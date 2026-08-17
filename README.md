@@ -333,6 +333,13 @@ and candidate facts visited. `--compare-scan` reruns without relation indexes an
 only when complete explanations are byte-identical. See
 [the deterministic-query-profile contract](docs/QUERY-PROFILING.md).
 
+Version 0.39 verifies grounded recall across four OpenRouter models and strengthens
+bounded schema ranking for inverse grandparent/grandchild wording. Luna, Gemini 3.7 Flash,
+and Claude Sonnet 5 passed all 26 current engine-backed cases; GPT-5.4 Mini remained
+inconsistent by exposing rule-local helper variables. Luna stays the default because the
+comparison covers recall translation, not memory extraction. See
+[the model-compatibility checkpoint](docs/MODEL-COMPATIBILITY.md).
+
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
 complete selected namespaces. Empty or unanswerable results from a partial slice trigger

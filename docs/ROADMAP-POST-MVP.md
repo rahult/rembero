@@ -67,8 +67,11 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    answerability, and schema-budget exhaustion, and retains prompt/model comparisons plus
    deterministic metric tests. A credentialed nightly CI run remains optional ecosystem
    work.
-3. **Model flexibility**: verify the pipeline against 2-3 other OpenRouter models;
-   document which work well as cheaper `LLM_MODEL` choices.
+3. **Complete — measured model flexibility**: the full grounded 26-case recall corpus was
+   run against three additional OpenRouter models. Gemini 3.7 Flash and Claude Sonnet 5
+   matched the default's 100%; GPT-5.4 Mini scored 92.3% by leaking rule-local helper
+   variables. The dated price snapshot, recommendation, and extraction-evidence boundary
+   are documented without changing the default model.
 
 ## Phase 10 — Ecosystem  *(ongoing)*
 
@@ -456,6 +459,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 3. **Complete — interface and evidence parity**: library, CLI `profile`, MCP
    `profile_query`, graph/proof selection, package installs, selective scale controls,
    runtime option validation, and 16 MiB result bounds share one read-only contract.
+
+## Phase 42 — Verified cross-model recall  *(v0.39)*
+
+1. **Complete — bounded semantic rule visibility**: inverse grandparent/grandchild
+   wording receives one deterministic kinship ranking token, keeping the authored derived
+   head and complete dependency closure visible under 100 distractor predicates.
+2. **Complete — helper-variable guardrail**: the grounded query contract tells compatible
+   models to query a directly matching derived head rather than presenting internal join
+   variables as requested answers, with local and live-model regression evidence.
+3. **Complete — honest compatibility guidance**: four current OpenRouter models ran the
+   same 26-case engine-backed corpus; results, observed prices, latency caveat, default
+   decision, and the unevaluated extraction boundary are checked in.
 
 ## Not planned
 

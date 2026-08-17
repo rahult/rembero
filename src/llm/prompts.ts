@@ -131,6 +131,7 @@ export function queryGenSystemPrompt(
 - Pattern examples: "Does Alex work at Globex?" becomes ?- works_at(alex, globex). "Where does Nia work?" becomes ?- works_at(nia, Company). The first has no requested unknown; the second has exactly one.
 - A why/reason question is unanswerable unless the schema has a predicate that stores a cause or reason. A related fact does not explain why it is true.
 - Prefer the predicate whose meaning directly matches the question, including a derived predicate when one is available.
+- When a shown derived-rule head directly names the requested relation, query that head predicate. Never inline its body: helper variables used inside the rule are not requested answer columns.
 - Add multiple goals only when the question requires a join or an explicit constraint.
 - If the schema can express the question, emit the query even when it may return no rows. Use unanswerable only when no shown predicate can express the question.`
       : '';

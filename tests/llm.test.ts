@@ -730,6 +730,9 @@ describe('recallQuestion', () => {
     const llm = new ScriptedLlm(['?- works_at(rahul, Company).']);
     await retrieveQuestion({ store, llm }, 'Where does Rahul work?');
     expect(llm.calls[0][0].content).toContain('Datalog variables represent requested unknown');
+    expect(llm.calls[0][0].content).toContain(
+      'Never inline its body: helper variables used inside the rule are not requested answer columns.'
+    );
   });
 
   it('recalls through a deterministic relevant schema slice with 100+ predicates', async () => {

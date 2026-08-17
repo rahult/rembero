@@ -73,18 +73,27 @@ function canonicalWord(word: string): string {
   const irregular: Record<string, string> = {
     are: 'be',
     been: 'be',
+    children: 'child',
+    grandchildren: 'grandchild',
     had: 'have',
     has: 'have',
     is: 'be',
     was: 'be',
     were: 'be',
   };
-  if (irregular[word]) return irregular[word];
-  if (word.length > 5 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
-  if (word.length > 5 && word.endsWith('ing')) return word.slice(0, -3);
-  if (word.length > 4 && word.endsWith('ed')) return word.slice(0, -2);
-  if (word.length > 4 && word.endsWith('s')) return word.slice(0, -1);
-  return word;
+  const inflected = irregular[word] ??
+    (word.length > 5 && word.endsWith('ies')
+      ? `${word.slice(0, -3)}y`
+      : word.length > 5 && word.endsWith('ing')
+        ? word.slice(0, -3)
+        : word.length > 4 && word.endsWith('ed')
+          ? word.slice(0, -2)
+          : word.length > 4 && word.endsWith('s')
+            ? word.slice(0, -1)
+            : word);
+  return inflected === 'grandchild' || inflected === 'grandparent'
+    ? 'grandkin'
+    : inflected;
 }
 
 export function recallWords(text: string): string[] {
