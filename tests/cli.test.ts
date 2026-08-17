@@ -1467,6 +1467,38 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('returns meaningful exit status for immutable knowledge health', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-health-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'employee(alice). :- employee(X), suspended(X).',
+      { opId: 'health-baseline' }
+    );
+    store.assert('default', 'suspended(alice).', { opId: 'health-violation' });
+    const runHealth = (extra: string[] = []) =>
+      spawnSync(
+        process.execPath,
+        [resolve('dist/cli.js'), 'health', '--namespaces', 'default', ...extra],
+        { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+      );
+
+    const current = runHealth();
+    expect(current.status).toBe(3);
+    expect(JSON.parse(current.stdout)).toMatchObject({
+      status: 'violations',
+      integrity: { violationCount: 1 },
+    });
+    const recorded = runHealth(['--as-of-sequence', '1']);
+    expect(recorded.status).toBe(2);
+    expect(JSON.parse(recorded.stdout)).toMatchObject({
+      status: 'review',
+      integrity: { violationCount: 0 },
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
   it('returns a focused current or recorded conflict view with meaningful exit status', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-conflicts-'));
     const home = join(root, 'home');

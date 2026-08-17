@@ -594,6 +594,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    why-not, checks, profiles, CLI/MCP, SQLite portable execution/planning, package installs,
    and model eval normalization share the same projection contract.
 
+## Phase 51 — Immutable deterministic personal knowledge health  *(v0.48)*
+
+1. **Complete — one coherent evidence state**: current or exact recorded clauses and
+   sources feed integrity, rule audit/topology, trust, identity, provenance, and optional
+   regression/coverage checks without recapturing between components.
+2. **Complete — actionable status without semantic guessing**: healthy/review/violations
+   and stable finding codes summarize only explicit policy, warnings, checks, tentative
+   debt, and missing source evidence.
+3. **Complete — provenance and identity maintenance**: per-namespace clause instances must
+   have same-namespace durable witnesses; aliases/positions validate and retain sources;
+   the state digest changes for clause or provenance changes.
+4. **Complete — operational parity**: library, CLI `health`, MCP `knowledge_health`,
+   package installs, current/recorded, check suites, view modes, meaningful exit codes,
+   and fail-closed finding/detail/output bounds share one read-only contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

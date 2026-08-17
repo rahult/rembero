@@ -101,6 +101,10 @@ import {
   applyMemoryProposal,
   type ApplyMemoryProposalResult,
 } from '../knowledge/memory-application.js';
+import {
+  inspectKnowledgeHealth,
+  type KnowledgeHealthResult,
+} from '../knowledge/health.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -252,6 +256,35 @@ export function applyMemoryProposalTool(
 ): ApplyMemoryProposalResult {
   return applyMemoryProposal(deps.store, args.proposal, {
     opId: args.opId,
+    ...(args.maxViolations === undefined
+      ? {}
+      : { maxViolations: args.maxViolations }),
+  });
+}
+
+export function knowledgeHealthTool(
+  deps: StoreToolDeps,
+  args: {
+    namespaces?: string[] | '*';
+    recordedSequence?: number;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    checkSuite?: string;
+    proofLimit?: number;
+    maxViolations?: number;
+  }
+): KnowledgeHealthResult {
+  return inspectKnowledgeHealth(deps.store, {
+    ...(args.namespaces === undefined ? {} : { namespaces: args.namespaces }),
+    ...(args.recordedSequence === undefined
+      ? {}
+      : { recordedSequence: args.recordedSequence }),
+    ...(args.entityIdentity === undefined
+      ? {}
+      : { entityIdentity: args.entityIdentity }),
+    ...(args.trustMode === undefined ? {} : { trustMode: args.trustMode }),
+    ...(args.checkSuite === undefined ? {} : { checkSuite: args.checkSuite }),
+    ...(args.proofLimit === undefined ? {} : { proofLimit: args.proofLimit }),
     ...(args.maxViolations === undefined
       ? {}
       : { maxViolations: args.maxViolations }),

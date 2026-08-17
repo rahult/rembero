@@ -47,7 +47,7 @@ The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `que
 `check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
 `supersede_facts`, `propose-memory`, `propose_memory`, `apply-memory`, `apply_memory_proposal`, `what-if`, `what_if`, `apply-rule-change`, `apply_rule_change`, `why-not`, `why_not`, `topology`,
 `knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
-`plan_query_repair`, `audit-rules`, `audit_rules`, `search`, `search_knowledge`,
+`plan_query_repair`, `audit-rules`, `audit_rules`, `health`, `knowledge_health`, `search`, `search_knowledge`,
 `browse`, `browse_knowledge_graph`, `connect`, `connect_knowledge_graph`, `bundle`, `export_knowledge_bundle`,
 `verify_knowledge_bundle`, `test-knowledge`, `run_knowledge_checks`, `profile`,
 `profile_query`, `forget`, `list_memories`)
@@ -77,7 +77,7 @@ Tools exposed: `remember`, `propose_memory`, `apply_memory_proposal`, `recall`, 
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `apply_rule_change`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
-`plan_query_repair`, `audit_rules`, `search_knowledge`, `checkpoint_journal`,
+`plan_query_repair`, `audit_rules`, `knowledge_health`, `search_knowledge`, `checkpoint_journal`,
 `browse_knowledge_graph`, `connect_knowledge_graph`, `export_knowledge_bundle`, `verify_knowledge_bundle`,
 `run_knowledge_checks`, `profile_query`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
@@ -167,6 +167,7 @@ node dist/cli.js topology 'colleague' --direction upstream # rule dependency clo
 node dist/cli.js diff 17 23 --query 'status(mira, State)' # semantic + consequence diff
 node dist/cli.js repair 'eligible(bob)' # minimal verified assumptions/retractions
 node dist/cli.js audit-rules 'eligible' --direction upstream # proactive rule health
+node dist/cli.js health --check-suite checks.json # complete immutable health snapshot
 node dist/cli.js search 'Doctor Chen' --kind fact # local lexical provenance search
 node dist/cli.js browse mira --browse-depth 2 # explicit entity neighborhood
 node dist/cli.js connect mira rahul --path-depth 4 # shortest explicit relationships
@@ -397,6 +398,11 @@ keeps helper join variables out of bindings, deduplicates and limits after proje
 merges alternative proofs beneath the projected answer. Grounded recall now uses this form
 for every variable-bearing query. See
 [the relational projection contract](docs/RELATIONAL-PROJECTION.md).
+
+Version 0.48 composes integrity, rule audit/topology, tentative review debt, identity
+metadata, provenance completeness, and optional checks/coverage over one immutable current
+or recorded snapshot. Stable findings produce healthy/review/violations status without an
+LLM or semantic guessing. See [the knowledge-health contract](docs/KNOWLEDGE-HEALTH.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

@@ -110,6 +110,7 @@ import {
   verifyKnowledgeBundleTool,
   runKnowledgeChecksTool,
   profileKnowledgeTool,
+  knowledgeHealthTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -157,6 +158,7 @@ Usage:
   rembero diff <from> <to>               Compare two exact recorded knowledge states
   rembero repair <query>                 Propose minimal verified fact-only query repairs
   rembero audit-rules [predicate]        Audit rule health with deterministic evidence
+  rembero health                         Inspect complete deterministic knowledge health
   rembero search <text>                  Search facts, rules, policies, and sources locally
   rembero browse [entity]                Browse a bounded explicit personal graph
   rembero connect <from> <to>            Find bounded shortest explicit graph paths
@@ -182,7 +184,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for propose-memory/recall/query/profile/what-if/why-not/topology/diff/audit-rules/search/browse/connect/test-knowledge/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for health/propose-memory/recall/query/profile/what-if/why-not/topology/diff/audit-rules/search/browse/connect/test-knowledge/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -792,6 +794,7 @@ async function main(): Promise<void> {
       'diff',
       'repair',
       'audit-rules',
+      'health',
       'search',
       'browse',
       'connect',
@@ -822,11 +825,17 @@ async function main(): Promise<void> {
   }
   if (
     (args.assumedRules.length > 0 ||
-      args.withoutRules.length > 0 ||
-      args.checkSuitePath !== undefined) &&
+      args.withoutRules.length > 0) &&
     command !== 'what-if'
   ) {
-    throw new Error('rule and check-suite simulation options are available only for what-if');
+    throw new Error('rule simulation options are available only for what-if');
+  }
+  if (
+    args.checkSuitePath !== undefined &&
+    command !== 'what-if' &&
+    command !== 'health'
+  ) {
+    throw new Error('--check-suite is available only for what-if or health');
   }
   if (
     [args.failureLimit, args.diagnosticDepth, args.candidateLimit, args.evidenceLimit].some(
@@ -905,10 +914,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'profile', 'what-if', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['health', 'recall', 'recall-explain', 'query', 'explain', 'profile', 'what-if', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, profile, what-if, why-not, topology, audit-rules, search, browse, connect, bundle, test-knowledge, check, conflicts, and list'
+      '--as-of-sequence is available for health, recall, recall-explain, query, explain, profile, what-if, why-not, topology, audit-rules, search, browse, connect, bundle, test-knowledge, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1428,6 +1437,46 @@ async function main(): Promise<void> {
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       if (result.warningCount > 0) process.exitCode = 2;
+      return;
+    }
+    case 'health': {
+      let checkSuite: string | undefined;
+      if (args.checkSuitePath !== undefined) {
+        const file = resolve(args.checkSuitePath);
+        const stat = lstatSync(file);
+        if (stat.isSymbolicLink() || !stat.isFile()) {
+          throw new Error('refusing non-regular health knowledge check suite file');
+        }
+        if (stat.size > MAX_KNOWLEDGE_CHECK_SUITE_BYTES) {
+          throw new Error(
+            `health knowledge check suite exceeds ${MAX_KNOWLEDGE_CHECK_SUITE_BYTES} bytes`
+          );
+        }
+        checkSuite = readFileSync(file, 'utf8');
+      }
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const maxViolations = maxViolationsOption(args.maxViolations);
+      const result = knowledgeHealthTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          namespaces,
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+          ...(entityIdentity === undefined ? {} : { entityIdentity }),
+          ...(args.trust === undefined
+            ? {}
+            : { trustMode: trustViewOption(args.trust) }),
+          ...(checkSuite === undefined ? {} : { checkSuite }),
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(maxViolations === undefined ? {} : { maxViolations }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      if (result.status === 'violations') process.exitCode = 3;
+      else if (result.status === 'review') process.exitCode = 2;
       return;
     }
     case 'search': {

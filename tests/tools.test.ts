@@ -40,6 +40,7 @@ import {
   verifyKnowledgeBundleTool,
   runKnowledgeChecksTool,
   profileKnowledgeTool,
+  knowledgeHealthTool,
 } from '../src/mcp/tools.js';
 import { serializeKnowledgeBundle } from '../src/knowledge/bundle.js';
 
@@ -630,6 +631,30 @@ describe('MCP tool handlers', () => {
     expect(queryTool({ store }, { query: 'derived(X)' }).bindings).toEqual([
       { X: 'a' },
     ]);
+  });
+
+  it('reports current and recorded deterministic knowledge health through the tool boundary', () => {
+    store.assert('default', 'base(a). derived(X) :- base(X).', {
+      opId: 'health-base',
+    });
+    store.assert('default', 'later(b).', { opId: 'health-later' });
+
+    expect(knowledgeHealthTool({ store }, { namespaces: ['default'] })).toMatchObject({
+      status: 'healthy',
+      clauseCount: 3,
+      rules: { topology: { ruleCount: 1 } },
+      provenance: { sourceCoveragePercent: 100 },
+    });
+    expect(
+      knowledgeHealthTool(
+        { store },
+        { namespaces: ['default'], recordedSequence: 1 }
+      )
+    ).toMatchObject({
+      status: 'healthy',
+      clauseCount: 2,
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
   });
 
   it('explains current and recorded query blockers through the tool boundary', () => {

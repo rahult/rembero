@@ -114,6 +114,17 @@ export {
   type ApplyMemoryProposalResult,
 } from './knowledge/memory-application.js';
 export {
+  inspectKnowledgeHealth,
+  MAX_KNOWLEDGE_HEALTH_FINDINGS,
+  MAX_KNOWLEDGE_HEALTH_UNSOURCED,
+  type KnowledgeHealthStatus,
+  type KnowledgeHealthSeverity,
+  type KnowledgeHealthCode,
+  type KnowledgeHealthFinding,
+  type KnowledgeHealthOptions,
+  type KnowledgeHealthResult,
+} from './knowledge/health.js';
+export {
   type QueryPromptVariant,
   transcriptExtractionSystemPrompt,
 } from './llm/prompts.js';

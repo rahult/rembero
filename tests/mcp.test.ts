@@ -58,7 +58,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.47.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.48.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -88,9 +88,22 @@ describe('MCP explanation surfaces', () => {
           'history',
           'propose_memory',
           'apply_memory_proposal',
+          'knowledge_health',
           'supersede_facts',
         ])
       );
+
+      const health = await client.callTool({
+        name: 'knowledge_health',
+        arguments: { namespaces: ['default'] },
+      });
+      const healthText = health.content.find((item) => item.type === 'text');
+      expect(JSON.parse(healthText?.type === 'text' ? healthText.text : '')).toMatchObject({
+        status: 'violations',
+        stateDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+        integrity: { violationCount: 1 },
+        provenance: { sourceCoveragePercent: 100 },
+      });
 
       const simulated = await client.callTool({
         name: 'what_if',

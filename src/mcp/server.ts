@@ -34,6 +34,7 @@ import {
   rememberTool,
   proposeMemoryTool,
   applyMemoryProposalTool,
+  knowledgeHealthTool,
   resolveTentativeTool,
   reviewTentativeTool,
   supersedeFactsTool,
@@ -447,7 +448,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.47.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.48.0' });
 
   server.registerTool(
     'remember',
@@ -586,6 +587,53 @@ export function createServer(deps: PipelineDeps): McpServer {
           applyMemoryProposalTool(resolvedDeps, {
             proposal,
             opId,
+            maxViolations,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'knowledge_health',
+    {
+      title: 'Inspect deterministic personal knowledge health',
+      description:
+        'Build one immutable current or recorded health snapshot combining integrity, rule audit/topology, pending tentative claims, identity metadata, provenance completeness, and an optional knowledge/coverage suite. Returns a content digest and stable findings without an LLM or mutation.',
+      inputSchema: {
+        namespaces: namespacesField,
+        recordedSequence: recordedSequenceField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        checkSuite: z
+          .string()
+          .max(MAX_KNOWLEDGE_CHECK_SUITE_BYTES)
+          .optional()
+          .describe('Optional serialized JSON v1 knowledge check and coverage suite'),
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+      },
+    },
+    async ({
+      namespaces,
+      recordedSequence,
+      entityIdentity,
+      trustMode,
+      checkSuite,
+      proofLimit,
+      maxViolations,
+    }) => {
+      try {
+        return asContent(
+          knowledgeHealthTool(resolvedDeps, {
+            namespaces,
+            recordedSequence,
+            entityIdentity,
+            trustMode,
+            checkSuite,
+            proofLimit,
             maxViolations,
           })
         );
