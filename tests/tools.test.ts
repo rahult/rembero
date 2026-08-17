@@ -32,6 +32,7 @@ import {
   auditRulesTool,
   searchKnowledgeTool,
   browseKnowledgeGraphTool,
+  connectKnowledgeGraphTool,
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
   runKnowledgeChecksTool,
@@ -737,6 +738,32 @@ describe('MCP tool handlers', () => {
       )
     ).toMatchObject({
       selection: { selectedClaims: 1, totalGroundFacts: 1 },
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
+  it('connects entities through current and recorded explicit graph paths', () => {
+    store.assert('default', 'works_at(mira, acme).', { opId: 'mira-source' });
+    store.assert('default', 'works_at(rahul, acme).', { opId: 'rahul-source' });
+
+    expect(
+      connectKnowledgeGraphTool(
+        { store },
+        { from: 'mira', to: 'rahul', maxDepth: 2 }
+      )
+    ).toMatchObject({
+      status: 'connected',
+      shortestHops: 2,
+      paths: [{ entities: ['mira', 'acme', 'rahul'] }],
+    });
+    expect(
+      connectKnowledgeGraphTool(
+        { store },
+        { from: 'mira', to: 'rahul', maxDepth: 2, recordedSequence: 1 }
+      )
+    ).toMatchObject({
+      status: 'no_path',
+      searchComplete: true,
       recordedSnapshot: { sequence: 1, journalEntries: 2 },
     });
   });

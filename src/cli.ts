@@ -48,6 +48,10 @@ import {
   MAX_BROWSE_GRAPH_DEPTH,
 } from './knowledge/browse.js';
 import {
+  MAX_KNOWLEDGE_PATH_DEPTH,
+  MAX_KNOWLEDGE_PATHS,
+} from './knowledge/paths.js';
+import {
   MAX_KNOWLEDGE_BUNDLE_BYTES,
   serializeKnowledgeBundle,
 } from './knowledge/bundle.js';
@@ -91,6 +95,7 @@ import {
   auditRulesTool,
   searchKnowledgeTool,
   browseKnowledgeGraphTool,
+  connectKnowledgeGraphTool,
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
   runKnowledgeChecksTool,
@@ -139,6 +144,7 @@ Usage:
   rembero audit-rules [predicate]        Audit rule health with deterministic evidence
   rembero search <text>                  Search facts, rules, policies, and sources locally
   rembero browse [entity]                Browse a bounded explicit personal graph
+  rembero connect <from> <to>            Find bounded shortest explicit graph paths
   rembero bundle                         Export raw clauses and provenance with a digest
   rembero verify-bundle <file>           Verify a standalone knowledge bundle
   rembero test-knowledge <file>          Run a deterministic rule regression suite
@@ -161,7 +167,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/profile/why-not/topology/diff/audit-rules/search/browse/test-knowledge/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/profile/why-not/topology/diff/audit-rules/search/browse/connect/test-knowledge/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -189,6 +195,10 @@ Options:
       --browse-depth <n>  Explicit graph depth (default: 1; max: ${MAX_BROWSE_GRAPH_DEPTH})
       --claim-limit <n>   Explicit graph claims (default: 100; max: ${MAX_BROWSE_GRAPH_CLAIMS})
       --focus-number      Interpret browse entity focus as a numeric term
+      --path-depth <n>    Explicit relationship hops (default: 4; max: ${MAX_KNOWLEDGE_PATH_DEPTH})
+      --path-limit <n>    Complete shortest paths (default: 3; max: ${MAX_KNOWLEDGE_PATHS})
+      --from-number       Interpret the connect start as a numeric term
+      --to-number         Interpret the connect end as a numeric term
       --include-passing-evidence  Include proofs/graphs for passing knowledge checks
       --compare-scan        Re-run profile with relation indexes disabled and prove equivalence
       --at <ISO>           Canonical UTC valid-until instant for supersede
@@ -258,6 +268,10 @@ interface ParsedArgs {
   browseDepth?: string;
   claimLimit?: string;
   focusNumber: boolean;
+  pathDepth?: string;
+  pathLimit?: string;
+  fromNumber: boolean;
+  toNumber: boolean;
   includePassingEvidence: boolean;
   compareScan: boolean;
   at?: string;
@@ -275,6 +289,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     without: [],
     searchKinds: [],
     focusNumber: false,
+    fromNumber: false,
+    toNumber: false,
     includePassingEvidence: false,
     compareScan: false,
   };
@@ -393,6 +409,16 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--focus-number') {
       parsed.focusNumber = true;
+    } else if (arg === '--path-depth') {
+      parsed.pathDepth = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--path-limit') {
+      parsed.pathLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--from-number') {
+      parsed.fromNumber = true;
+    } else if (arg === '--to-number') {
+      parsed.toNumber = true;
     } else if (arg === '--include-passing-evidence') {
       parsed.includePassingEvidence = true;
     } else if (arg === '--compare-scan') {
@@ -731,6 +757,7 @@ async function main(): Promise<void> {
       'audit-rules',
       'search',
       'browse',
+      'connect',
       'test-knowledge',
       'profile',
       'list',
@@ -791,11 +818,22 @@ async function main(): Promise<void> {
   if (
     (args.browsePredicate !== undefined ||
       args.browseDepth !== undefined ||
-      args.claimLimit !== undefined ||
       args.focusNumber) &&
     command !== 'browse'
   ) {
     throw new Error('browse options are available only for browse');
+  }
+  if (args.claimLimit !== undefined && command !== 'browse' && command !== 'connect') {
+    throw new Error('--claim-limit is available only for browse or connect');
+  }
+  if (
+    (args.pathDepth !== undefined ||
+      args.pathLimit !== undefined ||
+      args.fromNumber ||
+      args.toNumber) &&
+    command !== 'connect'
+  ) {
+    throw new Error('path options are available only for connect');
   }
   if (args.includePassingEvidence && command !== 'test-knowledge') {
     throw new Error('--include-passing-evidence is available only for test-knowledge');
@@ -816,10 +854,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'profile', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'profile', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, profile, why-not, topology, audit-rules, search, browse, bundle, test-knowledge, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, profile, why-not, topology, audit-rules, search, browse, connect, bundle, test-knowledge, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1301,6 +1339,65 @@ async function main(): Promise<void> {
                   args.browseDepth,
                   0,
                   'knowledge graph browse depth'
+                ),
+              }),
+          ...(args.claimLimit === undefined
+            ? {}
+            : {
+                maxClaims: integerOption(
+                  args.claimLimit,
+                  0,
+                  'knowledge graph claim limit'
+                ),
+              }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'connect': {
+      if (args.positional.length !== 2) {
+        throw new Error('connect requires exactly two entity arguments: <from> <to>');
+      }
+      let from: string | number = args.positional[0];
+      let to: string | number = args.positional[1];
+      if (args.fromNumber) {
+        const numeric = Number(from);
+        if (!Number.isFinite(numeric)) throw new Error('numeric path start must be finite');
+        from = numeric;
+      }
+      if (args.toNumber) {
+        const numeric = Number(to);
+        if (!Number.isFinite(numeric)) throw new Error('numeric path end must be finite');
+        to = numeric;
+      }
+      const result = connectKnowledgeGraphTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          from,
+          to,
+          namespaces,
+          ...(args.pathDepth === undefined
+            ? {}
+            : {
+                maxDepth: integerOption(
+                  args.pathDepth,
+                  0,
+                  'knowledge graph path depth'
+                ),
+              }),
+          ...(args.pathLimit === undefined
+            ? {}
+            : {
+                maxPaths: integerOption(
+                  args.pathLimit,
+                  0,
+                  'knowledge graph path limit'
                 ),
               }),
           ...(args.claimLimit === undefined

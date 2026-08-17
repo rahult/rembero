@@ -1,6 +1,6 @@
 {
   "name": "rembero",
-  "version": "0.40.0",
+  "version": "0.41.0",
   "description": "Logic-based memory for LLM chats and agents: deterministic Datalog rules, explicit entity identity, integrity, provenance, graphs, and MCP",
   "type": "module",
   "bin": {
@@ -31,6 +31,7 @@
     "docs/DETERMINISTIC-ANSWER-MODE.md",
     "docs/LOCAL-KNOWLEDGE-SEARCH.md",
     "docs/EXPLICIT-GRAPH-BROWSE.md",
+    "docs/KNOWLEDGE-PATHS.md",
     "docs/KNOWLEDGE-BUNDLES.md",
     "docs/PROVENANCE-AWARE-RECALL.md",
     "docs/KNOWLEDGE-CHECKS.md",
@@ -93,6 +94,7 @@
     "docs/MIGRATING-0.38.md",
     "docs/MIGRATING-0.39.md",
     "docs/MIGRATING-0.40.md",
+    "docs/MIGRATING-0.41.md",
     "README.md",
     "LICENSE"
   ],

@@ -48,7 +48,7 @@ The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `que
 `supersede_facts`, `what-if`, `what_if`, `why-not`, `why_not`, `topology`,
 `knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
 `plan_query_repair`, `audit-rules`, `audit_rules`, `search`, `search_knowledge`,
-`browse`, `browse_knowledge_graph`, `bundle`, `export_knowledge_bundle`,
+`browse`, `browse_knowledge_graph`, `connect`, `connect_knowledge_graph`, `bundle`, `export_knowledge_bundle`,
 `verify_knowledge_bundle`, `test-knowledge`, `run_knowledge_checks`, `profile`,
 `profile_query`, `forget`, `list_memories`)
 work with no API key at all—only
@@ -78,7 +78,7 @@ Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
 `plan_query_repair`, `audit_rules`, `search_knowledge`, `checkpoint_journal`,
-`browse_knowledge_graph`, `export_knowledge_bundle`, `verify_knowledge_bundle`,
+`browse_knowledge_graph`, `connect_knowledge_graph`, `export_knowledge_bundle`, `verify_knowledge_bundle`,
 `run_knowledge_checks`, `profile_query`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
@@ -163,6 +163,7 @@ node dist/cli.js repair 'eligible(bob)' # minimal verified assumptions/retractio
 node dist/cli.js audit-rules 'eligible' --direction upstream # proactive rule health
 node dist/cli.js search 'Doctor Chen' --kind fact # local lexical provenance search
 node dist/cli.js browse mira --browse-depth 2 # explicit entity neighborhood
+node dist/cli.js connect mira rahul --path-depth 4 # shortest explicit relationships
 node dist/cli.js bundle > knowledge.json && node dist/cli.js verify-bundle knowledge.json
 node dist/cli.js test-knowledge checks.json # deterministic rule regression suite
 node dist/cli.js profile 'relevant(X, Y)' --compare-scan # deterministic work counters
@@ -346,6 +347,12 @@ corrections, rules, duplicates, tentative trust, authority no-ops, and local sec
 rejection. Accepted mode now skips hedged claims; tentative caller authority is conveyed
 to extraction while trust assignment remains local. See
 [the evaluation contract](docs/EVALS.md).
+
+Version 0.41 finds bounded shortest relationship paths between two explicit personal
+knowledge entities. It returns ordered fact segments, argument positions, provenance,
+aliases, trust, and recorded-view evidence, and distinguishes a fully disconnected
+component from a depth-bounded miss. Equal shortest alternatives are complete or fail
+closed. See [the deterministic knowledge-path contract](docs/KNOWLEDGE-PATHS.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

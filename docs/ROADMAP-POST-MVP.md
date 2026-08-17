@@ -489,6 +489,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    15/15; GPT-5.4 Mini scored 14/15. Combined recall/extraction results retain Luna as the
    verified default and keep final prose phrasing outside the claim.
 
+## Phase 44 — Deterministic personal knowledge paths  *(v0.41)*
+
+1. **Complete — explicit hypergraph shortest paths**: atom or numeric endpoints traverse
+   ordered argument edges through explicit ground-fact claim nodes; every shortest path
+   is returned in stable order with predicate, argument-position, and entity steps.
+2. **Complete — honest bounded completeness**: depth-bounded misses differ from exhausted
+   disconnected components, claim/node overflow fails before partial output, and excess
+   equal-length alternatives fail rather than masquerading as a complete shortest set.
+3. **Complete — evidence and view parity**: the path-only graph retains durable sources,
+   canonical aliases/projections, accepted/tentative labels, temporal facts, namespace
+   witnesses, and exact recorded coordinates without an LLM or graph sidecar.
+4. **Complete — operational parity**: library, CLI `connect`, MCP
+   `connect_knowledge_graph`, numeric endpoints, package installs, current/recorded tests,
+   and existing 16 MiB output bounds share one read-only contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

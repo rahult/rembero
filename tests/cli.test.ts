@@ -697,6 +697,59 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('finds shortest explicit entity paths without an LLM', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-connect-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'works_at(mira, acme). works_at(rahul, acme). lives_in(rahul, melbourne).',
+      { opId: 'connection-source' }
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'connect',
+        'mira',
+        'rahul',
+        '--path-depth',
+        '2',
+        '--path-limit',
+        '3',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'connected',
+      shortestHops: 2,
+      searchComplete: true,
+      paths: [
+        {
+          entities: ['mira', 'acme', 'rahul'],
+          segments: [
+            expect.objectContaining({ predicate: 'works_at' }),
+            expect.objectContaining({ predicate: 'works_at' }),
+          ],
+        },
+      ],
+      graph: {
+        nodes: expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'claim',
+            sources: [expect.objectContaining({ opId: 'connection-source' })],
+          }),
+        ]),
+      },
+    });
+  });
+
   it('exports and verifies a content-addressed bundle without mutating memory', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-bundle-'));
     const home = join(root, 'home');

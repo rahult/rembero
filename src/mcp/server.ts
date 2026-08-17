@@ -43,6 +43,7 @@ import {
   auditRulesTool,
   searchKnowledgeTool,
   browseKnowledgeGraphTool,
+  connectKnowledgeGraphTool,
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
   runKnowledgeChecksTool,
@@ -78,6 +79,10 @@ import {
   MAX_BROWSE_GRAPH_DEPTH,
   MAX_BROWSE_PREDICATE_FOCUS_BYTES,
 } from '../knowledge/browse.js';
+import {
+  MAX_KNOWLEDGE_PATH_DEPTH,
+  MAX_KNOWLEDGE_PATHS,
+} from '../knowledge/paths.js';
 import {
   MAX_KNOWLEDGE_BUNDLE_BYTES,
   serializeKnowledgeBundle,
@@ -229,6 +234,26 @@ const browseClaimLimitField = z
   .max(MAX_BROWSE_GRAPH_CLAIMS)
   .optional()
   .describe('Maximum complete explicit claims (default: 100)');
+const pathEndpointField = z
+  .union([
+    z.string().max(MAX_BROWSE_ENTITY_FOCUS_BYTES),
+    z.number().finite(),
+  ])
+  .describe('Exact atom string or numeric path endpoint');
+const pathDepthField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_KNOWLEDGE_PATH_DEPTH)
+  .optional()
+  .describe('Maximum explicit-claim hops (default: 4)');
+const pathLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_KNOWLEDGE_PATHS)
+  .optional()
+  .describe('Maximum complete shortest paths (default: 3)');
 const conflictFocusField = z
   .string()
   .min(1)
@@ -407,7 +432,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.40.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.41.0' });
 
   server.registerTool(
     'remember',
@@ -882,6 +907,55 @@ export function createServer(deps: PipelineDeps): McpServer {
             focus,
             predicate,
             depth,
+            maxClaims,
+            namespaces,
+            entityIdentity,
+            trustMode,
+            recordedSequence,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'connect_knowledge_graph',
+    {
+      title: 'Find explicit personal knowledge paths',
+      description:
+        'Find every bounded shortest path between two atom or numeric entities through explicit stored ground facts. Returns ordered claim segments, a provenance-bearing path graph, aliases, trust, and recorded-view metadata. A no_path result distinguishes complete component exhaustion from a depth-bounded search; no LLM or graph sidecar is used.',
+      inputSchema: {
+        from: pathEndpointField,
+        to: pathEndpointField,
+        maxDepth: pathDepthField,
+        maxPaths: pathLimitField,
+        maxClaims: browseClaimLimitField,
+        namespaces: namespacesField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({
+      from,
+      to,
+      maxDepth,
+      maxPaths,
+      maxClaims,
+      namespaces,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+    }) => {
+      try {
+        return asContent(
+          connectKnowledgeGraphTool(resolvedDeps, {
+            from,
+            to,
+            maxDepth,
+            maxPaths,
             maxClaims,
             namespaces,
             entityIdentity,

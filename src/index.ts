@@ -303,6 +303,18 @@ export {
   type BrowseKnowledgeGraphResult,
 } from './knowledge/browse.js';
 export {
+  connectKnowledgeGraph,
+  DEFAULT_KNOWLEDGE_PATH_DEPTH,
+  MAX_KNOWLEDGE_PATH_DEPTH,
+  DEFAULT_KNOWLEDGE_PATHS,
+  MAX_KNOWLEDGE_PATHS,
+  type ConnectKnowledgeGraphOptions,
+  type KnowledgeGraphPathSegment,
+  type KnowledgeGraphPath,
+  type ConnectKnowledgeGraphSelection,
+  type ConnectKnowledgeGraphResult,
+} from './knowledge/paths.js';
+export {
   createKnowledgeBundle,
   serializeKnowledgeBundle,
   verifyKnowledgeBundle,

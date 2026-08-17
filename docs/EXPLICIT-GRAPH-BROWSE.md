@@ -4,6 +4,9 @@ Rembero 0.32 lets callers inspect the stored personal knowledge graph around an 
 predicate without first generating a Datalog query. The graph is derived on demand from
 explicit ground facts only; portable `.dl` clauses remain the sole authority.
 
+Version 0.41 adds a separate bounded shortest-path view for connecting two entities; see
+[deterministic personal knowledge paths](KNOWLEDGE-PATHS.md).
+
 ## Use
 
 ```bash
@@ -60,3 +63,7 @@ boundary.
 Claim and node limits are checked while selecting a fact, before constructing oversized
 nodes or returning a truncated neighborhood. Programmatically supplied non-ground facts
 are skipped and counted; the normal parser/store already rejects them.
+
+Selection metadata includes `frontierExhausted`, which is true only when the final entity
+frontier has no adjacent unselected claim. This lets path callers distinguish complete
+component exhaustion from a depth-bounded neighborhood.

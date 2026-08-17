@@ -52,6 +52,8 @@ export interface BrowseKnowledgeGraphSelection {
   totalGroundFacts: number;
   selectedClaims: number;
   selectedEntities: number;
+  /** True when no unselected claim remains adjacent to the final entity frontier. */
+  frontierExhausted: boolean;
 }
 
 export interface BrowseKnowledgeGraphResult {
@@ -83,7 +85,7 @@ function entityKey(value: string | number): string {
   return JSON.stringify(typedValue(value));
 }
 
-function entityId(value: string | number): string {
+export function knowledgeGraphEntityId(value: string | number): string {
   return `entity:${entityKey(value)}`;
 }
 
@@ -245,7 +247,7 @@ function entityNode(
 ): EntityGraphNode {
   const aliases = typeof value === 'string' ? resolver?.aliasesFor(value) : undefined;
   return {
-    id: entityId(value),
+    id: knowledgeGraphEntityId(value),
     kind: 'entity',
     value,
     valueType: typeof value === 'number' ? 'number' : 'atom',
@@ -377,13 +379,13 @@ export function browseKnowledgeGraph(
   const edges = new Map<string, ExplanationGraphEdge>();
   for (const key of selectedEntities) {
     const [, value] = JSON.parse(key) as ['atom' | 'number', string | number];
-    nodes.set(entityId(value), entityNode(value, view.resolver));
+    nodes.set(knowledgeGraphEntityId(value), entityNode(value, view.resolver));
   }
   for (const id of selectedClaims) {
     const record = recordsById.get(id)!;
     nodes.set(id, claimNode(record));
     for (const [position, value] of record.values.entries()) {
-      const target = entityId(value);
+      const target = knowledgeGraphEntityId(value);
       nodes.set(target, entityNode(value, view.resolver));
       const edge = graphEdge('arg', id, target, position);
       edges.set(edge.id, edge);
@@ -397,9 +399,12 @@ export function browseKnowledgeGraph(
   const focusNodeIds = [...focusValues]
     .map((key) => {
       const [, value] = JSON.parse(key) as ['atom' | 'number', string | number];
-      return entityId(value);
+      return knowledgeGraphEntityId(value);
     })
     .sort();
+  const frontierExhausted = [...frontier].every((key) =>
+    (entityClaims.get(key) ?? []).every((id) => selectedClaims.has(id))
+  );
   const graph: ExplanationGraph = {
     nodes: [...nodes.values()].sort((left, right) => left.id.localeCompare(right.id)),
     edges: [...edges.values()].sort((left, right) => left.id.localeCompare(right.id)),
@@ -416,6 +421,7 @@ export function browseKnowledgeGraph(
       totalGroundFacts: records.length,
       selectedClaims: selectedClaims.size,
       selectedEntities: selectedEntities.size,
+      frontierExhausted,
     },
     skippedNonGroundFacts: skipped,
     ...(trustMode === 'accepted' ? {} : { trustMode }),

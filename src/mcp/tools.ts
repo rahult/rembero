@@ -71,6 +71,10 @@ import {
   type BrowseKnowledgeGraphResult,
 } from '../knowledge/browse.js';
 import {
+  connectKnowledgeGraph,
+  type ConnectKnowledgeGraphResult,
+} from '../knowledge/paths.js';
+import {
   createKnowledgeBundle,
   verifyKnowledgeBundle,
   type KnowledgeBundle,
@@ -835,6 +839,52 @@ export function browseKnowledgeGraphTool(
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
     ...(trustMode === 'accepted' ? {} : { trustMode }),
   });
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
+}
+
+export function connectKnowledgeGraphTool(
+  deps: StoreToolDeps,
+  args: {
+    from: string | number;
+    to: string | number;
+    maxDepth?: number;
+    maxPaths?: number;
+    maxClaims?: number;
+    namespaces?: string[] | '*';
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+  }
+): ConnectKnowledgeGraphResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  if (typeof args.from === 'string') {
+    assertBoundedInput(args.from, 'knowledge graph path start');
+  }
+  if (typeof args.to === 'string') {
+    assertBoundedInput(args.to, 'knowledge graph path end');
+  }
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = connectKnowledgeGraph(
+    recorded.clauses,
+    recorded.sources,
+    args.from,
+    args.to,
+    {
+      ...(args.maxDepth === undefined ? {} : { maxDepth: args.maxDepth }),
+      ...(args.maxPaths === undefined ? {} : { maxPaths: args.maxPaths }),
+      ...(args.maxClaims === undefined ? {} : { maxClaims: args.maxClaims }),
+      ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(trustMode === 'accepted' ? {} : { trustMode }),
+    }
+  );
   return {
     ...result,
     ...(recorded.recordedSnapshot === undefined
