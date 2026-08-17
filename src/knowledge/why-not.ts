@@ -46,6 +46,8 @@ export const DEFAULT_MAX_WHY_NOT_CANDIDATES = 4;
 export const MAX_WHY_NOT_CANDIDATES = 16;
 export const DEFAULT_MAX_WHY_NOT_EVIDENCE = 16;
 export const MAX_WHY_NOT_EVIDENCE = 64;
+export const DEFAULT_WHY_NOT_SUMMARY_FAILURES = 3;
+export const MAX_WHY_NOT_SUMMARY_FAILURES = 8;
 
 export type WhyNotReason =
   | 'missing_fact'
@@ -119,10 +121,84 @@ export interface ExplainWhyNotResult {
   status: WhyNotStatus;
   query: string;
   evaluatedQuery: string;
+  summary: string;
   explanation: ExplainKnowledgeResult;
   failures: WhyNotFailure[];
   graph: WhyNotGraph;
   trustMode?: TrustViewMode;
+}
+
+function leafFailures(failures: WhyNotFailure[]): WhyNotFailure[] {
+  const result: WhyNotFailure[] = [];
+  const seen = new Set<string>();
+  const visit = (failure: WhyNotFailure) => {
+    if (failure.reason === 'rules_blocked') {
+      const nested = failure.rules.flatMap((rule) => rule.failures);
+      if (nested.length > 0) {
+        for (const child of nested) visit(child);
+        return;
+      }
+    }
+    if (seen.has(failure.id)) return;
+    seen.add(failure.id);
+    result.push(failure);
+  };
+  for (const failure of failures) visit(failure);
+  return result;
+}
+
+function failureSummary(failure: WhyNotFailure): string {
+  switch (failure.reason) {
+    case 'missing_fact':
+      return `Required fact ${failure.goal} is missing`;
+    case 'negated_fact_present': {
+      const observed = failure.nearby.map(({ fact }) => fact).join(', ');
+      return observed.length === 0
+        ? `Negated goal ${failure.goal} is blocked by a present fact`
+        : `Negated goal ${failure.goal} is blocked by ${observed}`;
+    }
+    case 'comparison_false':
+      return `Comparison ${failure.goal} is false`;
+    case 'recursive_cycle':
+      return `Rule diagnosis cycles back to ${failure.goal}`;
+    case 'rule_output_mismatch':
+      return `A rule body succeeds but its output does not match ${failure.goal}`;
+    case 'aggregate_result_mismatch':
+      return `The aggregate result does not match ${failure.goal}`;
+    case 'rules_blocked':
+      return `Every rule for ${failure.goal} is blocked`;
+  }
+}
+
+/** Produce a local, source-text-free summary from complete deterministic blockers. */
+export function summarizeWhyNot(
+  result: Pick<ExplainWhyNotResult, 'status' | 'evaluatedQuery' | 'failures' | 'explanation'>,
+  maxFailures = DEFAULT_WHY_NOT_SUMMARY_FAILURES
+): string {
+  if (
+    !Number.isSafeInteger(maxFailures) ||
+    maxFailures < 1 ||
+    maxFailures > MAX_WHY_NOT_SUMMARY_FAILURES
+  ) {
+    throw new EngineSafetyError(
+      `why-not summary failures must be from 1 to ${MAX_WHY_NOT_SUMMARY_FAILURES}`
+    );
+  }
+  if (result.status === 'satisfied') {
+    const count = result.explanation.rows.length;
+    return `The query ${result.evaluatedQuery} is satisfied by ${count} result row${
+      count === 1 ? '' : 's'
+    }.`;
+  }
+  const failures = leafFailures(result.failures);
+  const selected = failures.slice(0, maxFailures).map(failureSummary);
+  const remainder = failures.length - selected.length;
+  const detail = selected.length === 0
+    ? 'No grounded repairable blocker was available.'
+    : `${selected.join('; ')}${
+        remainder > 0 ? `; plus ${remainder} additional blocker${remainder === 1 ? '' : 's'}` : ''
+      }.`;
+  return `No stored result matches ${result.evaluatedQuery}. ${detail}`;
 }
 
 interface RuleDefinition {
@@ -725,10 +801,17 @@ export function explainWhyNot(
   );
   const evaluatedQuery = serializeQuerySpec(evaluated);
   if (explanation.rows.length > 0) {
+    const summaryInput = {
+      status: 'satisfied' as const,
+      evaluatedQuery,
+      explanation,
+      failures: [],
+    };
     return {
       status: 'satisfied',
       query,
       evaluatedQuery,
+      summary: summarizeWhyNot(summaryInput),
       explanation,
       failures: [],
       graph: graphFor(evaluatedQuery, 'satisfied', []),
@@ -765,10 +848,17 @@ export function explainWhyNot(
   if (diagnosed.solutions.length > 0) {
     throw new Error('why-not diagnostic disagreed with deterministic query evaluation');
   }
+  const summaryInput = {
+    status: 'blocked' as const,
+    evaluatedQuery,
+    explanation,
+    failures: diagnosed.failures,
+  };
   return {
     status: 'blocked',
     query,
     evaluatedQuery,
+    summary: summarizeWhyNot(summaryInput),
     explanation,
     failures: diagnosed.failures,
     graph: graphFor(evaluatedQuery, 'blocked', diagnosed.failures),

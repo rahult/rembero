@@ -18,6 +18,10 @@ The library exposes `explainWhyNot(clauses, query, sources, options)`. MCP expos
 validated query has no rows. The diagnostic never calls an LLM; recall's existing query
 translation remains the only model-dependent step.
 
+Version 0.29 adds the same source-text-free `summary` to every why-not result and uses it
+as the final answer for ordinary no-match recall, eliminating model-based negative
+phrasing.
+
 When the query already succeeds, `status` is `satisfied`, `failures` is empty, and
 `explanation` contains the ordinary proof/source graph. When it is blocked, the result
 contains:

@@ -337,6 +337,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    CLI, MCP, identity, trust, namespace, package, evaluator/topology/output limits, and a
    warning-only CLI exit `2` share one deterministic audit contract.
 
+## Phase 32 — Grounded deterministic negative recall  *(v0.29)*
+
+1. **Complete — final-query blocker evidence**: after bounded schema widening and the one
+   translation-review fallback, a full-schema empty query receives one complete why-not
+   tree and source-text-free deterministic summary.
+2. **Complete — no negative phrasing authority**: ordinary and explained no-match recall
+   return the local summary without a third LLM call; answered recall retains its existing
+   grounded phrasing path.
+3. **Complete — honest diagnostic fallback**: why-not limit exhaustion preserves the exact
+   empty result, emits typed `whyNotUnavailable` evidence, and uses a generic deterministic
+   answer across library, CLI/MCP/package behavior without misrepresenting partial blockers.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

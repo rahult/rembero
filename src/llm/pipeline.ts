@@ -6,6 +6,7 @@ import {
   type Literal,
   type QuerySpec,
   type Term,
+  EngineLimitError,
   evaluateQuerySpec,
   isComparison,
   isAggregateRule,
@@ -128,6 +129,7 @@ export interface RecallResult {
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
   whyNot?: ExplainWhyNotResult;
+  whyNotUnavailable?: RecallWhyNotUnavailable;
   rowTrust?: KnowledgeTrust[];
   queryReviews?: RecallQueryReview[];
   pruning?: RecallPruningReport;
@@ -141,11 +143,17 @@ export interface RetrievalResult {
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
   whyNot?: ExplainWhyNotResult;
+  whyNotUnavailable?: RecallWhyNotUnavailable;
   rowTrust?: KnowledgeTrust[];
   queryReviews?: RecallQueryReview[];
   pruning?: RecallPruningReport;
   recordedSnapshot?: RecordedSnapshotMetadata;
   trustMode?: TrustViewMode;
+}
+
+export interface RecallWhyNotUnavailable {
+  reason: 'diagnostic_limit';
+  message: string;
 }
 
 export type RecallQueryReviewReason =
@@ -934,7 +942,6 @@ export async function retrieveQuestion(
     query: string | null;
     bindings: Record<string, string>[];
     explanation?: ExplainKnowledgeResult;
-    whyNot?: ExplainWhyNotResult;
     rowTrust?: KnowledgeTrust[];
     queryReview?: RecallQueryReview;
   }
@@ -979,15 +986,6 @@ export async function retrieveQuestion(
           }
         );
         const bindings = explanation.rows.map((row) => row.bindings);
-        const whyNot = options.explain && bindings.length === 0
-          ? explainWhyNot(literalClauses, queryText, literalSources, {
-              ...(options.proofLimit === undefined
-                ? {}
-                : { maxProofsPerRow: options.proofLimit }),
-              ...(entityIdentity === undefined ? {} : { entityIdentity }),
-              ...(trustMode === 'accepted' ? {} : { trustMode }),
-            })
-          : undefined;
         return {
           outcome: bindings.length > 0 ? 'answered' : 'empty',
           query: queryText,
@@ -996,7 +994,6 @@ export async function retrieveQuestion(
             ? { rowTrust: explanationRowTrust(explanation) }
             : {}),
           ...(options.explain ? { explanation } : {}),
-          ...(whyNot === undefined ? {} : { whyNot }),
         };
       }
       const bindings = evaluateQuerySpec(clauses, query).map((binding: Bindings) =>
@@ -1158,9 +1155,40 @@ export async function retrieveQuestion(
       ...snapshotResult,
     };
   }
+  let whyNotResult:
+    | { whyNot: ExplainWhyNotResult }
+    | { whyNotUnavailable: RecallWhyNotUnavailable }
+    | Record<string, never> = {};
+  if (outcome === 'empty' && retrieval.query !== null) {
+    try {
+      whyNotResult = {
+        whyNot: explainWhyNot(
+          literalClauses,
+          retrieval.query,
+          literalSources,
+          {
+            ...(options.proofLimit === undefined
+              ? {}
+              : { maxProofsPerRow: options.proofLimit }),
+            ...(entityIdentity === undefined ? {} : { entityIdentity }),
+            ...(trustMode === 'accepted' ? {} : { trustMode }),
+          }
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof EngineLimitError)) throw error;
+      whyNotResult = {
+        whyNotUnavailable: {
+          reason: 'diagnostic_limit',
+          message: error.message,
+        },
+      };
+    }
+  }
   return {
     status: outcome === 'empty' ? 'no_match' : 'unanswerable',
     ...retrieval,
+    ...whyNotResult,
     ...reviewResult,
     ...pruning,
     ...trustResult,
@@ -1188,6 +1216,15 @@ export async function recallQuestion(
   if (retrieval.status === 'schema_budget_exhausted') {
     return {
       answer: 'Recall reached its schema budget before it could rule out relevant memories.',
+      ...retrieval,
+    };
+  }
+
+  if (retrieval.status === 'no_match') {
+    return {
+      answer:
+        retrieval.whyNot?.summary ??
+        `No stored result matches ${retrieval.query}.`,
       ...retrieval,
     };
   }

@@ -66,6 +66,7 @@ export {
   type RecallQueryReview,
   type RecallQueryReviewReason,
   type RecallResult,
+  type RecallWhyNotUnavailable,
   type RecallSchemaAttempt,
   type RecallSchemaAttemptOutcome,
   type RecallStatus,
@@ -179,6 +180,7 @@ export {
 } from './knowledge/counterfactual.js';
 export {
   explainWhyNot,
+  summarizeWhyNot,
   DEFAULT_MAX_WHY_NOT_FAILURES,
   MAX_WHY_NOT_FAILURES,
   DEFAULT_MAX_WHY_NOT_DEPTH,
@@ -187,6 +189,8 @@ export {
   MAX_WHY_NOT_CANDIDATES,
   DEFAULT_MAX_WHY_NOT_EVIDENCE,
   MAX_WHY_NOT_EVIDENCE,
+  DEFAULT_WHY_NOT_SUMMARY_FAILURES,
+  MAX_WHY_NOT_SUMMARY_FAILURES,
   type WhyNotReason,
   type WhyNotStatus,
   type WhyNotObservedFact,

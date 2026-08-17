@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "if (materialize(parseProgram('base(a). derived(X) :- base(X).')).filter((fact) => fact.derived).length !== 1) throw new Error('public proof-free materialization API failed'); " +
@@ -70,6 +70,10 @@ try {
         "const reviewLlm = { responses: ['?- uses_language(atlas, Value).', '?- project_owner(atlas, Owner).'], async complete() { const value = this.responses.shift(); if (value === undefined) throw new Error('review responses exhausted'); return value; } }; " +
         "const review = await retrieveQuestion({ store: reviewStore, llm: reviewLlm }, 'Who owns Atlas?'); " +
         "if (review.query !== 'project_owner(atlas, Owner)' || review.bindings[0]?.Owner !== 'rahul' || review.queryReviews?.[0]?.outcome !== 'corrected') throw new Error('public recall disambiguation API failed'); " +
+        "const negativeStore = new MemoryStore('./negative-memory'); negativeStore.assert('default', 'works_at(maya, acme).'); " +
+        "const negativeLlm = { calls: 0, responses: ['?- works_at(zoe, Company).', '?- works_at(zoe, Company).'], async complete() { this.calls += 1; const value = this.responses.shift(); if (value === undefined) throw new Error('negative recall used an unexpected phrasing call'); return value; } }; " +
+        "const negative = await recallQuestion({ store: negativeStore, llm: negativeLlm }, 'Where does Zoe work?'); " +
+        "if (negative.status !== 'no_match' || negativeLlm.calls !== 2 || negative.answer !== negative.whyNot?.summary || !negative.answer.includes('Required fact works_at(zoe, Company) is missing')) throw new Error('public grounded negative recall failed'); " +
         "const trustStore = new MemoryStore('./trust-memory'); assertTentativeFacts(trustStore, 'default', 'status(mira, active).', { opId: 'tentative' }); " +
         "if (explainKnowledge(trustStore.clausesFor(['default']), 'status(mira, State)', trustStore.sourcesFor(['default'])).rows.length !== 0) throw new Error('tentative default isolation failed'); " +
         "const tentativeExplain = explainKnowledge(trustStore.clausesFor(['default']), 'status(mira, State)', trustStore.sourcesFor(['default']), { trustMode: 'include_tentative' }); " +
@@ -630,7 +634,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

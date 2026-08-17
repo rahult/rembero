@@ -9,8 +9,10 @@ import { createServer } from '../src/mcp/server.js';
 import { MemoryStore } from '../src/store/store.js';
 
 class ScriptedLlm implements LlmClient {
+  calls = 0;
   constructor(private responses: string[]) {}
   async complete(_messages: ChatMessage[]): Promise<string> {
+    this.calls += 1;
     const response = this.responses.shift();
     if (response === undefined) throw new Error('out of responses');
     return response;
@@ -49,7 +51,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.28.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.29.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -967,6 +969,43 @@ describe('MCP explanation surfaces', () => {
           catalogComplete: true,
         },
       });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('returns grounded negative recall without a phrasing model call', async () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-negative-')));
+    store.assert('default', 'works_at(maya, acme).', { opId: 'maya-source' });
+    const llm = new ScriptedLlm([
+      '?- works_at(zoe, Company).',
+      '?- works_at(zoe, Company).',
+    ]);
+    const server = createServer({ store, llm });
+    const client = new Client({ name: 'rembero-negative-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const recalled = await client.callTool({
+        name: 'recall',
+        arguments: { question: 'Where does Zoe work?' },
+      });
+      const text = recalled.content.find((item) => item.type === 'text');
+      const payload = JSON.parse(text?.type === 'text' ? text.text : '');
+      expect(payload).toMatchObject({
+        status: 'no_match',
+        query: 'works_at(zoe, Company)',
+        bindings: [],
+        whyNot: {
+          status: 'blocked',
+          summary:
+            'No stored result matches works_at(zoe, Company). Required fact works_at(zoe, Company) is missing.',
+        },
+      });
+      expect(payload.answer).toBe(payload.whyNot.summary);
+      expect(llm.calls).toBe(2);
     } finally {
       await client.close();
       await server.close();

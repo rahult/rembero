@@ -35,6 +35,8 @@ describe('deterministic why-not explanations', () => {
     expect(result).toMatchObject({
       status: 'blocked',
       evaluatedQuery: 'works_at(mira, acme)',
+      summary:
+        'No stored result matches works_at(mira, acme). Required fact works_at(mira, acme) is missing.',
       failures: [
         {
           reason: 'missing_fact',
@@ -251,6 +253,7 @@ describe('deterministic why-not explanations', () => {
 
     expect(result).toMatchObject({
       status: 'satisfied',
+      summary: 'The query pet(rahul, Name) is satisfied by 1 result row.',
       failures: [],
       explanation: {
         rows: [

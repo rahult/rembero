@@ -268,6 +268,13 @@ inputs, currently inactive derivations, alpha-equivalent duplicates, and arity o
 Warnings exit `2`; informational findings remain successful. Every finding links into the
 selected topology graph. See [the deterministic rule-audit contract](docs/RULE-AUDIT.md).
 
+Version 0.29 makes negative natural-language recall deterministic after query review. A
+final full-schema empty query receives complete why-not evidence and a local blocker
+summary; Rembero no longer sends empty bindings to the LLM for phrasing. If diagnostic
+limits are exceeded, recall returns an explicit `whyNotUnavailable` marker and an honest
+generic negative answer. See
+[the grounded-negative-recall contract](docs/GROUNDED-NEGATIVE-RECALL.md).
+
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
 complete selected namespaces. Empty or unanswerable results from a partial slice trigger

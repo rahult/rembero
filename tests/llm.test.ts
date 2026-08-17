@@ -1423,7 +1423,14 @@ describe('recallQuestion', () => {
     ]);
     const result = await recallQuestion({ store, llm }, 'Where does Zoe work?');
     expect(result.bindings).toEqual([]);
-    expect(result.answer).toBe("I don't have that in memory.");
+    expect(result.answer).toBe(
+      'No stored result matches colleague(zoe, X). Required fact works_at(zoe, C) is missing.'
+    );
+    expect(result.whyNot).toMatchObject({
+      status: 'blocked',
+      summary: result.answer,
+    });
+    expect(llm.calls).toHaveLength(2);
   });
 
   it('preserves a valid empty query when the fallback repeats it unchanged', async () => {
@@ -1435,9 +1442,41 @@ describe('recallQuestion', () => {
     const result = await recallQuestion({ store, llm }, 'Where does Zoe work?');
     expect(result.bindings).toEqual([]);
     expect(result.query).toBe('works_at(zoe, X)');
-    expect(result.answer).toMatch(/don't have/i);
-    expect(llm.calls).toHaveLength(3);
+    expect(result.answer).toBe(
+      'No stored result matches works_at(zoe, X). Required fact works_at(zoe, X) is missing.'
+    );
+    expect(result.whyNot?.summary).toBe(result.answer);
+    expect(llm.calls).toHaveLength(2);
     expect(llm.calls[1].at(-1)?.content).toContain('empty result is valid evidence');
+  });
+
+  it('keeps negative recall honest when complete why-not diagnostics exceed their bound', async () => {
+    const crowded = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-negative-limit-')));
+    crowded.assert(
+      'default',
+      `${Array.from({ length: 40 }, (_, index) => `item(value_${index}).`).join('\n')}
+       missing(X) :- absent(X).`
+    );
+    const llm = new ScriptedLlm([
+      '?- item(X), missing(X).',
+      '?- item(X), missing(X).',
+    ]);
+
+    const result = await recallQuestion(
+      { store: crowded, llm },
+      'Which items are missing?'
+    );
+
+    expect(result).toMatchObject({
+      status: 'no_match',
+      answer: 'No stored result matches item(X), missing(X).',
+      whyNotUnavailable: {
+        reason: 'diagnostic_limit',
+        message: expect.stringMatching(/frontier exceeded 32 bindings/i),
+      },
+    });
+    expect(result.whyNot).toBeUndefined();
+    expect(llm.calls).toHaveLength(2);
   });
 
   it('adds deterministic rule blockers to an empty recall-explain result', async () => {
