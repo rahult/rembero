@@ -456,6 +456,47 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
     }
   });
 
+  it('executes aggregate rules through the portable bridge with nested proofs', async () => {
+    const database = await openDatalogDatabase(':memory:', { extensionPath });
+    const program =
+      'team_size(Team, Count) :- count(*) as Count where member(Team, Person).';
+    try {
+      database.exec(`
+        CREATE TABLE member(team TEXT, person TEXT);
+        INSERT INTO member VALUES ('red', 'bob'), ('blue', 'carol'), ('red', 'alice');
+      `);
+      expect(sqliteDatalogExecutionMode(program)).toBe('portable');
+      expect(database.datalogQuery(program)).toEqual([
+        { Team: 'blue', Count: 1 },
+        { Team: 'red', Count: 2 },
+      ]);
+      expect(database.datalogExplain(program)).toEqual([
+        expect.objectContaining({
+          row: { Team: 'blue', Count: 1 },
+          proof: expect.objectContaining({
+            predicate: 'team_size',
+            aggregate: expect.objectContaining({
+              aggregated: true,
+              op: 'count',
+              value: 1,
+              contributors: [
+                expect.objectContaining({
+                  proofs: [{ predicate: 'member', values: ['blue', 'carol'] }],
+                }),
+              ],
+            }),
+          }),
+        }),
+        expect.objectContaining({ row: { Team: 'red', Count: 2 } }),
+      ]);
+      expect(() => database.datalogSql(program)).toThrow(
+        /aggregation.*cannot be compiled to one SQLite SELECT/i
+      );
+    } finally {
+      database.close();
+    }
+  });
+
   it('uses the first rule head as the result relation for multi-predicate fixpoints', async () => {
     const database = await openDatalogDatabase(':memory:', { extensionPath });
     try {

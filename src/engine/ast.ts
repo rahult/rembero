@@ -52,15 +52,30 @@ export interface OrdinaryClause {
   head: Literal;
   body: Goal[];
   integrity?: false;
+  aggregate?: undefined;
+}
+
+export interface AggregateRuleSpec {
+  op: AggregateOperator;
+  input: '*' | string;
+  as: string;
+}
+
+export interface AggregateRuleClause {
+  head: Literal;
+  body: Goal[];
+  aggregate: AggregateRuleSpec;
+  integrity?: false;
 }
 
 export interface IntegrityConstraintClause {
   head: Literal;
   body: Goal[];
   integrity: true;
+  aggregate?: undefined;
 }
 
-export type Clause = OrdinaryClause | IntegrityConstraintClause;
+export type Clause = OrdinaryClause | AggregateRuleClause | IntegrityConstraintClause;
 
 export type AggregateOperator = 'count' | 'sum' | 'min' | 'max';
 
@@ -99,6 +114,10 @@ export function isIntegrityConstraint(
   clause: Clause
 ): clause is IntegrityConstraintClause {
   return clause.integrity === true;
+}
+
+export function isAggregateRule(clause: Clause): clause is AggregateRuleClause {
+  return clause.aggregate !== undefined;
 }
 
 export function predKey(lit: Literal): string {
@@ -188,6 +207,10 @@ export function serializeClause(clause: Clause): string {
   }
   const head = serializeGoal(clause.head);
   if (clause.body.length === 0) return `${head}.`;
+  if (isAggregateRule(clause)) {
+    const goals = clause.body.map(serializeGoal).join(', ');
+    return `${head} :- ${clause.aggregate.op}(${clause.aggregate.input}) as ${clause.aggregate.as} where ${goals}.`;
+  }
   return `${head} :- ${clause.body.map(serializeGoal).join(', ')}.`;
 }
 
@@ -238,14 +261,30 @@ export function canonicalKey(clause: Clause): string {
       : isNegation(goal)
         ? { not: { predicate: goal.not.predicate, args: goal.not.args.map(rename) } }
         : { predicate: goal.predicate, args: goal.args.map(rename) };
-  return isIntegrityConstraint(clause)
-    ? serializeClause({
-        head: clause.head,
-        body: clause.body.map(renameGoal),
-        integrity: true,
-      })
-    : serializeClause({
-        head: renameGoal(clause.head) as Literal,
-        body: clause.body.map(renameGoal),
-      });
+  if (isIntegrityConstraint(clause)) {
+    return serializeClause({
+      head: clause.head,
+      body: clause.body.map(renameGoal),
+      integrity: true,
+    });
+  }
+  const head = renameGoal(clause.head) as Literal;
+  const body = clause.body.map(renameGoal);
+  if (isAggregateRule(clause)) {
+    const renameVariable = (name: string): string =>
+      (rename({ type: 'var', name }) as Extract<Term, { type: 'var' }>).name;
+    return serializeClause({
+      head,
+      body,
+      aggregate: {
+        op: clause.aggregate.op,
+        input:
+          clause.aggregate.input === '*'
+            ? '*'
+            : renameVariable(clause.aggregate.input),
+        as: renameVariable(clause.aggregate.as),
+      },
+    });
+  }
+  return serializeClause({ head, body });
 }

@@ -60,6 +60,45 @@ describe('explicit entity identity', () => {
     ]);
   });
 
+  it('preserves aggregate rule semantics through canonical projection', () => {
+    const program = parseProgram(`
+      rembero_alias('Bob Smith', bob).
+      rembero_entity_position(member, 2, 1).
+      member(red, 'Bob Smith').
+      team_size(Team, Count) :- count(*) as Count where member(Team, Person).
+    `);
+    const view = canonicalizeKnowledge(program);
+    expect(view.clauses.map(serializeClause)).toEqual([
+      'member(red, bob).',
+      'team_size(Team, Count) :- count(*) as Count where member(Team, Person).',
+    ]);
+    const explanation = explainKnowledge(
+      program,
+      'team_size(red, Count)',
+      new Map(),
+      { entityIdentity: 'canonical' }
+    );
+    expect(explanation.rows[0]).toMatchObject({
+      bindings: { Count: '1' },
+      proofs: [
+        {
+          aggregate: {
+            contributors: [
+              {
+                proofs: [
+                  expect.objectContaining({
+                    predicate: 'member',
+                    projectedFrom: "member(red, 'Bob Smith').",
+                  }),
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
   it('fails closed on conflicts, cycles, malformed metadata, or reserved executable use', () => {
     const invalid = [
       "rembero_alias(mira, person_one). rembero_alias(mira, person_two).",

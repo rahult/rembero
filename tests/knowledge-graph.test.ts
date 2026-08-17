@@ -330,6 +330,116 @@ describe('explainable personal knowledge graph', () => {
     ).toHaveLength(3);
   });
 
+  it('nests reusable aggregate evidence beneath the derived graph claim', () => {
+    const store = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-aggregate-rule-graph-'))
+    );
+    store.assert(
+      'work',
+      `member(red, alice). member(red, bob).
+       team_size(Team, Count) :- count(*) as Count where member(Team, Person).`,
+      { opId: 'team-source', sourceText: 'Alice and Bob are on red.' }
+    );
+
+    const result = explainKnowledge(
+      store.load('work'),
+      'team_size(red, Count)',
+      store.sourcesFor(['work'])
+    );
+    const claim = result.graph.nodes.find(
+      (node) => node.kind === 'claim' && node.predicate === 'team_size'
+    );
+    const aggregate = result.graph.nodes.find((node) => node.kind === 'aggregate');
+
+    expect(result.rows[0]).toMatchObject({
+      bindings: { Count: '2' },
+      proofs: [
+        {
+          predicate: 'team_size',
+          values: ['red', 2],
+          rule: 1,
+          aggregate: {
+            aggregated: true,
+            op: 'count',
+            value: 2,
+            contributors: [
+              {
+                bindings: { Person: 'alice', Team: 'red' },
+                proofs: [
+                  expect.objectContaining({
+                    predicate: 'member',
+                    sources: [expect.objectContaining({ opId: 'team-source' })],
+                  }),
+                ],
+              },
+              { bindings: { Person: 'bob', Team: 'red' } },
+            ],
+          },
+        },
+      ],
+    });
+    expect(aggregate).toMatchObject({
+      kind: 'aggregate',
+      op: 'count',
+      value: 2,
+      contributorCount: 2,
+    });
+    expect(result.graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'because', from: claim?.id, to: aggregate?.id }),
+        expect.objectContaining({ kind: 'input', from: aggregate?.id, position: 0 }),
+        expect.objectContaining({ kind: 'input', from: aggregate?.id, position: 1 }),
+      ])
+    );
+  });
+
+  it('keeps empty aggregate evidence scoped to its derived claim', () => {
+    const result = explainKnowledge(
+      parseProgram(`
+        first_zero(Count) :- count(*) as Count where missing_first(Item).
+        second_zero(Count) :- count(*) as Count where missing_second(Item).
+      `),
+      'first_zero(First), second_zero(Second)'
+    );
+    const aggregates = result.graph.nodes.filter(
+      (node) => node.kind === 'aggregate'
+    );
+    expect(aggregates).toHaveLength(2);
+    expect(new Set(aggregates.map((node) => node.id)).size).toBe(2);
+    expect(
+      result.graph.edges.filter((edge) => edge.kind === 'because')
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ to: aggregates[0].id }),
+        expect.objectContaining({ to: aggregates[1].id }),
+      ])
+    );
+  });
+
+  it('projects nested aggregate strata without flattening contributor claims', () => {
+    const result = explainKnowledge(
+      parseProgram(`
+        member(red, alice). member(red, bob). member(blue, carol).
+        team_size(Team, Count) :- count(*) as Count where member(Team, Person).
+        largest_size(Maximum) :- max(Count) as Maximum where team_size(Team, Count).
+      `),
+      'largest_size(Maximum)'
+    );
+    const aggregates = result.graph.nodes.filter(
+      (node) => node.kind === 'aggregate'
+    );
+    expect(aggregates.filter((node) => node.op === 'max')).toHaveLength(1);
+    expect(aggregates.filter((node) => node.op === 'count')).toHaveLength(2);
+    expect(result.graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'claim', predicate: 'largest_size' }),
+        expect.objectContaining({ kind: 'claim', predicate: 'team_size', values: ['red', 2] }),
+        expect.objectContaining({ kind: 'claim', predicate: 'team_size', values: ['blue', 1] }),
+      ])
+    );
+    expect(result.graph.edges.filter((edge) => edge.kind === 'witness')).toHaveLength(1);
+  });
+
   it('marks every deterministic min/max tie as an aggregate witness', () => {
     const result = explainKnowledge(
       parseProgram('score(a, 1). score(b, 1). score(c, 2).'),

@@ -597,6 +597,241 @@ describe('evaluate: limits', () => {
   });
 });
 
+describe('evaluate: reusable aggregate rules', () => {
+  const grouped = `
+    member(red, alice). member(red, bob). member(blue, carol).
+    score(red, alice, 10). score(red, bob, 15). score(blue, carol, 7).
+    team_size(Team, Count) :- count(*) as Count where member(Team, Person).
+    team_total(Team, Total) :- sum(Points) as Total where score(Team, Person, Points).
+    team_min(Team, Minimum) :- min(Points) as Minimum where score(Team, Person, Points).
+    team_max(Team, Maximum) :- max(Points) as Maximum where score(Team, Person, Points).
+    large_team(Team) :- team_size(Team, Count), Count >= 2.
+    largest_team_size(Maximum) :- max(Count) as Maximum where team_size(Team, Count).
+  `;
+
+  it('derives one deterministic aggregate fact per group for downstream rules', () => {
+    expect(rows(run(grouped, 'team_size(Team, Count)'))).toEqual([
+      'Count=1 Team=blue',
+      'Count=2 Team=red',
+    ]);
+    expect(rows(run(grouped, 'team_total(Team, Total)'))).toEqual([
+      'Team=blue Total=7',
+      'Team=red Total=25',
+    ]);
+    expect(rows(run(grouped, 'team_min(red, Minimum)'))).toEqual(['Minimum=10']);
+    expect(rows(run(grouped, 'team_max(red, Maximum)'))).toEqual(['Maximum=15']);
+    expect(rows(run(grouped, 'large_team(Team)'))).toEqual(['Team=red']);
+    expect(rows(run(grouped, 'largest_team_size(Maximum)'))).toEqual(['Maximum=2']);
+    expect(run(grouped, 'team_size(Team, Count)')).toEqual(
+      run(grouped, 'team_size(Team, Count)')
+    );
+  });
+
+  it('supports deterministic aggregate strata over aggregate-derived relations', () => {
+    const proof = explain(grouped, 'largest_team_size(Maximum)')[0].proofs[0];
+    expect(proof).toMatchObject({
+      predicate: 'largest_team_size',
+      aggregate: {
+        aggregated: true,
+        op: 'max',
+        value: 2,
+        witnessPositions: [0],
+        contributors: [
+          {
+            bindings: { Team: { value: 'red' }, Count: { value: 2 } },
+            proofs: [{ predicate: 'team_size', aggregate: { value: 2 } }],
+          },
+          {
+            bindings: { Team: { value: 'blue' }, Count: { value: 1 } },
+            proofs: [{ predicate: 'team_size', aggregate: { value: 1 } }],
+          },
+        ],
+      },
+    });
+  });
+
+  it('preserves aggregate-rule rows and nested proofs with indexing disabled', () => {
+    expect(
+      explain(grouped, 'largest_team_size(Maximum)', { relationIndex: 'auto' })
+    ).toEqual(
+      explain(grouped, 'largest_team_size(Maximum)', { relationIndex: 'off' })
+    );
+  });
+
+  it('lets terminal aggregates reduce aggregate-derived relations with nested evidence', () => {
+    const result = explainSpec(
+      grouped,
+      'count(*) as TeamCount where team_size(Team, Size)'
+    );
+    expect(result).toMatchObject([
+      {
+        bindings: { TeamCount: { value: 2 } },
+        proofs: [
+          {
+            aggregated: true,
+            op: 'count',
+            value: 2,
+            contributors: [
+              {
+                bindings: { Team: { value: 'red' }, Size: { value: 2 } },
+                proofs: [{ predicate: 'team_size', aggregate: { value: 2 } }],
+              },
+              {
+                bindings: { Team: { value: 'blue' }, Size: { value: 1 } },
+                proofs: [{ predicate: 'team_size', aggregate: { value: 1 } }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('derives global count zero but no empty grouped or scalar reduction', () => {
+    const program = `
+      global_count(Count) :- count(*) as Count where missing(Item).
+      grouped_count(Group, Count) :- count(*) as Count where missing(Group, Item).
+      global_sum(Total) :- sum(Value) as Total where missing_value(Value).
+    `;
+    expect(rows(run(program, 'global_count(Count)'))).toEqual(['Count=0']);
+    expect(run(program, 'grouped_count(Group, Count)')).toEqual([]);
+    expect(run(program, 'global_sum(Total)')).toEqual([]);
+  });
+
+  it('aggregates completed derived and negated input strata', () => {
+    const program = `
+      employee(alice, red). employee(bob, red). employee(carol, blue).
+      suspended(bob).
+      eligible(Person, Team) :- employee(Person, Team), \\+ suspended(Person).
+      eligible_count(Team, Count) :- count(*) as Count where eligible(Person, Team).
+    `;
+    expect(rows(run(program, 'eligible_count(Team, Count)'))).toEqual([
+      'Count=1 Team=blue',
+      'Count=1 Team=red',
+    ]);
+  });
+
+  it('nests bounded aggregate contributor evidence under the derived claim', () => {
+    const result = explain(grouped, 'team_size(red, Count)');
+    expect(result).toEqual([
+      {
+        bindings: { Count: { type: 'num', value: 2 } },
+        proofs: [
+          {
+            predicate: 'team_size',
+            values: ['red', 2],
+            rule: 1,
+            aggregate: {
+              aggregated: true,
+              op: 'count',
+              input: '*',
+              as: 'Count',
+              value: 2,
+              contributors: [
+                {
+                  bindings: {
+                    Team: { type: 'atom', value: 'red' },
+                    Person: { type: 'atom', value: 'alice' },
+                  },
+                  proofs: [{ predicate: 'member', values: ['red', 'alice'] }],
+                },
+                {
+                  bindings: {
+                    Team: { type: 'atom', value: 'red' },
+                    Person: { type: 'atom', value: 'bob' },
+                  },
+                  proofs: [{ predicate: 'member', values: ['red', 'bob'] }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+    expect(
+      materializeWithProof(parseProgram(grouped)).find(
+        (fact) => fact.predicate === 'team_size' && fact.values[0] === 'red'
+      )?.proof.aggregate
+    ).toMatchObject({ aggregated: true, value: 2 });
+  });
+
+  it('fails closed on aggregate rule input, proof, and alternative-proof bounds', () => {
+    const program = `
+      item(a). item(b). item(c).
+      item_count(Count) :- count(*) as Count where item(Item).
+    `;
+    expect(() => run(program, 'item_count(Count)', { maxAggregateRows: 2 })).toThrow(
+      /aggregate input exceeded 2/i
+    );
+    expect(() =>
+      explain(program, 'item_count(Count)', { maxAggregateProofRows: 2 })
+    ).toThrow(/aggregate proof exceeded 2 contributor rows/i);
+    expect(() =>
+      explain(program, 'item_count(Count)', { maxProofsPerRow: 2 })
+    ).toThrow(/alternative proofs through aggregate-derived rules/i);
+  });
+
+  it('fails closed when a grouped sum receives non-numeric input', () => {
+    expect(() =>
+      run(
+        `value(team, one).
+         total(Group, Sum) :- sum(Value) as Sum where value(Group, Value).`,
+        'total(Group, Sum)'
+      )
+    ).toThrow(/numeric input/i);
+  });
+
+  it('validates directly constructed aggregate clauses before evaluation', () => {
+    const output = { type: 'var' as const, name: 'Count' };
+    const negationOnly: Clause = {
+      head: { predicate: 'bad_count', args: [output] },
+      body: [
+        {
+          not: {
+            predicate: 'missing',
+            args: [{ type: 'atom', value: 'item' }],
+          },
+        },
+      ],
+      aggregate: { op: 'count', input: '*', as: 'Count' },
+    };
+    expect(() =>
+      evaluate([negationOnly], parseQuery('bad_count(Count)'))
+    ).toThrow(/positive relation/i);
+
+    const outputReused: Clause = {
+      head: { predicate: 'bad_count', args: [output] },
+      body: [
+        { predicate: 'item', args: [{ type: 'var', name: 'Count' }] },
+      ],
+      aggregate: { op: 'count', input: '*', as: 'Count' },
+    };
+    expect(() =>
+      evaluate(
+        [parseProgram('item(a).')[0], outputReused],
+        parseQuery('bad_count(Count)')
+      )
+    ).toThrow(/fresh variable/i);
+
+    const unboundGroup: Clause = {
+      head: {
+        predicate: 'bad_group',
+        args: [{ type: 'var', name: 'Group' }, output],
+      },
+      body: [
+        { predicate: 'item', args: [{ type: 'var', name: 'Person' }] },
+      ],
+      aggregate: { op: 'count', input: '*', as: 'Count' },
+    };
+    expect(() =>
+      evaluate(
+        [parseProgram('item(a).')[0], unboundGroup],
+        parseQuery('bad_group(Group, Count)')
+      )
+    ).toThrow(/Group.*positive aggregate relation/i);
+  });
+});
+
 describe('evaluate: scalar query aggregation', () => {
   const employment = `
     works_at(alice, acme).

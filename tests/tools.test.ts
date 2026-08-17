@@ -310,6 +310,43 @@ describe('MCP tool handlers', () => {
     expect(explained.recordedSnapshot?.sequence).toBe(1);
   });
 
+  it('recomputes aggregate-derived facts from the selected recorded snapshot', () => {
+    store.assert(
+      'default',
+      `member(red, alice).
+       team_size(Team, Count) :- count(*) as Count where member(Team, Person).`,
+      { opId: 'aggregate-baseline' }
+    );
+    store.assert('default', 'member(red, bob).', { opId: 'aggregate-later' });
+
+    expect(queryTool({ store }, { query: 'team_size(red, Count)' }).bindings).toEqual([
+      { Count: '2' },
+    ]);
+    expect(
+      explainQueryTool(
+        { store },
+        { query: 'team_size(red, Count)', recordedSequence: 1 }
+      )
+    ).toMatchObject({
+      rows: [
+        {
+          bindings: { Count: '1' },
+          proofs: [
+            {
+              aggregate: {
+                value: 1,
+                contributors: [
+                  { proofs: [{ sources: [{ opId: 'aggregate-baseline' }] }] },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
   it('applies integrity, listing, and explicit identity to the selected snapshot', () => {
     store.assert(
       'default',

@@ -75,6 +75,11 @@ groups complete rows by the first alpha-stable binding authored in each constrai
 combines their source/proof graphs without inferring new policy. See
 [the conflict-view contract](CONFLICT-VIEWS.md).
 
+Version 0.20 lets policy inspect reusable aggregate-derived facts. A constraint such as
+`:- team_size(Team, Count), Count > 12.` retains the exact grouped contributor proof and
+is enforced atomically like every other explicit forbidden state. See
+[the aggregate-rule contract](RULE-AGGREGATION.md).
+
 ## Deterministic and temporal boundary
 
 - Constraints are stored, diffed, exported, imported, journaled, sourced, and

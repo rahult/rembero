@@ -64,3 +64,8 @@ the complete portable semantics in C would create two rule engines whose edge ca
 drift. The bridge instead reuses one mature implementation while keeping all durable state
 inside the caller's SQLite database. Cross-engine conformance tests lock the overlapping
 semantics and portable-only tests lock the advanced path.
+
+Version 0.20 includes grouped aggregate rules in the portable path. Their inputs reach a
+lower-stratum fixpoint before reduction, and `datalog_explain` returns the same nested
+contributor proof as the standalone engine. Native `datalog_sql` rejects aggregate query
+and rule syntax because its contract remains one compiled `SELECT`.

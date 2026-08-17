@@ -144,6 +144,7 @@ Closed-world negation is written \\+ pred(...); every variable it uses must be b
 Predicates ending in _until are historical versions of the base predicate. Their final argument is the full ISO timestamp when the preceding fact stopped being current. Use the base predicate for present-tense questions and the matching _until predicate for explicitly past/former/previous/before questions; bind the final argument when the date matters.
 When a question names the later state, constrain it too: "Where did Mira work before Initech?" becomes ?- works_at(mira, initech), works_at_until(mira, Company, Until). This prevents an unrelated historical fact from being presented as preceding the named state.
 Use scalar aggregation only when explicitly requested: count(*) for "how many" or "number of", sum(Value) for a total, min(Value) for the least/earliest value, and max(Value) for the greatest/latest value. Aggregate queries return only the named output variable, allow exactly one operator, and must bind every sum/min/max input variable in a positive where goal.
+When a shown derived rule already uses that same aggregate operator, query its head predicate directly for the requested group and aggregate output; do not aggregate its already-reduced rows again.
 If the question cannot be expressed with these predicates, output exactly: ?- ${UNANSWERABLE}.${grounding}
 
 Schema:

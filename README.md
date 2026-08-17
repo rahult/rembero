@@ -185,8 +185,15 @@ Version 0.19 no longer treats every non-empty natural-language query as semantic
 correct. When deterministic local evidence finds a same-ground-anchor predicate
 competitor or a historical query missing its named later state, recall performs one
 bounded review before accepting the rows. The response records repeat, correction, or
-unanswerable decisions in `queryReviews`; ordinary grounded recalls keep the one-call path. See
+unanswerable decisions in `queryReviews`; ordinary grounded recalls keep the one-call
+path. See
 [the recall disambiguation contract](docs/RECALL-DISAMBIGUATION.md).
+
+Version 0.20 makes exact aggregation reusable inside rules. A clause such as
+`team_size(Team, Count) :- count(*) as Count where member(Team, Person).` derives one
+proof-carrying count per team for later rules, recall, integrity policy, graphs, and the
+SQLite portable bridge. Aggregate dependency cycles fail stratification. See
+[the aggregate-rule contract](docs/RULE-AGGREGATION.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
@@ -402,10 +409,13 @@ closed. Extension loading is disabled again immediately after the library is loa
   filter-only and cannot create values in facts, rule heads, relation arguments, or
   aggregate inputs. Non-numeric operands, division by zero, and non-finite results fail
   closed.
-- Query-level scalar aggregation (never in rules):
+- Terminal scalar aggregation:
   `count(*) as Count where works_at(Person, acme)`, plus `sum(Value)`, `min(Value)`,
   and `max(Value)`. Aggregation consumes the complete logical solution set and fails
   closed at its dedicated input cap rather than silently reusing the normal row limit.
+- Reusable grouped aggregation in rules:
+  `company_size(Company, Count) :- count(*) as Count where works_at(Person, Company).`
+  Every aggregate dependency is strictly stratified, and aggregate cycles are rejected.
 - Every query terminates: arithmetic only filters a finite relation; evaluation remains
   stratified, semi-naive bottom-up over a finite fact universe, with belt-and-braces
   derivation and expression-complexity caps.

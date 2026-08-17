@@ -145,6 +145,48 @@ describe('explicit integrity constraints', () => {
     });
   });
 
+  it('checks explicit policy against aggregate-derived facts with contributor evidence', () => {
+    const result = checkIntegrity(
+      parseProgram(`
+        member(red, alice). member(red, bob). member(blue, carol).
+        team_size(Team, Count) :- count(*) as Count where member(Team, Person).
+        :- team_size(Team, Count), Count > 1.
+      `)
+    );
+    expect(result).toMatchObject({
+      status: 'violations',
+      violationCount: 1,
+      checks: [
+        {
+          rows: [
+            {
+              bindings: { Count: '2', Team: 'red' },
+              proofs: [
+                {
+                  predicate: 'team_size',
+                  aggregate: {
+                    aggregated: true,
+                    value: 2,
+                    contributors: [
+                      { bindings: { Person: 'alice', Team: 'red' } },
+                      { bindings: { Person: 'bob', Team: 'red' } },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.checks[0].graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'aggregate', value: 2 }),
+        expect.objectContaining({ kind: 'claim', predicate: 'team_size' }),
+      ])
+    );
+  });
+
   it('supports bounded alternative evidence for a violation', () => {
     const program = parseProgram(`
       left(a).

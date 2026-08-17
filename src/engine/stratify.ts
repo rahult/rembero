@@ -1,5 +1,6 @@
 import {
   type Clause,
+  isAggregateRule,
   isComparison,
   isIntegrityConstraint,
   isNegation,
@@ -7,7 +8,9 @@ import {
 } from './ast.js';
 
 export class StratificationError extends Error {
-  constructor(message = 'program is not stratifiable: recursion through negation') {
+  constructor(
+    message = 'program is not stratifiable: recursion through negation or aggregation'
+  ) {
     super(message);
     this.name = 'StratificationError';
   }
@@ -27,13 +30,13 @@ export interface StratifiedProgram {
 interface Dependency {
   head: string;
   body: string;
-  negative: boolean;
+  strict: boolean;
 }
 
 /**
- * Assign the least stratum satisfying positive H >= B and negative H > B
+ * Assign the least stratum satisfying positive H >= B and strict H > B
  * dependencies. A relaxation that still changes after |predicates| passes is
- * exactly a dependency cycle containing at least one negative edge.
+ * exactly a dependency cycle containing negation or aggregation.
  */
 export function stratifyProgram(clauses: Clause[]): StratifiedProgram {
   const predicates = new Set<string>();
@@ -52,7 +55,11 @@ export function stratifyProgram(clauses: Clause[]): StratifiedProgram {
       const literal = isNegation(goal) ? goal.not : goal;
       const body = predKey(literal);
       predicates.add(body);
-      dependencies.push({ head, body, negative: isNegation(goal) });
+      dependencies.push({
+        head,
+        body,
+        strict: isNegation(goal) || isAggregateRule(clause),
+      });
     }
   }
 
@@ -61,7 +68,7 @@ export function stratifyProgram(clauses: Clause[]): StratifiedProgram {
     let changed = false;
     for (const dependency of dependencies) {
       const required =
-        (predicateStrata.get(dependency.body) ?? 0) + (dependency.negative ? 1 : 0);
+        (predicateStrata.get(dependency.body) ?? 0) + (dependency.strict ? 1 : 0);
       if ((predicateStrata.get(dependency.head) ?? 0) < required) {
         predicateStrata.set(dependency.head, required);
         changed = true;

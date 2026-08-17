@@ -11,9 +11,9 @@ The engine's expressiveness ceiling is the first thing power users will hit.
 1. **Stratified negation** (`\+ goal` in rule bodies): complete. The portable engine
    rejects negative cycles, evaluates strata bottom-up, and emits explicit absence proof
    nodes for rules such as "employees with no assigned desk".
-2. **Aggregation**: complete. `count`, `min`, `max`, and `sum` are exact scalar
-   query-level operators (not in rules), with a dedicated input cap, complete contributor
-   proofs, and aggregate nodes in the personal knowledge graph.
+2. **Aggregation**: complete. `count`, `min`, `max`, and `sum` began as exact scalar
+   query operators with dedicated input caps and contributor graphs; v0.20 also permits
+   one strictly stratified grouped reduction to define a reusable rule predicate.
 3. **Arithmetic in comparisons**: complete. Both comparison operands accept bounded
    numeric expressions with `+`, `-`, `*`, `/`, unary signs, parentheses, and standard
    precedence. Arithmetic remains filter-only, so it cannot expand the finite fact
@@ -228,6 +228,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    expose stable `queryReviews`; canonical identity, recorded snapshots, temporal queries,
    sensitive evidence, and confusable non-empty eval cases have explicit coverage.
 
+## Phase 23 — Reusable aggregate rules  *(v0.20)*
+
+1. **Complete — exact grouped derivation**: `count`, `sum`, `min`, and `max` reductions
+   may define an ordinary predicate grouped by every non-output head variable, with
+   explicit global/grouped empty-input semantics and existing aggregate row bounds.
+2. **Complete — stratified rule composition**: aggregate inputs reach a lower-stratum
+   fixpoint before one derivation pass; aggregate chains and ordinary consumers work,
+   while every dependency cycle containing aggregation is rejected.
+3. **Complete — proof and interface parity**: nested contributor proofs, durable sources,
+   graph nodes, canonical identity, recall, integrity enforcement, package APIs, and the
+   SQLite portable bridge share the same semantics and fail-closed proof limits.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
@@ -247,6 +259,10 @@ negation, arithmetic comparisons, scalar aggregates, and programs with multiple 
 predicates now run through a bounded deterministic bridge over a read snapshot of only
 the referenced SQLite tables. The C scalar functions remain a smaller native surface;
 constraints and identity remain knowledge-store policies.
+
+Version 0.20 adds reusable grouped aggregate rules to that portable bridge. Native
+`datalog_sql` remains the intentionally smaller single-`SELECT` surface and rejects all
+aggregate syntax.
 
 The portable store now supplies source-aware valid-time history plus exact recorded-time
 journal snapshots. Full interval algebra remains a later, evidence-driven expansion.

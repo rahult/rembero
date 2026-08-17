@@ -310,6 +310,7 @@ export class EntityResolver {
     const head = this.canonicalizeLiteral(clause.head);
     return {
       clause: {
+        ...clause,
         head: head.literal,
         body: body.map((result) => result.goal),
       },

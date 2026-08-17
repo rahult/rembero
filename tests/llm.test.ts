@@ -33,13 +33,17 @@ describe('buildSchemaSummary', () => {
       'default',
       `works_at(rahul, acme). works_at(maya, acme). works_at(chen, initech). works_at(dee, initech).
        birth_year(rahul, 1985).
-       colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.`
+       colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
+       company_size(Company, Count) :- count(*) as Count where works_at(Person, Company).`
     );
     const summary = buildSchemaSummary(store.clausesFor(['default']));
     expect(summary).toContain('works_at/2');
     expect(summary).toContain('works_at(rahul, acme).');
     expect(summary).toContain('birth_year/2');
     expect(summary).toContain('colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.');
+    expect(summary).toContain(
+      'company_size(Company, Count) :- count(*) as Count where works_at(Person, Company).'
+    );
     // samples are capped at 3 per predicate
     expect(summary).not.toContain('works_at(dee, initech).');
   });
@@ -837,6 +841,109 @@ describe('recallQuestion', () => {
     );
     expect(llm.calls).toHaveLength(1);
     expect(llm.calls[0][0].content).toContain('count(*) as Count where');
+  });
+
+  it('queries a reusable aggregate predicate without reducing it a second time', async () => {
+    const aggregateStore = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-aggregate-rule-'))
+    );
+    aggregateStore.assert(
+      'default',
+      `member(red, alice). member(red, bob).
+       team_size(Team, Count) :- count(*) as Count where member(Team, Person).`
+    );
+    const llm = new ScriptedLlm(['?- team_size(red, Count).']);
+
+    const result = await retrieveQuestion(
+      { store: aggregateStore, llm },
+      'How many members are on the red team?',
+      ['default'],
+      { explain: true }
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query: 'team_size(red, Count)',
+      bindings: [{ Count: '2' }],
+      explanation: {
+        rows: [
+          {
+            proofs: [
+              {
+                predicate: 'team_size',
+                aggregate: { aggregated: true, op: 'count', value: 2 },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(llm.calls).toHaveLength(1);
+    expect(llm.calls[0][0].content).toContain(
+      'query its head predicate directly'
+    );
+  });
+
+  it('distinguishes a named or distributive aggregate value from counting its groups', async () => {
+    const aggregateStore = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-aggregate-groups-'))
+    );
+    aggregateStore.assert(
+      'default',
+      `member(red, alice). member(red, bob). member(blue, carol).
+       team_size(Team, Count) :- count(*) as Count where member(Team, Person).`
+    );
+
+    const groupCountLlm = new ScriptedLlm([
+      '?- team_size(Team, Size).',
+      '?- count(*) as Count where team_size(Team, Size).',
+    ]);
+    const groupCount = await retrieveQuestion(
+      { store: aggregateStore, llm: groupCountLlm },
+      'How many teams are there?'
+    );
+    expect(groupCount).toMatchObject({
+      query: 'count(*) as Count where team_size(Team, Size)',
+      bindings: [{ Count: '2' }],
+    });
+    expect(groupCountLlm.calls).toHaveLength(2);
+
+    const eachLlm = new ScriptedLlm(['?- team_size(Team, Count).']);
+    const each = await retrieveQuestion(
+      { store: aggregateStore, llm: eachLlm },
+      'How many members are on each team?'
+    );
+    expect(each.bindings).toEqual([
+      { Team: 'red', Count: '2' },
+      { Team: 'blue', Count: '1' },
+    ]);
+    expect(eachLlm.calls).toHaveLength(1);
+  });
+
+  it('allows an auxiliary goal to bind an aggregate rule group key', async () => {
+    const aggregateStore = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-recall-aggregate-bound-group-'))
+    );
+    aggregateStore.assert(
+      'default',
+      `member(red, alice). member(red, bob). member(blue, carol).
+       team_size(Team, Count) :- count(*) as Count where member(Team, Person).`
+    );
+    const llm = new ScriptedLlm([
+      '?- member(Team, alice), team_size(Team, Count).',
+    ]);
+
+    const result = await retrieveQuestion(
+      { store: aggregateStore, llm },
+      "How many members are on Alice's team?"
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      query: 'member(Team, alice), team_size(Team, Count)',
+      bindings: [{ Team: 'red', Count: '2' }],
+    });
+    expect(llm.calls).toHaveLength(1);
   });
 
   it('generates and evaluates an explicit arithmetic threshold query', async () => {

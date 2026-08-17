@@ -4,6 +4,7 @@ import {
   parseQuery,
   parseQuerySpec,
   canonicalKey,
+  isAggregateRule,
   isIntegrityConstraint,
   serializeClause,
   serializeQuerySpec,
@@ -206,6 +207,54 @@ describe('parseProgram', () => {
     expect(() => parseProgram('p :- q. q :- \\+ p.')).toThrow(StratificationError);
   });
 
+  it('parses grouped aggregate rules and rejects aggregate dependency cycles', () => {
+    const [rule] = parseProgram(
+      'team_size(Team, Count) :- count(*) as Count where member(Team, Person).'
+    );
+    expect(isAggregateRule(rule)).toBe(true);
+    expect(rule.aggregate).toEqual({ op: 'count', input: '*', as: 'Count' });
+    expect(serializeClause(rule)).toBe(
+      'team_size(Team, Count) :- count(*) as Count where member(Team, Person).'
+    );
+    expect(() =>
+      parseProgram(
+        'size(Count) :- count(*) as Count where size(Previous).'
+      )
+    ).toThrow(StratificationError);
+    expect(() =>
+      parseProgram(`
+        size(Count) :- count(*) as Count where item(Item).
+        item(Value) :- size(Value).
+      `)
+    ).toThrow(StratificationError);
+  });
+
+  it('requires one fresh aggregate output in a range-restricted rule head', () => {
+    expect(() =>
+      parseProgram('team_size(Team) :- count(*) as Count where member(Team, Person).')
+    ).toThrow(/appear exactly once/i);
+    expect(() =>
+      parseProgram(
+        'team_size(Team, Count, Count) :- count(*) as Count where member(Team, Person).'
+      )
+    ).toThrow(/appear exactly once/i);
+    expect(() =>
+      parseProgram(
+        'team_size(Unknown, Count) :- count(*) as Count where member(Team, Person).'
+      )
+    ).toThrow(/range restriction/i);
+    expect(() =>
+      parseProgram(
+        'team_size(Team, Count) :- count(*) as Count where member(Team, Count).'
+      )
+    ).toThrow(/fresh/i);
+    expect(() =>
+      parseProgram(
+        'team_total(Team, Total) :- sum(Points) as Total where member(Team, Person).'
+      )
+    ).toThrow(/bound by a positive/i);
+  });
+
   it('ignores integrity constraints during stratification', () => {
     expect(() =>
       parseProgram(`
@@ -339,10 +388,7 @@ describe('parseQuerySpec', () => {
     });
   });
 
-  it('keeps aggregate syntax out of clauses and retraction-style relational parsing', () => {
-    expect(() =>
-      parseProgram('total(T) :- count(*) as T where item(X).')
-    ).toThrow(ParseError);
+  it('keeps aggregate syntax out of retraction-style relational parsing', () => {
     expect(() =>
       parseQuery('count(*) as Count where employee(Person)')
     ).toThrow(ParseError);
@@ -376,6 +422,19 @@ describe('serializeClause', () => {
       'ahead(Person) :- score(Person, Score), baseline(Base), Score > Base + 5.'
     );
     expect(canonicalKey(left)).toBe(canonicalKey(right));
+  });
+
+  it('canonicalizes alpha-equivalent aggregate rules deterministically', () => {
+    const [left] = parseProgram(
+      'team_total(Team, Total) :- sum(Points) as Total where score(Team, Person, Points).'
+    );
+    const [right] = parseProgram(
+      'team_total(Group, Result) :- sum(Value) as Result where score(Group, Member, Value).'
+    );
+    expect(canonicalKey(left)).toBe(canonicalKey(right));
+    expect(canonicalKey(left)).toBe(
+      'team_total(V0, V1) :- sum(V3) as V1 where score(V0, V2, V3).'
+    );
   });
 
   it('canonicalizes alpha-equivalent integrity constraints deterministically', () => {

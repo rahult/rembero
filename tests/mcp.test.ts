@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.19.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.20.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -322,6 +322,40 @@ describe('MCP explanation surfaces', () => {
           expect.objectContaining({ kind: 'aggregate', op: 'count', value: 2 }),
         ])
       );
+
+      store.assert(
+        'default',
+        'employee_count(Count) :- count(*) as Count where employee(Person).'
+      );
+      const aggregateRule = await client.callTool({
+        name: 'explain_query',
+        arguments: { query: 'employee_count(Count)' },
+      });
+      const aggregateRuleText = aggregateRule.content.find(
+        (item) => item.type === 'text'
+      );
+      const aggregateRulePayload = JSON.parse(
+        aggregateRuleText?.type === 'text' ? aggregateRuleText.text : ''
+      );
+      expect(aggregateRulePayload).toMatchObject({
+        rows: [
+          {
+            bindings: { Count: '2' },
+            proofs: [
+              {
+                predicate: 'employee_count',
+                aggregate: {
+                  aggregated: true,
+                  op: 'count',
+                  value: 2,
+                  contributors: [{ bindings: { Person: 'alice' } }, { bindings: { Person: 'bob' } }],
+                },
+              },
+            ],
+          },
+        ],
+        graph: { nodes: expect.arrayContaining([expect.objectContaining({ kind: 'aggregate' })]) },
+      });
 
       const arithmetic = await client.callTool({
         name: 'query',

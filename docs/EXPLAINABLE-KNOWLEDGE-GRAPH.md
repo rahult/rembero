@@ -117,3 +117,7 @@ Version 0.18 can combine complete cross-policy integrity evidence into one focus
 conflict graph: a stable `conflict` node connects through ordered `contains` edges to the
 existing violation result/proof subgraphs. The projection is still query-scoped and is
 never stored. See [the conflict-view contract](CONFLICT-VIEWS.md).
+Version 0.20 nests an aggregate node beneath each aggregate-derived claim, preserving
+ordered contributor results, sources, tied witnesses, and further aggregate strata. The
+node is scoped to its parent claim so unrelated empty reductions cannot collide. See
+[the aggregate-rule contract](RULE-AGGREGATION.md).

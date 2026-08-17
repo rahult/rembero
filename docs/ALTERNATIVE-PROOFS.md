@@ -73,6 +73,9 @@ proofs together.
 Alternative proofs are relational-only in v0.8. Scalar aggregate explanations already
 carry their exact ordered contributor set and reject `proofLimit > 1` rather than mixing
 two completeness models.
+Version 0.20 applies the same fail-closed boundary when alternative enumeration reaches
+an aggregate-derived rule fact: its exact first proof contains every bounded contributor,
+but branch alternatives through that reduction are not presented as complete.
 
 ## Authority boundary
 

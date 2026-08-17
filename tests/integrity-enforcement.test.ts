@@ -23,6 +23,24 @@ function journal(root: string): string {
 }
 
 describe('atomic integrity enforcement', () => {
+  it('atomically rejects a write that violates aggregate-derived policy', () => {
+    const store = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-enforcement-aggregate-'))
+    );
+    store.assert(
+      'default',
+      `member(red, alice).
+       team_size(Team, Count) :- count(*) as Count where member(Team, Person).
+       :- team_size(Team, Count), Count > 1.`
+    );
+    const before = store.load('default');
+
+    expect(() =>
+      store.assert('default', 'member(red, bob).', { integrity: strict() })
+    ).toThrow(IntegrityViolationError);
+    expect(store.load('default')).toEqual(before);
+  });
+
   it('atomically enforces identity-aware policy only when explicitly configured', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-enforce-identity-'));
     const store = new MemoryStore(root);

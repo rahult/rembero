@@ -1,5 +1,6 @@
 import {
   type Bindings,
+  type AggregateOperator,
   type Clause,
   type Goal,
   type Literal,
@@ -7,11 +8,13 @@ import {
   type Term,
   evaluateQuerySpec,
   isComparison,
+  isAggregateRule,
   isIntegrityConstraint,
   isNegation,
   parseProgram,
   parseQuery,
   parseQuerySpec,
+  predKey,
   serializeClause,
   serializeGoal,
   serializeQuerySpec,
@@ -459,17 +462,81 @@ const AGGREGATE_INTENT: Record<'count' | 'sum' | 'min' | 'max', RegExp> = {
   min: /\b(?:min(?:imum)?|smallest|least|lowest|earliest|youngest)\b/i,
   max: /\b(?:max(?:imum)?|largest|greatest|highest|latest|oldest|most)\b/i,
 };
+const DISTRIBUTIVE_AGGREGATE_INTENT = /\b(?:each|every|per|by)\b/i;
+
+function directlyQueriesAggregateRelation(
+  query: QuerySpec,
+  requested: string | undefined,
+  question: string,
+  aggregatePredicates: ReadonlyMap<
+    string,
+    ReadonlyArray<{ op: AggregateOperator; outputPosition: number }>
+  >
+): boolean {
+  if (query.kind !== 'relational' || requested === undefined) return false;
+  const positive = query.goals.flatMap((goal, index) =>
+    isComparison(goal) || isNegation(goal) ? [] : [{ goal, index }]
+  );
+  const candidates = positive.flatMap(({ goal, index }) =>
+    (aggregatePredicates.get(predKey(goal)) ?? []).flatMap((signature) =>
+      signature.op === requested &&
+      goal.args[signature.outputPosition]?.type === 'var'
+        ? [{ goal, index, signature }]
+        : []
+    )
+  );
+  if (candidates.length !== 1) return false;
+
+  const { goal: aggregateGoal, index: aggregateIndex, signature } = candidates[0];
+  const groupTerms = aggregateGoal.args.filter(
+    (_term, position) => position !== signature.outputPosition
+  );
+  const groupVariables = new Set(
+    groupTerms.flatMap((term) => (term.type === 'var' ? [term.name] : []))
+  );
+  const auxiliaryVariables = new Set<string>();
+  for (const { goal, index } of positive) {
+    if (index === aggregateIndex) continue;
+    for (const term of goal.args) {
+      if (term.type !== 'var') continue;
+      if (!groupVariables.has(term.name)) return false;
+      auxiliaryVariables.add(term.name);
+    }
+  }
+  const distributive = DISTRIBUTIVE_AGGREGATE_INTENT.test(question);
+  return groupTerms.every(
+    (term) =>
+      term.type === 'atom' ||
+      term.type === 'num' ||
+      (term.type === 'var' &&
+        (distributive || auxiliaryVariables.has(term.name)))
+  );
+}
 
 function validateQuerySpec(
   query: QuerySpec,
   known: ReadonlySet<string>,
-  question: string
+  question: string,
+  aggregatePredicates: ReadonlyMap<
+    string,
+    ReadonlyArray<{ op: AggregateOperator; outputPosition: number }>
+  >
 ): void {
   validateQueryPredicates(query.goals, known, question);
   const requested = Object.entries(AGGREGATE_INTENT).find(([, pattern]) =>
     pattern.test(question)
   )?.[0];
-  if (query.kind === 'relational' && requested !== undefined) {
+  const directAggregateRelation = directlyQueriesAggregateRelation(
+    query,
+    requested,
+    question,
+    aggregatePredicates
+  );
+  if (
+    query.kind === 'relational' &&
+    requested !== undefined &&
+    !directAggregateRelation
+  ) {
     throw new Error(
       `question explicitly requests ${requested} aggregation; emit the scalar aggregate query form`
     );
@@ -711,6 +778,19 @@ export async function retrieveQuestion(
     ? canonicalizeKnowledge(literalClauses, literalSources)
     : literalKnowledge(literalClauses, literalSources);
   const clauses = view.clauses;
+  const aggregatePredicates = new Map<
+    string,
+    Array<{ op: AggregateOperator; outputPosition: number }>
+  >();
+  for (const clause of clauses) {
+    if (!isAggregateRule(clause)) continue;
+    const outputPosition = clause.head.args.findIndex(
+      (term) => term.type === 'var' && term.name === clause.aggregate.as
+    );
+    const signatures = aggregatePredicates.get(predKey(clause.head)) ?? [];
+    signatures.push({ op: clause.aggregate.op, outputPosition });
+    aggregatePredicates.set(predKey(clause.head), signatures);
+  }
   if (clauses.length === 0) {
     return {
       status: 'unanswerable',
@@ -770,7 +850,12 @@ export async function retrieveQuestion(
     const validateResponse = (response: string): QuerySpec | null => {
       if (UNANSWERABLE_RE.test(response)) return null;
       const parsed = parseQuerySpec(response);
-      validateQuerySpec(parsed, selection.availablePredicates, question);
+      validateQuerySpec(
+        parsed,
+        selection.availablePredicates,
+        question,
+        aggregatePredicates
+      );
       return entityIdentity === 'canonical'
         ? view.resolver.canonicalizeQuery(parsed).query
         : parsed;

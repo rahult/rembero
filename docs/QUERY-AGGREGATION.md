@@ -1,7 +1,6 @@
 # Scalar query aggregation
 
-Rembero 0.3 adds exact scalar reduction over portable-engine query results. Aggregates
-are query operators, never stored facts or rule-body goals:
+Rembero 0.3 added exact scalar reduction over portable-engine query results:
 
 ```prolog
 ?- count(*) as Count where works_at(Person, acme).
@@ -10,8 +9,12 @@ are query operators, never stored facts or rule-body goals:
 ?- max(Score) as Highest where score(Person, Score).
 ```
 
-Exactly one operator is allowed. The result contains only the fresh variable named after
-`as`; this release deliberately has no grouping syntax.
+Exactly one operator is allowed. A terminal query result contains only the fresh variable
+named after `as`; terminal query syntax deliberately has no grouping keys.
+
+Version 0.20 additionally permits the same reduction after `:-` in a stored rule. The
+non-output head variables become group keys and the result is a reusable derived
+predicate. See [reusable aggregate rules](RULE-AGGREGATION.md).
 
 ## Result semantics
 
@@ -86,5 +89,6 @@ to the contributor claims, never fabricated on the aggregate itself.
 
 The Node `DatalogDatabase` adapter and the `sqlite-query`/`sqlite-explain` commands evaluate
 scalar aggregates over a deterministic snapshot of referenced SQLite tables. The stock
-loadable extension scalar functions and `datalog_sql` do not accept aggregate query syntax.
+loadable extension scalar functions and `datalog_sql` do not accept aggregate query or
+rule syntax.
 See [SQLite determinism and parity](SQLITE-DETERMINISM.md).

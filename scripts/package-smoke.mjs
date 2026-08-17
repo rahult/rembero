@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, parseProgram, parseQuery, parseQuerySpec, retrieveQuestion, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, isAggregateRule, parseProgram, parseQuery, parseQuerySpec, retrieveQuestion, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -53,6 +53,9 @@ try {
         "if (integrity.status !== 'violations' || integrity.violationCount !== 1) throw new Error('public integrity API failed'); " +
         "const conflicts = inspectConflicts(parseProgram('active(mira). suspended(mira). :- active(Person), suspended(Person).'), new Map(), { focus: 'mira' }); " +
         "if (conflicts.clusterCount !== 1 || conflicts.clusters[0]?.focus !== 'mira' || !conflicts.clusters[0]?.graph.nodes.some((node) => node.kind === 'conflict')) throw new Error('public conflict view API failed'); " +
+        "const aggregateRules = parseProgram('member(red, alice). member(red, bob). team_size(Team, Count) :- count(*) as Count where member(Team, Person).'); " +
+        "const aggregateRuleRows = evaluate(aggregateRules, parseQuery('team_size(Team, Count)')); " +
+        "if (!isAggregateRule(aggregateRules[2]) || aggregateRuleRows[0]?.Count?.value !== 2) throw new Error('public aggregate rule API failed'); " +
         "const reviewStore = new MemoryStore('./review-memory'); reviewStore.assert('default', 'uses_language(atlas, rust). project_owner(atlas, rahul).'); " +
         "const reviewLlm = { responses: ['?- uses_language(atlas, Value).', '?- project_owner(atlas, Owner).'], async complete() { const value = this.responses.shift(); if (value === undefined) throw new Error('review responses exhausted'); return value; } }; " +
         "const review = await retrieveQuestion({ store: reviewStore, llm: reviewLlm }, 'Who owns Atlas?'); " +
@@ -128,7 +131,9 @@ try {
         "CREATE TABLE score(person TEXT, points INTEGER);" +
         "INSERT INTO score VALUES ('bob',14),('alice',20);" +
         "CREATE TABLE baseline(team TEXT, points INTEGER);" +
-        "INSERT INTO baseline VALUES ('team',10);",
+        "INSERT INTO baseline VALUES ('team',10);" +
+        "CREATE TABLE member(team TEXT, person TEXT);" +
+        "INSERT INTO member VALUES ('red','alice'),('red','bob'),('blue','carol');",
     }
   );
   const output = run(
@@ -195,6 +200,24 @@ try {
   if (sqliteAggregate[0]?.row?.Count !== 2 || sqliteAggregate[0]?.proof?.aggregated !== true) {
     throw new Error(`unexpected packaged aggregate explanation: ${sqliteAggregateOutput}`);
   }
+  const sqliteAggregateRuleOutput = run(
+    process.execPath,
+    [
+      installedCli,
+      'sqlite-explain',
+      databasePath,
+      'team_size(Team, Count) :- count(*) as Count where member(Team, Person).',
+    ],
+    { cwd: directory }
+  );
+  const sqliteAggregateRules = JSON.parse(sqliteAggregateRuleOutput);
+  if (
+    sqliteAggregateRules.length !== 2 ||
+    sqliteAggregateRules[1]?.row?.Count !== 2 ||
+    sqliteAggregateRules[1]?.proof?.aggregate?.contributors?.length !== 2
+  ) {
+    throw new Error(`unexpected packaged aggregate rule: ${sqliteAggregateRuleOutput}`);
+  }
 
   const memoryFile = join(directory, 'personal.dl');
   const memoryHome = join(directory, 'personal-home');
@@ -202,7 +225,8 @@ try {
     memoryFile,
     'parent(a, b). parent(b, c). ancestor(X, Y) :- parent(X, Y). ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y). ' +
       'employee(alice). employee(bob). suspended(bob). available(X) :- employee(X), \\+ suspended(X). ' +
-      'score(alice, 20). score(bob, 14). baseline(team, 10).\n'
+      'score(alice, 20). score(bob, 14). baseline(team, 10).\n' +
+      'member(red, alice). member(red, bob). team_size(Team, Count) :- count(*) as Count where member(Team, Person).\n'
   );
   const memoryEnv = { ...process.env, REMBERO_HOME: memoryHome };
   const temporalHome = join(directory, 'temporal-home');
@@ -286,6 +310,19 @@ try {
   );
   if (importReplay !== importOutput) {
     throw new Error(`unexpected packaged import replay: ${importReplay}`);
+  }
+  const aggregateRuleOutput = run(
+    process.execPath,
+    [installedCli, 'explain', 'team_size(red, Count)'],
+    { cwd: directory, env: memoryEnv }
+  );
+  const aggregateRule = JSON.parse(aggregateRuleOutput);
+  if (
+    aggregateRule.rows[0]?.bindings?.Count !== '2' ||
+    aggregateRule.rows[0]?.proofs?.[0]?.aggregate?.contributors?.length !== 2 ||
+    !aggregateRule.graph.nodes.some(({ kind }) => kind === 'aggregate')
+  ) {
+    throw new Error(`unexpected packaged aggregate rule explanation: ${aggregateRuleOutput}`);
   }
   const retryAssert = run(
     process.execPath,
@@ -378,7 +415,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

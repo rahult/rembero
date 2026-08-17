@@ -60,6 +60,7 @@ parent(alice, bob).
 parent(bob, carol).
 parent(carol, dan).
 colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.
+company_size(Company, Count) :- count(*) as Count where works_at(Person, Company).
 grandparent(X, Y) :- parent(X, Z), parent(Z, Y).
 ancestor(X, Y) :- parent(X, Y).
 ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
@@ -98,6 +99,13 @@ export const RECALL_EVAL_CASES: RecallEvalCase[] = [
     expectedQuery: 'required',
     expectedRows: [['rahul'], ['mira']],
     tags: ['direct', 'multi-answer'],
+  },
+  {
+    id: 'reusable_company_size',
+    question: 'How many people work at Acme?',
+    expectedQuery: 'required',
+    expectedRows: [['2']],
+    tags: ['aggregate-rule', 'derived', 'single-answer'],
   },
   {
     id: 'derived_colleague',

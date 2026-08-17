@@ -8,6 +8,7 @@ import {
   type ArithmeticOp,
   type AggregateOperator,
   type AggregateQuerySpec,
+  type AggregateRuleSpec,
   type QuerySpec,
   type ScalarExpression,
   type Term,
@@ -15,6 +16,7 @@ import {
   MAX_ARITHMETIC_EXPRESSION_DEPTH,
   MAX_ARITHMETIC_EXPRESSION_NODES,
   isArithmeticExpression,
+  isAggregateRule,
   isComparison,
   isIntegrityConstraint,
   isNegation,
@@ -286,7 +288,26 @@ function checkClause(clause: Clause, line: number): void {
       }
     }
   }
-  for (const name of goalVars(clause.head)) {
+  const headVariables = goalVars(clause.head);
+  if (isAggregateRule(clause)) {
+    const outputOccurrences = headVariables.filter(
+      (name) => name === clause.aggregate.as
+    ).length;
+    if (outputOccurrences !== 1) {
+      throw new ParseError(
+        `aggregate output ${clause.aggregate.as} must appear exactly once in the rule head`,
+        line
+      );
+    }
+    if (allQueryVariables(clause.body).has(clause.aggregate.as)) {
+      throw new ParseError(
+        `aggregate output ${clause.aggregate.as} must be a fresh variable`,
+        line
+      );
+    }
+  }
+  for (const name of headVariables) {
+    if (isAggregateRule(clause) && name === clause.aggregate.as) continue;
     if (!bound.has(name)) {
       throw new ParseError(
         `range restriction violated: variable ${name} does not appear in any positive body relation`,
@@ -361,7 +382,11 @@ function allQueryVariables(goals: Goal[]): Set<string> {
   return new Set(goals.flatMap(goalVars));
 }
 
-function tryParseAggregateQuery(ts: TokenStream): AggregateQuerySpec | null {
+function tryParseAggregateQuery(
+  ts: TokenStream,
+  finish = true,
+  context: 'query' | 'rule' = 'query'
+): AggregateQuerySpec | null {
   const operator = ts.peek();
   if (
     operator.kind !== 'atom' ||
@@ -416,7 +441,10 @@ function tryParseAggregateQuery(ts: TokenStream): AggregateQuerySpec | null {
 
   const positive = positiveQueryBindings(goals);
   if (!goals.some((goal) => !isComparison(goal) && !isNegation(goal))) {
-    throw new ParseError('aggregate queries require at least one positive relation', operator.line);
+    throw new ParseError(
+      `aggregate ${context}s require at least one positive relation`,
+      operator.line
+    );
   }
   if (input !== '*' && !positive.has(input)) {
     throw new ParseError(
@@ -428,7 +456,7 @@ function tryParseAggregateQuery(ts: TokenStream): AggregateQuerySpec | null {
     throw new ParseError(`aggregate output ${output.text} must be a fresh variable`, output.line);
   }
 
-  finishQuery(ts);
+  if (finish) finishQuery(ts);
   return {
     kind: 'aggregate',
     op: operator.text,
@@ -449,16 +477,23 @@ export function parseProgram(input: string): Clause[] {
       clause = makeIntegrityConstraint(parseGoalList(ts));
     } else {
       const head = parseLiteral(ts);
-      const body: Goal[] = [];
+      let body: Goal[] = [];
+      let aggregate: AggregateRuleSpec | undefined;
       if (ts.peek().kind === ':-') {
         ts.next();
-        body.push(parseGoal(ts));
-        while (ts.peek().kind === ',') {
-          ts.next();
-          body.push(parseGoal(ts));
+        const parsedAggregate = tryParseAggregateQuery(ts, false, 'rule');
+        if (parsedAggregate === null) {
+          body = parseGoalList(ts);
+        } else {
+          body = parsedAggregate.goals;
+          aggregate = {
+            op: parsedAggregate.op,
+            input: parsedAggregate.input,
+            as: parsedAggregate.as,
+          };
         }
       }
-      clause = { head, body };
+      clause = aggregate === undefined ? { head, body } : { head, body, aggregate };
     }
     ts.expect('.');
     checkClause(clause, line);

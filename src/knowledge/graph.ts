@@ -32,8 +32,10 @@ import {
   type ExplanationGraphSelector,
 } from './graph-navigation.js';
 
-export interface SourcedDerivationProof extends Omit<DerivationProof, 'because'> {
+export interface SourcedDerivationProof
+  extends Omit<DerivationProof, 'because' | 'aggregate'> {
   because?: SourcedProofStep[];
+  aggregate?: SourcedAggregateProof;
   sources?: MemorySource[];
   /** Additional active namespace witnesses, emitted only during alternative-proof inspection. */
   sourceAlternatives?: MemorySource[];
@@ -189,6 +191,37 @@ function isAggregateProof(
   return 'aggregated' in proof;
 }
 
+function addAggregateSources(
+  proof: AggregateProof,
+  sourceIndex: Map<string, MemorySource[]>,
+  exactClaims: ReadonlySet<string>,
+  projectionIndex: ReadonlyMap<string, EntityProjection[]>,
+  includeOtherSources: boolean
+): SourcedAggregateProof {
+  return {
+    aggregated: true,
+    op: proof.op,
+    input: proof.input,
+    as: proof.as,
+    value: proof.value,
+    contributors: proof.contributors.map((contributor) => ({
+      bindings: bindingStrings(contributor.bindings),
+      proofs: contributor.proofs.map((child) =>
+        addSources(
+          child,
+          sourceIndex,
+          exactClaims,
+          projectionIndex,
+          includeOtherSources
+        )
+      ),
+    })),
+    ...(proof.witnessPositions === undefined
+      ? {}
+      : { witnessPositions: [...proof.witnessPositions] }),
+  };
+}
+
 function addSources(
   proof: ProofStep,
   sourceIndex: Map<string, MemorySource[]>,
@@ -227,6 +260,17 @@ function addSources(
             addSources(child, sourceIndex, exactClaims, projectionIndex, includeOtherSources)
           ),
         }),
+    ...(proof.aggregate === undefined
+      ? {}
+      : {
+          aggregate: addAggregateSources(
+            proof.aggregate,
+            sourceIndex,
+            exactClaims,
+            projectionIndex,
+            includeOtherSources
+          ),
+        }),
     ...(witnessSources === undefined || witnessSources.length === 0
       ? {}
       : { sources: witnessSources }),
@@ -247,22 +291,13 @@ function addQuerySources(
   if (!isAggregateProof(proof)) {
     return addSources(proof, sourceIndex, exactClaims, projectionIndex, includeOtherSources);
   }
-  return {
-    aggregated: true,
-    op: proof.op,
-    input: proof.input,
-    as: proof.as,
-    value: proof.value,
-    contributors: proof.contributors.map((contributor) => ({
-      bindings: bindingStrings(contributor.bindings),
-      proofs: contributor.proofs.map((child) =>
-        addSources(child, sourceIndex, exactClaims, projectionIndex, includeOtherSources)
-      ),
-    })),
-    ...(proof.witnessPositions === undefined
-      ? {}
-      : { witnessPositions: [...proof.witnessPositions] }),
-  };
+  return addAggregateSources(
+    proof,
+    sourceIndex,
+    exactClaims,
+    projectionIndex,
+    includeOtherSources
+  );
 }
 
 function bindingStrings(bindings: Bindings): Record<string, string> {
@@ -298,9 +333,11 @@ function absenceId(proof: SourcedAbsenceProof): string {
   ])}`;
 }
 
-function aggregateId(proof: SourcedAggregateProof): string {
+function aggregateId(proof: SourcedAggregateProof, scope?: string): string {
   const hash = createHash('sha256');
-  hash.update(JSON.stringify([proof.op, proof.input, proof.as, typedValue(proof.value)]));
+  hash.update(
+    JSON.stringify([scope ?? null, proof.op, proof.input, proof.as, typedValue(proof.value)])
+  );
   for (const contributor of proof.contributors) {
     hash.update(JSON.stringify(Object.entries(contributor.bindings)));
     hash.update(
@@ -314,6 +351,20 @@ function aggregateId(proof: SourcedAggregateProof): string {
   return `aggregate:${proof.op}:${hash.digest('hex')}`;
 }
 
+function aggregateStructure(proof: SourcedAggregateProof): unknown {
+  return [
+    proof.op,
+    proof.input,
+    proof.as,
+    typedValue(proof.value),
+    proof.contributors.map((contributor) => [
+      Object.entries(contributor.bindings),
+      contributor.proofs.map(proofStructure),
+    ]),
+    proof.witnessPositions ?? null,
+  ];
+}
+
 function proofStructure(proof: SourcedProofStep): unknown {
   if (isAbsenceProof(proof)) {
     return ['absence', proof.predicate, proof.pattern, proof.stratum];
@@ -324,6 +375,7 @@ function proofStructure(proof: SourcedProofStep): unknown {
     proof.values.map((value) => typedValue(value)),
     proof.rule ?? null,
     (proof.because ?? []).map(proofStructure),
+    proof.aggregate === undefined ? null : aggregateStructure(proof.aggregate),
   ];
 }
 
@@ -444,6 +496,16 @@ export function buildExplanationGraph(
       const target = addProof(child);
       addEdge(edge('because', id, target, position));
     }
+    if (proof.aggregate !== undefined) {
+      addEdge(
+        edge(
+          'because',
+          id,
+          addAggregate(proof.aggregate, id),
+          proof.because?.length ?? 0
+        )
+      );
+    }
     return id;
   };
 
@@ -493,11 +555,21 @@ export function buildExplanationGraph(
     for (const [position, child] of (proof.because ?? []).entries()) {
       addEdge(edge('because', id, addProofInstance(child), position));
     }
+    if (proof.aggregate !== undefined) {
+      addEdge(
+        edge(
+          'because',
+          id,
+          addAggregate(proof.aggregate, id),
+          proof.because?.length ?? 0
+        )
+      );
+    }
     return id;
   };
 
-  const addAggregate = (proof: SourcedAggregateProof): string => {
-    const id = aggregateId(proof);
+  const addAggregate = (proof: SourcedAggregateProof, scope?: string): string => {
+    const id = aggregateId(proof, scope);
     nodes.set(id, {
       id,
       kind: 'aggregate',

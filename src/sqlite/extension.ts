@@ -148,7 +148,7 @@ function assertSqlCompilable(program: string): void {
   }
   if (inspection.aggregation) {
     throw new Error(
-      'scalar aggregation cannot be compiled to one SQLite SELECT; use datalogQuery or datalogExplain'
+      'aggregation cannot be compiled to one SQLite SELECT; use datalogQuery or datalogExplain'
     );
   }
   if (inspection.arithmetic) {

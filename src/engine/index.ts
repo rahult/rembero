@@ -1,6 +1,8 @@
 export {
   type Clause,
   type AggregateOperator,
+  type AggregateRuleClause,
+  type AggregateRuleSpec,
   type AggregateQuerySpec,
   type ArithmeticOp,
   type BinaryArithmeticExpression,
@@ -21,6 +23,7 @@ export {
   MAX_ARITHMETIC_EXPRESSION_NODES,
   canonicalKey,
   isArithmeticExpression,
+  isAggregateRule,
   isComparison,
   isIntegrityConstraint,
   isNegation,

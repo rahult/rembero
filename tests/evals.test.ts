@@ -60,6 +60,9 @@ describe('recall eval corpus', () => {
         test.tags.includes('confusable-nonempty')
       )
     ).toHaveLength(4);
+    expect(
+      RECALL_EVAL_CASES.filter((test) => test.tags.includes('aggregate-rule'))
+    ).toHaveLength(1);
     expect(selection.pruned).toBe(true);
     expect(selection.selectedPredicates).toContain('works_at/2');
     for (const heldOut of [

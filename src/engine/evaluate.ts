@@ -6,12 +6,15 @@ import {
   type Literal,
   type AggregateOperator,
   type AggregateQuerySpec,
+  type AggregateRuleClause,
+  type AggregateRuleSpec,
   type QuerySpec,
   type ScalarExpression,
   type Term,
   MAX_ARITHMETIC_EXPRESSION_DEPTH,
   MAX_ARITHMETIC_EXPRESSION_NODES,
   isArithmeticExpression,
+  isAggregateRule,
   isComparison,
   isIntegrityConstraint,
   isNegation,
@@ -27,6 +30,8 @@ export interface DerivationProof {
   values: (string | number)[];
   rule?: number;
   because?: ProofStep[];
+  /** Exact grouped reduction used to derive this reusable relation fact. */
+  aggregate?: AggregateProof;
 }
 
 export interface AbsenceProof {
@@ -120,12 +125,26 @@ export const MAX_PROOFS_PER_ROW = 16;
 export const DEFAULT_MAX_PROOF_ENUMERATION_STEPS = 100_000;
 export const MAX_PROOF_ENUMERATION_STEPS = 1_000_000;
 
+function assertAggregateProofRowLimit(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new EngineSafetyError(
+      'maxAggregateProofRows must be a non-negative safe integer'
+    );
+  }
+}
+
 interface FactEntry {
   predicate: string;
   tuple: Term[];
   derived: boolean;
   rule?: number;
   because?: ProofRef[];
+  aggregate?: AggregateDerivationRef;
+}
+
+interface AggregateDerivationRef {
+  spec: AggregateRuleSpec;
+  result: AggregateResultRef;
 }
 
 type ProofRef = FactEntry | AbsenceProof;
@@ -606,6 +625,7 @@ function groundValue(term: Term): string | number {
 interface ProofBudget {
   maxNodes: number;
   emittedNodes: number;
+  maxAggregateProofRows: number;
 }
 
 function isAbsenceProof(proof: ProofRef): proof is AbsenceProof {
@@ -653,6 +673,15 @@ function serializeProof(
       serializeProof(child, maxProofDepth, budget, depth + 1)
     );
   }
+  if (entry.aggregate !== undefined) {
+    proof.aggregate = serializeAggregateProof(
+      entry.aggregate.spec,
+      entry.aggregate.result,
+      maxProofDepth,
+      budget,
+      depth + 1
+    );
+  }
   return proof;
 }
 
@@ -680,6 +709,51 @@ function cloneProofStep(
             cloneProofStep(child, maxProofDepth, budget, depth + 1)
           ),
         }),
+    ...(proof.aggregate === undefined
+      ? {}
+      : {
+          aggregate: cloneAggregateProof(
+            proof.aggregate,
+            maxProofDepth,
+            budget,
+            depth + 1
+          ),
+        }),
+  };
+}
+
+function cloneAggregateProof(
+  proof: AggregateProof,
+  maxProofDepth: number,
+  budget: ProofBudget,
+  depth: number
+): AggregateProof {
+  if (depth > maxProofDepth) {
+    throw new EngineLimitError(`proof exceeded max depth ${maxProofDepth}`);
+  }
+  if (++budget.emittedNodes > budget.maxNodes) {
+    throw new EngineLimitError(`proof exceeded max nodes ${budget.maxNodes}`);
+  }
+  if (proof.contributors.length > budget.maxAggregateProofRows) {
+    throw new EngineLimitError(
+      `aggregate proof exceeded ${budget.maxAggregateProofRows} contributor rows`
+    );
+  }
+  return {
+    aggregated: true,
+    op: proof.op,
+    input: proof.input,
+    as: proof.as,
+    value: proof.value,
+    contributors: proof.contributors.map((contributor) => ({
+      bindings: { ...contributor.bindings },
+      proofs: contributor.proofs.map((child) =>
+        cloneProofStep(child, maxProofDepth, budget, depth + 1)
+      ),
+    })),
+    ...(proof.witnessPositions === undefined
+      ? {}
+      : { witnessPositions: [...proof.witnessPositions] }),
   };
 }
 
@@ -711,6 +785,7 @@ interface EnumerationContext {
   budget: EnumerationBudget;
   maxProofDepth: number;
   maxProofNodes: number;
+  maxAggregateProofRows: number;
   lookup: RelationLookupContext;
 }
 
@@ -728,6 +803,28 @@ function consumeEnumerationStep(budget: EnumerationBudget): void {
 
 function factRefKey(entry: FactEntry): string {
   return `${entry.predicate}:${tupleKey(entry.tuple)}`;
+}
+
+function structuralAggregateProofKey(
+  proof: AggregateProof,
+  ruleIdentity: ReadonlyMap<number, string>
+): unknown {
+  return {
+    aggregated: true,
+    op: proof.op,
+    input: proof.input,
+    as: proof.as,
+    value: proof.value,
+    contributors: proof.contributors.map((contributor) => ({
+      bindings: Object.entries(contributor.bindings).sort(([left], [right]) =>
+        left.localeCompare(right)
+      ),
+      proofs: contributor.proofs.map((child) =>
+        structuralProofKey(child, ruleIdentity)
+      ),
+    })),
+    witnessPositions: proof.witnessPositions,
+  };
 }
 
 function structuralProofKey(
@@ -750,6 +847,10 @@ function structuralProofKey(
         ? undefined
         : (ruleIdentity.get(proof.rule) ?? `rule:${proof.rule}`),
     because: proof.because?.map((child) => structuralProofKey(child, ruleIdentity)),
+    aggregate:
+      proof.aggregate === undefined
+        ? undefined
+        : structuralAggregateProofKey(proof.aggregate, ruleIdentity),
   });
 }
 
@@ -760,15 +861,209 @@ function proofVectorKey(
   return JSON.stringify(proofs.map((proof) => structuralProofKey(proof, ruleIdentity)));
 }
 
+interface AggregateRuleGroup {
+  env: Bindings;
+  rows: QueryRowRef[];
+}
+
+function expressionVariables(expression: ScalarExpression): string[] {
+  if (!isArithmeticExpression(expression)) {
+    return expression.type === 'var' ? [expression.name] : [];
+  }
+  return expression.kind === 'unary'
+    ? expressionVariables(expression.operand)
+    : [
+        ...expressionVariables(expression.left),
+        ...expressionVariables(expression.right),
+      ];
+}
+
+function aggregateGoalVariables(goal: Goal): string[] {
+  if (isComparison(goal)) {
+    return [
+      ...expressionVariables(goal.left),
+      ...expressionVariables(goal.right),
+    ];
+  }
+  const literal = isNegation(goal) ? goal.not : goal;
+  return literal.args.flatMap((term) =>
+    term.type === 'var' ? [term.name] : []
+  );
+}
+
+function assertAggregateRuleSafety(rule: AggregateRuleClause): void {
+  const operator: unknown = rule.aggregate.op;
+  if (
+    operator !== 'count' &&
+    operator !== 'sum' &&
+    operator !== 'min' &&
+    operator !== 'max'
+  ) {
+    throw new EngineSafetyError(
+      `unsupported aggregate rule operator '${String(rule.aggregate.op)}'`
+    );
+  }
+  if (rule.aggregate.op === 'count' && rule.aggregate.input !== '*') {
+    throw new EngineSafetyError('count aggregation must use count(*)');
+  }
+  if (rule.aggregate.op !== 'count' && rule.aggregate.input === '*') {
+    throw new EngineSafetyError(
+      `${rule.aggregate.op} aggregate input must be a variable`
+    );
+  }
+  if (rule.head.args.some((term) => term.type === 'wildcard')) {
+    throw new EngineSafetyError('rule heads may not contain wildcards');
+  }
+
+  const bound = new Set<string>();
+  const allBodyVariables = new Set<string>();
+  let positiveRelations = 0;
+  for (const goal of rule.body) {
+    const variables = aggregateGoalVariables(goal);
+    for (const variable of variables) allBodyVariables.add(variable);
+    if (!isComparison(goal) && !isNegation(goal)) {
+      positiveRelations++;
+      for (const variable of variables) bound.add(variable);
+      continue;
+    }
+    for (const variable of variables) {
+      if (!bound.has(variable)) {
+        throw new EngineSafetyError(
+          `range restriction violated: variable ${variable} must be bound by an earlier positive aggregate relation`
+        );
+      }
+    }
+  }
+  if (positiveRelations === 0) {
+    throw new EngineSafetyError('aggregate rules require at least one positive relation');
+  }
+  if (
+    rule.aggregate.input !== '*' &&
+    !bound.has(rule.aggregate.input)
+  ) {
+    throw new EngineSafetyError(
+      `aggregate input ${rule.aggregate.input} must be bound by a positive relation`
+    );
+  }
+  if (allBodyVariables.has(rule.aggregate.as)) {
+    throw new EngineSafetyError(
+      `aggregate output ${rule.aggregate.as} must be a fresh variable`
+    );
+  }
+
+  const headVariables = rule.head.args.flatMap((term) =>
+    term.type === 'var' ? [term.name] : []
+  );
+  if (
+    headVariables.filter((name) => name === rule.aggregate.as).length !== 1
+  ) {
+    throw new EngineSafetyError(
+      `aggregate output ${rule.aggregate.as} must appear exactly once in the rule head`
+    );
+  }
+  for (const variable of headVariables) {
+    if (variable === rule.aggregate.as) continue;
+    if (!bound.has(variable)) {
+      throw new EngineSafetyError(
+        `range restriction violated: variable ${variable} does not appear in any positive aggregate relation`
+      );
+    }
+  }
+}
+
+function deriveAggregateRuleEntries(
+  rule: AggregateRuleClause,
+  ruleNumber: number,
+  db: Database,
+  predicateStrata: ReadonlyMap<string, number>,
+  lookup: RelationLookupContext,
+  maxAggregateRows: number
+): FactEntry[] {
+  if (!Number.isSafeInteger(maxAggregateRows) || maxAggregateRows < 0) {
+    throw new EngineSafetyError('maxAggregateRows must be a non-negative safe integer');
+  }
+  const outputPositions = rule.head.args.flatMap((term, position) =>
+    term.type === 'var' && term.name === rule.aggregate.as ? [position] : []
+  );
+  if (outputPositions.length !== 1) {
+    throw new EngineSafetyError(
+      `aggregate output ${rule.aggregate.as} must appear exactly once in the rule head`
+    );
+  }
+  const outputPosition = outputPositions[0];
+  const groupHeadTerms = rule.head.args.filter(
+    (_term, position) => position !== outputPosition
+  );
+  const hasGroupVariables = groupHeadTerms.some((term) => term.type === 'var');
+  const groups = new Map<string, AggregateRuleGroup>();
+  if (!hasGroupVariables) {
+    const tuple = groupHeadTerms.map((term) => resolve(term, {}));
+    for (const term of tuple) groundValue(term);
+    groups.set(tupleKey(tuple), { env: {}, rows: [] });
+  }
+
+  const fromDb = (_goalIndex: number, key: string) => db.get(key);
+  const stratumOf = (key: string) => predicateStrata.get(key) ?? 0;
+  let inspected = 0;
+  for (const solution of solveGoals(
+    rule.body,
+    0,
+    {},
+    [],
+    fromDb,
+    stratumOf,
+    lookup
+  )) {
+    if (++inspected > maxAggregateRows) {
+      throw new EngineLimitError(`aggregate input exceeded ${maxAggregateRows} rows`);
+    }
+    const tuple = groupHeadTerms.map((term) => resolve(term, solution.env));
+    for (const term of tuple) groundValue(term);
+    const key = tupleKey(tuple);
+    let group = groups.get(key);
+    if (group === undefined) {
+      group = { env: { ...solution.env }, rows: [] };
+      groups.set(key, group);
+    }
+    group.rows.push({
+      bindings: { ...solution.env },
+      proofs: [...solution.proofs],
+    });
+  }
+
+  const entries: FactEntry[] = [];
+  for (const group of groups.values()) {
+    const result = aggregateValue(rule.aggregate, group.rows);
+    if (result === null) continue;
+    const tuple = rule.head.args.map((term, position) =>
+      position === outputPosition ? result.value : resolve(term, group.env)
+    );
+    for (const term of tuple) groundValue(term);
+    entries.push({
+      predicate: rule.head.predicate,
+      tuple,
+      derived: true,
+      rule: ruleNumber,
+      aggregate: { spec: rule.aggregate, result },
+    });
+  }
+  return entries;
+}
+
 function deriveDatabase(
   clauses: Clause[],
   options: EvaluateOptions,
   lookup: RelationLookupContext,
   collectAlternativeRules = false
 ): DerivedDatabase {
-  const { maxFacts = 100_000, maxIterations = 10_000 } = options;
+  const {
+    maxFacts = 100_000,
+    maxIterations = 10_000,
+    maxAggregateRows = 100_000,
+  } = options;
   const ordinaryClauses = clauses.filter((clause) => !isIntegrityConstraint(clause));
   for (const clause of ordinaryClauses) {
+    if (isAggregateRule(clause)) assertAggregateRuleSafety(clause);
     for (const term of clause.head.args) assertFiniteNumericTerm(term);
     assertGoalsNumericSafety(clause.body);
   }
@@ -821,6 +1116,25 @@ function deriveDatabase(
       const newDelta: Database = new Map();
       for (const { clause: rule, ruleNumber } of rules) {
         const headKey = litKey(rule.head.predicate, rule.head.args.length);
+        if (isAggregateRule(rule)) {
+          if (!firstRound) continue;
+          for (const entry of deriveAggregateRuleEntries(
+            rule,
+            ruleNumber,
+            db,
+            stratified.predicateStrata,
+            lookup,
+            maxAggregateRows
+          )) {
+            if (addTuple(db, headKey, entry)) {
+              addTuple(newDelta, headKey, entry);
+              if (++totalFacts > maxFacts) {
+                throw new EngineLimitError(`derivation exceeded ${maxFacts} facts`);
+              }
+            }
+          }
+          continue;
+        }
         const positiveIndexes = rule.body
           .map((goal, i) => (isComparison(goal) || isNegation(goal) ? -1 : i))
           .filter((i) => i >= 0);
@@ -928,7 +1242,7 @@ interface AggregateResultRef {
 }
 
 function aggregateValue(
-  query: AggregateQuerySpec,
+  query: AggregateRuleSpec,
   rows: QueryRowRef[]
 ): AggregateResultRef | null {
   if (query.op === 'count') {
@@ -983,16 +1297,22 @@ function aggregateValue(
 }
 
 function serializeAggregateProof(
-  query: AggregateQuerySpec,
+  query: AggregateRuleSpec,
   result: AggregateResultRef,
   maxProofDepth: number,
-  budget: ProofBudget
+  budget: ProofBudget,
+  depth = 1
 ): AggregateProof {
-  if (maxProofDepth < 1) {
+  if (depth > maxProofDepth) {
     throw new EngineLimitError(`proof exceeded max depth ${maxProofDepth}`);
   }
   if (++budget.emittedNodes > budget.maxNodes) {
     throw new EngineLimitError(`proof exceeded max nodes ${budget.maxNodes}`);
+  }
+  if (result.contributors.length > budget.maxAggregateProofRows) {
+    throw new EngineLimitError(
+      `aggregate proof exceeded ${budget.maxAggregateProofRows} contributor rows`
+    );
   }
   return {
     aggregated: true,
@@ -1002,7 +1322,9 @@ function serializeAggregateProof(
     value: groundValue(result.value),
     contributors: result.contributors.map(({ bindings, proofs }) => ({
       bindings: { ...bindings },
-      proofs: proofs.map((proof) => serializeProof(proof, maxProofDepth, budget, 2)),
+      proofs: proofs.map((proof) =>
+        serializeProof(proof, maxProofDepth, budget, depth + 1)
+      ),
     })),
     ...(result.witnessPositions === undefined
       ? {}
@@ -1017,7 +1339,11 @@ function serializeProofForEnumeration(
   return serializeProof(
     entry,
     context.maxProofDepth,
-    { maxNodes: context.maxProofNodes, emittedNodes: 0 }
+    {
+      maxNodes: context.maxProofNodes,
+      emittedNodes: 0,
+      maxAggregateProofRows: context.maxAggregateProofRows,
+    }
   );
 }
 
@@ -1093,6 +1419,11 @@ function enumerateProofChoices(
   const rules =
     context.rulesByPredicate.get(litKey(proof.predicate, proof.tuple.length)) ?? [];
   if (rules.length === 0) return false;
+  if (rules.some(({ clause }) => isAggregateRule(clause))) {
+    throw new EngineSafetyError(
+      'alternative proofs through aggregate-derived rules are not supported'
+    );
+  }
 
   const tupleValues = proof.tuple.map(groundValue);
   const fromDb = (_: number, key: string) => context.db.get(key);
@@ -1147,6 +1478,7 @@ function queryBindingsWithAlternativeProofs(
   alternativeOptions: AlternativeProofOptions,
   maxProofDepth: number,
   maxProofNodes: number,
+  maxAggregateProofRows: number,
   lookup: RelationLookupContext
 ): ProofRowAccumulator[] {
   if (maxRows <= 0) return [];
@@ -1165,6 +1497,7 @@ function queryBindingsWithAlternativeProofs(
     },
     maxProofDepth,
     maxProofNodes,
+    maxAggregateProofRows,
     lookup,
   };
 
@@ -1218,7 +1551,13 @@ export function evaluateWithProof(
   options: EvaluateOptions = {}
 ): ExplainedBindings[] {
   const alternativeOptions = resolveAlternativeProofOptions(options);
-  const { maxRows = 1000, maxProofDepth = 128, maxProofNodes = 100_000 } = options;
+  const {
+    maxRows = 1000,
+    maxProofDepth = 128,
+    maxProofNodes = 100_000,
+    maxAggregateProofRows = 256,
+  } = options;
+  assertAggregateProofRowLimit(maxAggregateProofRows);
   const lookup = relationLookupContext(options);
   assertGoalsNumericSafety(query);
   const { db, predicateStrata, rulesByPredicate, ruleIdentity } = deriveDatabase(
@@ -1227,7 +1566,11 @@ export function evaluateWithProof(
     lookup,
     alternativeOptions.maxProofsPerRow > DEFAULT_MAX_PROOFS_PER_ROW
   );
-  const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
+  const proofBudget: ProofBudget = {
+    maxNodes: maxProofNodes,
+    emittedNodes: 0,
+    maxAggregateProofRows,
+  };
   if (alternativeOptions.maxProofsPerRow === DEFAULT_MAX_PROOFS_PER_ROW) {
     return queryBindingsWithProofRefs(db, query, maxRows, predicateStrata, lookup).map(
       ({ bindings, proofs }) => ({
@@ -1246,6 +1589,7 @@ export function evaluateWithProof(
     alternativeOptions,
     maxProofDepth,
     maxProofNodes,
+    maxAggregateProofRows,
     lookup
   ).map(({ bindings, proofs }) => ({
     bindings,
@@ -1316,17 +1660,17 @@ export function evaluateQuerySpecWithProof(
   );
   const result = aggregateValue(query, rows);
   if (result === null) return [];
-  if (!Number.isSafeInteger(maxAggregateProofRows) || maxAggregateProofRows < 0) {
-    throw new EngineSafetyError(
-      'maxAggregateProofRows must be a non-negative safe integer'
-    );
-  }
+  assertAggregateProofRowLimit(maxAggregateProofRows);
   if (result.contributors.length > maxAggregateProofRows) {
     throw new EngineLimitError(
       `aggregate proof exceeded ${maxAggregateProofRows} contributor rows`
     );
   }
-  const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
+  const proofBudget: ProofBudget = {
+    maxNodes: maxProofNodes,
+    emittedNodes: 0,
+    maxAggregateProofRows,
+  };
   return [
     {
       bindings: result.bindings,
@@ -1339,11 +1683,20 @@ export function materializeWithProof(
   clauses: Clause[],
   options: EvaluateOptions = {}
 ): MaterializedFactWithProof[] {
-  const { maxProofDepth = 128, maxProofNodes = 100_000 } = options;
+  const {
+    maxProofDepth = 128,
+    maxProofNodes = 100_000,
+    maxAggregateProofRows = 256,
+  } = options;
+  assertAggregateProofRowLimit(maxAggregateProofRows);
   const lookup = relationLookupContext(options);
   const { db } = deriveDatabase(clauses, options, lookup);
   const facts: MaterializedFactWithProof[] = [];
-  const proofBudget: ProofBudget = { maxNodes: maxProofNodes, emittedNodes: 0 };
+  const proofBudget: ProofBudget = {
+    maxNodes: maxProofNodes,
+    emittedNodes: 0,
+    maxAggregateProofRows,
+  };
 
   for (const relation of db.values()) {
     for (const entry of relation.tuples.values()) {
