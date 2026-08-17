@@ -622,6 +622,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    structured failure/exit status, durable post-commit evidence, and existing suite bounds
    compose with stale, audit, and integrity gates.
 
+## Phase 53 — All-writer knowledge check enforcement  *(v0.50)*
+
+1. **Complete — one central candidate hook**: every supported facts/rules/trust/temporal/
+   capture/proposal writer reaches the same baseline/candidate suite evaluation under the
+   global mutation lock with prospective source evidence.
+2. **Complete — strict and migration-safe modes**: strict requires a green candidate;
+   no-regressions permits legacy failures and repairs while blocking newly failed names,
+   coverage decreases, or coverage pass-to-fail transitions.
+3. **Complete — independent composed authority**: check and integrity enforcement may
+   govern explicit namespace unions independently, but both evaluate the same locked
+   candidate and neither can weaken the other.
+4. **Complete — operational parity**: library contexts, server/tool defaults, CLI/MCP env,
+   direct remember, ambient capture, trust, reviewed apply, package installs, structured
+   error/exit `8`, and fail-closed suite bounds share one invariant.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

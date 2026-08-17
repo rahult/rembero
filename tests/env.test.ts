@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   entityIdentityFromEnv,
   integrityEnforcementFromEnv,
+  knowledgeCheckEnforcementFromEnv,
   recallAnswerModeFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
@@ -112,6 +116,68 @@ describe('integrityEnforcementFromEnv', () => {
       integrityEnforcementFromEnv({
         REMBERO_INTEGRITY_MODE: 'strict',
         REMBERO_INTEGRITY_NAMESPACES: 'policy,,work',
+      })
+    ).toThrow(/comma-separated namespace list/i);
+  });
+});
+
+describe('knowledgeCheckEnforcementFromEnv', () => {
+  it('loads and normalizes a bounded suite with both modes and namespaces', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-check-env-'));
+    const file = join(root, 'checks.json');
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        checks: [
+          { name: 'required', query: 'required(a)', expect: { kind: 'nonempty' } },
+        ],
+      })
+    );
+    expect(knowledgeCheckEnforcementFromEnv({})).toBeUndefined();
+    expect(
+      knowledgeCheckEnforcementFromEnv({
+        REMBERO_CHECK_MODE: 'strict',
+        REMBERO_CHECK_SUITE: file,
+        REMBERO_CHECK_NAMESPACES: 'default,shared',
+      })
+    ).toMatchObject({
+      mode: 'strict',
+      namespaces: ['default', 'shared'],
+      suite: { version: 1, checks: [{ name: 'required' }] },
+    });
+    expect(
+      knowledgeCheckEnforcementFromEnv({
+        REMBERO_CHECK_MODE: 'no_regressions',
+        REMBERO_CHECK_SUITE: file,
+        REMBERO_CHECK_NAMESPACES: '*',
+      })
+    ).toMatchObject({ mode: 'no_regressions', namespaces: '*' });
+  });
+
+  it('fails closed on missing suites, invalid modes, and namespace gaps', () => {
+    expect(() =>
+      knowledgeCheckEnforcementFromEnv({ REMBERO_CHECK_MODE: 'strict' })
+    ).toThrow(/REMBERO_CHECK_SUITE is required/i);
+    expect(() =>
+      knowledgeCheckEnforcementFromEnv({ REMBERO_CHECK_MODE: 'warn' })
+    ).toThrow(/strict.*no_regressions/i);
+    const root = mkdtempSync(join(tmpdir(), 'rembero-check-env-invalid-'));
+    const file = join(root, 'checks.json');
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        checks: [
+          { name: 'valid', query: 'valid(a)', expect: { kind: 'nonempty' } },
+        ],
+      })
+    );
+    expect(() =>
+      knowledgeCheckEnforcementFromEnv({
+        REMBERO_CHECK_MODE: 'strict',
+        REMBERO_CHECK_SUITE: file,
+        REMBERO_CHECK_NAMESPACES: 'default,,shared',
       })
     ).toThrow(/comma-separated namespace list/i);
   });

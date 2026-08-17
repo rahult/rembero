@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import {
@@ -8,6 +8,11 @@ import {
 } from './llm/schema.js';
 import type { ValidTimeMode } from './store/store.js';
 import type { IntegrityEnforcementOptions } from './knowledge/enforcement.js';
+import type { KnowledgeCheckEnforcementOptions } from './knowledge/check-enforcement.js';
+import {
+  MAX_KNOWLEDGE_CHECK_SUITE_BYTES,
+  parseKnowledgeCheckSuite,
+} from './knowledge/checks.js';
 import type { EntityIdentityMode } from './knowledge/identity.js';
 import type { RecallAnswerMode } from './llm/pipeline.js';
 
@@ -82,6 +87,41 @@ export function integrityEnforcementFromEnv(
     );
   }
   return { mode, namespaces };
+}
+
+export function knowledgeCheckEnforcementFromEnv(
+  env: NodeJS.ProcessEnv = process.env
+): KnowledgeCheckEnforcementOptions | undefined {
+  const mode = env.REMBERO_CHECK_MODE ?? 'off';
+  if (mode === 'off') return undefined;
+  if (mode !== 'strict' && mode !== 'no_regressions') {
+    throw new Error(
+      "REMBERO_CHECK_MODE must be 'off', 'strict', or 'no_regressions'"
+    );
+  }
+  const configuredPath = env.REMBERO_CHECK_SUITE;
+  if (configuredPath === undefined || configuredPath.trim() === '') {
+    throw new Error('REMBERO_CHECK_SUITE is required when REMBERO_CHECK_MODE is active');
+  }
+  const path = resolve(configuredPath);
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new Error('refusing non-regular REMBERO_CHECK_SUITE file');
+  }
+  if (stat.size > MAX_KNOWLEDGE_CHECK_SUITE_BYTES) {
+    throw new Error(`REMBERO_CHECK_SUITE exceeds ${MAX_KNOWLEDGE_CHECK_SUITE_BYTES} bytes`);
+  }
+  const suite = parseKnowledgeCheckSuite(readFileSync(path, 'utf8'));
+  const configuredNamespaces = env.REMBERO_CHECK_NAMESPACES;
+  if (configuredNamespaces === undefined) return { mode, suite };
+  if (configuredNamespaces === '*') return { mode, suite, namespaces: '*' };
+  const namespaces = configuredNamespaces.split(',').map((value) => value.trim());
+  if (namespaces.some((value) => value.length === 0)) {
+    throw new Error(
+      "REMBERO_CHECK_NAMESPACES must be '*' or a comma-separated namespace list"
+    );
+  }
+  return { mode, suite, namespaces };
 }
 
 export function entityIdentityFromEnv(

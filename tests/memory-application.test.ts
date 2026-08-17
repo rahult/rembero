@@ -14,6 +14,7 @@ import {
   parseMemoryProposal,
 } from '../src/knowledge/memory-application.js';
 import { IntegrityViolationError } from '../src/knowledge/enforcement.js';
+import { KnowledgeCheckEnforcementError } from '../src/knowledge/check-enforcement.js';
 import { diffRecordedKnowledge } from '../src/knowledge/recorded-diff.js';
 import {
   MemoryChangeStaleError,
@@ -272,6 +273,33 @@ describe('digest-bound reviewed personal memory application', () => {
       applyMemoryProposal(checkStore, failing, { opId: 'failed-memory-check' })
     ).toThrow(MemoryChangeCheckError);
     expect(checkStore.load('default')).toEqual([]);
+
+    const globalGuardStore = new MemoryStore(rootFor('global-check-guard'));
+    const guarded = await proposalFor(
+      globalGuardStore,
+      'guarded(a).',
+      'Remember guarded A.'
+    );
+    expect(() =>
+      applyMemoryProposal(globalGuardStore, guarded, {
+        opId: 'globally-blocked-memory',
+        knowledgeCheckEnforcement: {
+          mode: 'strict',
+          namespaces: ['default'],
+          suite: {
+            version: 1,
+            checks: [
+              {
+                name: 'guarded stays absent',
+                query: 'guarded(a)',
+                expect: { kind: 'empty' },
+              },
+            ],
+          },
+        },
+      })
+    ).toThrow(KnowledgeCheckEnforcementError);
+    expect(globalGuardStore.load('default')).toEqual([]);
   });
 
   it('serializes competing memory proposals and conflicts on operation-id reuse', async () => {

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   entityIdentityFromEnv,
   integrityEnforcementFromEnv,
+  knowledgeCheckEnforcementFromEnv,
   recallAnswerModeFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
@@ -77,6 +78,7 @@ import {
   MAX_RULE_CHANGE_PROPOSAL_BYTES,
   RuleChangeCheckError,
 } from '../knowledge/rule-change.js';
+import { KnowledgeCheckEnforcementError } from '../knowledge/check-enforcement.js';
 import {
   MAX_MEMORY_PROPOSAL_BYTES,
   MemoryChangeCheckError,
@@ -362,6 +364,7 @@ function asError(e: unknown) {
     e instanceof TrustMetadataError ||
     e instanceof MemoryChangeStaleError ||
     e instanceof MemoryChangeCheckError ||
+    e instanceof KnowledgeCheckEnforcementError ||
     e instanceof RuleChangeStaleError ||
     e instanceof RuleChangeCheckError
   ) {
@@ -435,6 +438,8 @@ function requestedIntegrity(
 export function createServer(deps: PipelineDeps): McpServer {
   const entityIdentity = deps.entityIdentity ?? entityIdentityFromEnv();
   const configuredIntegrity = deps.integrityEnforcement ?? integrityEnforcementFromEnv();
+  const configuredChecks =
+    deps.knowledgeCheckEnforcement ?? knowledgeCheckEnforcementFromEnv();
   const resolvedDeps: PipelineDeps = {
     ...deps,
     validTimeMode: deps.validTimeMode ?? validTimeModeFromEnv(),
@@ -450,9 +455,10 @@ export function createServer(deps: PipelineDeps): McpServer {
               ? {}
               : { entityIdentity }),
           },
+    knowledgeCheckEnforcement: configuredChecks,
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.49.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.50.0' });
 
   server.registerTool(
     'remember',
@@ -777,7 +783,10 @@ export function createServer(deps: PipelineDeps): McpServer {
     }) => {
       try {
         return asContent(
-          assertFactsTool({ store: resolvedDeps.store }, {
+          assertFactsTool({
+            store: resolvedDeps.store,
+            knowledgeCheckEnforcement: resolvedDeps.knowledgeCheckEnforcement,
+          }, {
             clauses,
             namespace,
             opId,
@@ -830,7 +839,10 @@ export function createServer(deps: PipelineDeps): McpServer {
       try {
         return asContent(
           assertTentativeTool(
-            { store: resolvedDeps.store },
+            {
+              store: resolvedDeps.store,
+              knowledgeCheckEnforcement: resolvedDeps.knowledgeCheckEnforcement,
+            },
             {
               clauses,
               namespace,
@@ -865,7 +877,10 @@ export function createServer(deps: PipelineDeps): McpServer {
       try {
         return asContent(
           reviewTentativeTool(
-            { store: resolvedDeps.store },
+            {
+              store: resolvedDeps.store,
+              knowledgeCheckEnforcement: resolvedDeps.knowledgeCheckEnforcement,
+            },
             { namespaces }
           )
         );
@@ -909,7 +924,10 @@ export function createServer(deps: PipelineDeps): McpServer {
       try {
         return asContent(
           resolveTentativeTool(
-            { store: resolvedDeps.store },
+            {
+              store: resolvedDeps.store,
+              knowledgeCheckEnforcement: resolvedDeps.knowledgeCheckEnforcement,
+            },
             {
               clauses,
               action,
@@ -973,7 +991,10 @@ export function createServer(deps: PipelineDeps): McpServer {
       try {
         return asContent(
           supersedeFactsTool(
-            { store: resolvedDeps.store },
+            {
+              store: resolvedDeps.store,
+              knowledgeCheckEnforcement: resolvedDeps.knowledgeCheckEnforcement,
+            },
             {
               patterns,
               replacements,
@@ -1658,7 +1679,10 @@ export function createServer(deps: PipelineDeps): McpServer {
     }) => {
       try {
         return asContent(
-          forgetTool({ store: resolvedDeps.store }, {
+          forgetTool({
+            store: resolvedDeps.store,
+            knowledgeCheckEnforcement: resolvedDeps.knowledgeCheckEnforcement,
+          }, {
             pattern,
             namespace,
             opId,

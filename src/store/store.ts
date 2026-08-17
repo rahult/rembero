@@ -37,6 +37,10 @@ import {
   type IntegrityEnforcementOptions,
 } from '../knowledge/enforcement.js';
 import {
+  enforceKnowledgeCheckCandidate,
+  type KnowledgeCheckEnforcementOptions,
+} from '../knowledge/check-enforcement.js';
+import {
   isEntityMetadataPredicate,
   type EntityRewrite,
 } from '../knowledge/identity.js';
@@ -89,6 +93,8 @@ export interface MutationContext {
   at?: Date;
   /** Optional atomic reject-on-write policy for this mutation. */
   integrity?: IntegrityEnforcementOptions;
+  /** Optional atomic portable knowledge regression and coverage guard. */
+  checks?: KnowledgeCheckEnforcementOptions;
 }
 
 export type IdempotentMutationOperation =
@@ -418,6 +424,7 @@ export interface AutoCaptureReviewOptions {
 export interface PruneAutoCaptureOptions {
   now?: Date;
   integrity?: IntegrityEnforcementOptions;
+  checks?: KnowledgeCheckEnforcementOptions;
 }
 
 interface CachedNamespace {
@@ -1025,6 +1032,26 @@ export class MemoryStore {
     return names;
   }
 
+  private checkEnforcementNamespaces(
+    targetNamespace: string,
+    options: KnowledgeCheckEnforcementOptions
+  ): string[] {
+    const requested = options.namespaces ?? [targetNamespace];
+    const names = requested === '*'
+      ? [...new Set([...this.listNamespaces(), targetNamespace])].sort()
+      : [...new Set(requested)];
+    if (names.length === 0 || names.length > 32) {
+      throw new Error('knowledge check namespace list must contain 1 to 32 entries');
+    }
+    for (const namespace of names) this.filePath(namespace);
+    if (!names.includes(targetNamespace)) {
+      throw new Error(
+        `knowledge check namespaces must include target '${targetNamespace}'`
+      );
+    }
+    return names;
+  }
+
   private enforceMutation(
     namespace: string,
     currentClauses: Clause[],
@@ -1034,61 +1061,74 @@ export class MemoryStore {
     at: Date,
     temporalByClause: Map<string, TemporalMemorySource> = new Map()
   ): void {
-    const options = context.integrity;
-    if (options === undefined) return;
-    const names = this.integrityNamespaces(namespace, options);
-    const baselineClauses = names.flatMap((name) =>
-      name === namespace ? currentClauses : this.load(name)
-    );
-    const candidateView = names.flatMap((name) =>
-      name === namespace ? candidateClauses : this.load(name)
-    );
-    const baselineSources = this.sourcesFor(names);
-    const candidateKeys = new Set(candidateClauses.map(canonicalKey));
-    const candidateSources = new Map<string, MemorySource[]>();
-    const namespaceOrder = new Map(names.map((name, index) => [name, index]));
-
-    for (const [key, sources] of baselineSources) {
-      const retained = sources.filter(
-        (source) => source.namespace !== namespace || candidateKeys.has(key)
+    if (context.integrity === undefined && context.checks === undefined) return;
+    const buildView = (names: string[]) => {
+      const baselineClauses = names.flatMap((name) =>
+        name === namespace ? currentClauses : this.load(name)
       );
-      if (retained.length > 0) candidateSources.set(key, retained);
-    }
-
-    const sanitizedSource = context.sourceText === undefined
-      ? {}
-      : sanitizeJournalDetails({ sourceText: context.sourceText });
-    for (const clause of addedClauses) {
-      const key = canonicalKey(clause);
-      const sources = candidateSources.get(key) ?? [];
-      sources.push({
-        namespace,
-        opId: context.opId ?? '',
-        ts: at.toISOString(),
-        ...(typeof sanitizedSource.sourceText !== 'string'
-          ? {}
-          : { text: sanitizedSource.sourceText }),
-        ...(sanitizedSource.sourceRedacted === true ? { redacted: true } : {}),
-        ...(temporalByClause.get(key) === undefined
-          ? {}
-          : { temporal: temporalByClause.get(key) }),
-      });
-      sources.sort(
-        (left, right) =>
-          (namespaceOrder.get(left.namespace) ?? Number.MAX_SAFE_INTEGER) -
-            (namespaceOrder.get(right.namespace) ?? Number.MAX_SAFE_INTEGER) ||
-          left.opId.localeCompare(right.opId)
+      const candidateView = names.flatMap((name) =>
+        name === namespace ? candidateClauses : this.load(name)
       );
-      candidateSources.set(key, sources);
+      const baselineSources = this.sourcesFor(names);
+      const candidateKeys = new Set(candidateClauses.map(canonicalKey));
+      const candidateSources = new Map<string, MemorySource[]>();
+      const namespaceOrder = new Map(names.map((name, index) => [name, index]));
+      for (const [key, sources] of baselineSources) {
+        const retained = sources.filter(
+          (source) => source.namespace !== namespace || candidateKeys.has(key)
+        );
+        if (retained.length > 0) candidateSources.set(key, retained);
+      }
+      const sanitizedSource = context.sourceText === undefined
+        ? {}
+        : sanitizeJournalDetails({ sourceText: context.sourceText });
+      for (const clause of addedClauses) {
+        const key = canonicalKey(clause);
+        const sources = candidateSources.get(key) ?? [];
+        sources.push({
+          namespace,
+          opId: context.opId ?? '',
+          ts: at.toISOString(),
+          ...(typeof sanitizedSource.sourceText !== 'string'
+            ? {}
+            : { text: sanitizedSource.sourceText }),
+          ...(sanitizedSource.sourceRedacted === true ? { redacted: true } : {}),
+          ...(temporalByClause.get(key) === undefined
+            ? {}
+            : { temporal: temporalByClause.get(key) }),
+        });
+        sources.sort(
+          (left, right) =>
+            (namespaceOrder.get(left.namespace) ?? Number.MAX_SAFE_INTEGER) -
+              (namespaceOrder.get(right.namespace) ?? Number.MAX_SAFE_INTEGER) ||
+            left.opId.localeCompare(right.opId)
+        );
+        candidateSources.set(key, sources);
+      }
+      return { baselineClauses, candidateView, baselineSources, candidateSources };
+    };
+    if (context.integrity !== undefined) {
+      const view = buildView(this.integrityNamespaces(namespace, context.integrity));
+      enforceIntegrityCandidate(
+        view.baselineClauses,
+        view.candidateView,
+        view.baselineSources,
+        view.candidateSources,
+        context.integrity
+      );
     }
-
-    enforceIntegrityCandidate(
-      baselineClauses,
-      candidateView,
-      baselineSources,
-      candidateSources,
-      options
-    );
+    if (context.checks !== undefined) {
+      const view = buildView(
+        this.checkEnforcementNamespaces(namespace, context.checks)
+      );
+      enforceKnowledgeCheckCandidate(
+        view.baselineClauses,
+        view.candidateView,
+        view.baselineSources,
+        view.candidateSources,
+        context.checks
+      );
+    }
   }
 
   private journalPath(): string {
@@ -2930,7 +2970,7 @@ export class MemoryStore {
     serialized: string,
     expectedSourceOpId: string,
     context: Required<Pick<MutationContext, 'opId' | 'captureId' | 'at'>> &
-      Pick<MutationContext, 'integrity'>
+      Pick<MutationContext, 'integrity' | 'checks'>
   ): number {
     const clauses = parseProgram(serialized);
     if (clauses.length !== 1 || clauses[0].body.length !== 0) {
@@ -3351,10 +3391,10 @@ export class MemoryStore {
       group.push(selection);
       byNamespace.set(selection.namespace, group);
     }
-    if (options.integrity !== undefined) {
+    if (options.integrity !== undefined || options.checks !== undefined) {
       if (byNamespace.size > 1) {
         throw new Error(
-          'integrity-enforced auto-capture pruning accepts one namespace per operation'
+          'enforced auto-capture pruning accepts one namespace per operation'
         );
       }
       for (const [namespace, selected] of byNamespace) {
@@ -3378,7 +3418,13 @@ export class MemoryStore {
           loaded.clauses,
           candidate,
           [],
-          { opId, integrity: options.integrity },
+          {
+            opId,
+            ...(options.integrity === undefined
+              ? {}
+              : { integrity: options.integrity }),
+            ...(options.checks === undefined ? {} : { checks: options.checks }),
+          },
           at
         );
       }
@@ -3395,6 +3441,7 @@ export class MemoryStore {
             captureId: selection.captureId,
             at,
             integrity: undefined,
+            checks: undefined,
           }
         );
       }

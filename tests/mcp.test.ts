@@ -58,7 +58,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.49.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.50.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -1444,6 +1444,54 @@ describe('MCP explanation surfaces', () => {
       expect(store.load('default').map(serializeClause)).toEqual([
         'works_at(mira, initech).',
       ]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('enforces a server-level knowledge suite across raw MCP writers', async () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-check-guard-')));
+    const server = createServer({
+      store,
+      llm: new ScriptedLlm([]),
+      knowledgeCheckEnforcement: {
+        mode: 'strict',
+        namespaces: ['default'],
+        suite: {
+          version: 1,
+          checks: [
+            {
+              name: 'forbidden stays absent',
+              query: 'forbidden(a)',
+              expect: { kind: 'empty' },
+            },
+          ],
+        },
+      },
+    });
+    const client = new Client({ name: 'rembero-check-guard-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const safe = await client.callTool({
+        name: 'assert_facts',
+        arguments: { clauses: 'safe(a).', opId: 'mcp-safe-check' },
+      });
+      expect(safe.isError).not.toBe(true);
+      const blocked = await client.callTool({
+        name: 'assert_facts',
+        arguments: { clauses: 'forbidden(a).', opId: 'mcp-blocked-check' },
+      });
+      expect(blocked.isError).toBe(true);
+      const text = blocked.content.find((item) => item.type === 'text');
+      expect(JSON.parse(text?.type === 'text' ? text.text : '')).toMatchObject({
+        error: 'knowledge_check_enforcement',
+        mode: 'strict',
+        candidate: { status: 'failed' },
+      });
+      expect(store.load('default').map(serializeClause)).toEqual(['safe(a).']);
     } finally {
       await client.close();
       await server.close();

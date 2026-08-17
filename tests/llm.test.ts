@@ -402,6 +402,34 @@ describe('rememberText', () => {
     expect(result.added).toEqual([]);
     expect(store.load('default')).toEqual([]);
   });
+
+  it('enforces a configured knowledge suite on direct natural-language memory', async () => {
+    const llm = new ScriptedLlm(['forbidden(a).']);
+    await expect(
+      rememberText(
+        {
+          store,
+          llm,
+          knowledgeCheckEnforcement: {
+            mode: 'strict',
+            namespaces: ['default'],
+            suite: {
+              version: 1,
+              checks: [
+                {
+                  name: 'forbidden stays absent',
+                  query: 'forbidden(a)',
+                  expect: { kind: 'empty' },
+                },
+              ],
+            },
+          },
+        },
+        'Remember forbidden A.'
+      )
+    ).rejects.toMatchObject({ code: 'knowledge_check_enforcement' });
+    expect(store.load('default')).toEqual([]);
+  });
 });
 
 describe('recallQuestion', () => {

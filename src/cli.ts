@@ -14,6 +14,7 @@ import { MAX_PROOFS_PER_ROW, serializeClause } from './engine/index.js';
 import {
   entityIdentityFromEnv,
   integrityEnforcementFromEnv,
+  knowledgeCheckEnforcementFromEnv,
   loadEnv,
   recallAnswerModeFromEnv,
   recallSchemaPredicateLimitFromEnv,
@@ -66,6 +67,7 @@ import {
   MAX_MEMORY_PROPOSAL_BYTES,
   MemoryChangeCheckError,
 } from './knowledge/memory-application.js';
+import { KnowledgeCheckEnforcementError } from './knowledge/check-enforcement.js';
 import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
@@ -939,6 +941,7 @@ async function main(): Promise<void> {
         };
   const integrityEnforcement =
     integritySetting === false ? undefined : integritySetting;
+  const knowledgeCheckEnforcement = knowledgeCheckEnforcementFromEnv();
   const llmAllowedNamespaces = llmNamespaceAllowlistFromEnv();
   const text = args.positional.join(' ');
   const namespaces = args.namespaces ?? (args.namespace ? [args.namespace] : undefined);
@@ -955,6 +958,7 @@ async function main(): Promise<void> {
         ),
         recallAnswerMode: recallAnswerModeOption(args.answerMode),
         integrityEnforcement: integritySetting,
+        knowledgeCheckEnforcement,
         entityIdentity: entityIdentitySetting,
         trustMode: trustViewOption(args.trust),
       });
@@ -971,6 +975,7 @@ async function main(): Promise<void> {
             llm: lazyClientFromEnv(),
             llmAllowedNamespaces,
             integrityEnforcement: integritySetting,
+            knowledgeCheckEnforcement,
             entityIdentity: entityIdentitySetting,
           },
           rawHookInput,
@@ -998,12 +1003,14 @@ async function main(): Promise<void> {
           llm: clientFromEnv(),
           llmAllowedNamespaces,
           entityIdentity: entityIdentitySetting,
+          knowledgeCheckEnforcement,
         },
         text,
         args.namespace,
         {
           validTimeMode,
           integrityEnforcement: integritySetting,
+          knowledgeCheckEnforcement,
           entityIdentity: entityIdentitySetting,
           trust: knowledgeTrustOption(args.trust),
         }
@@ -1032,6 +1039,7 @@ async function main(): Promise<void> {
           llm: clientFromEnv(),
           llmAllowedNamespaces,
           integrityEnforcement: integritySetting,
+          knowledgeCheckEnforcement,
           entityIdentity: entityIdentitySetting,
         },
         {
@@ -1068,6 +1076,9 @@ async function main(): Promise<void> {
         {
           opId: operationId,
           ...(maxViolations === undefined ? {} : { maxViolations }),
+          ...(knowledgeCheckEnforcement === undefined
+            ? {}
+            : { knowledgeCheckEnforcement }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -1152,11 +1163,11 @@ async function main(): Promise<void> {
     case 'assert': {
       const result = knowledgeTrustOption(args.trust) === 'tentative'
         ? assertTentativeTool(
-            { store, integrityEnforcement },
+            { store, integrityEnforcement, knowledgeCheckEnforcement },
             { clauses: text, namespace: args.namespace, opId: operationId }
           )
         : assertFactsTool(
-            { store, integrityEnforcement },
+            { store, integrityEnforcement, knowledgeCheckEnforcement },
             { clauses: text, namespace: args.namespace, opId: operationId }
           );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -1165,7 +1176,7 @@ async function main(): Promise<void> {
     case 'accept':
     case 'reject': {
       const result = resolveTentativeTool(
-        { store, integrityEnforcement },
+        { store, integrityEnforcement, knowledgeCheckEnforcement },
         {
           clauses: text,
           action: command === 'accept' ? 'accept' : 'reject',
@@ -1279,6 +1290,9 @@ async function main(): Promise<void> {
         {
           opId: operationId,
           ...(maxViolations === undefined ? {} : { maxViolations }),
+          ...(knowledgeCheckEnforcement === undefined
+            ? {}
+            : { knowledgeCheckEnforcement }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -1672,7 +1686,7 @@ async function main(): Promise<void> {
     }
     case 'forget': {
       const result = forgetTool(
-        { store, integrityEnforcement },
+        { store, integrityEnforcement, knowledgeCheckEnforcement },
         { pattern: text, namespace: args.namespace, opId: operationId }
       );
       console.log(`removed ${result.removed} clause(s)`);
@@ -1680,7 +1694,7 @@ async function main(): Promise<void> {
     }
     case 'supersede': {
       const result = supersedeFactsTool(
-        { store, integrityEnforcement },
+        { store, integrityEnforcement, knowledgeCheckEnforcement },
         {
           patterns: args.patterns,
           replacements: text,
@@ -1832,6 +1846,9 @@ async function main(): Promise<void> {
         {
           ...(operationId === undefined ? {} : { opId: operationId }),
           ...(integrityEnforcement === undefined ? {} : { integrity: integrityEnforcement }),
+          ...(knowledgeCheckEnforcement === undefined
+            ? {}
+            : { checks: knowledgeCheckEnforcement }),
         }
       );
       console.log(`imported ${result.added.length} clause(s), ${result.duplicates} duplicate(s) skipped`);
@@ -1900,6 +1917,9 @@ async function main(): Promise<void> {
           ...(integrityEnforcement === undefined
             ? {}
             : { integrity: integrityEnforcement }),
+          ...(knowledgeCheckEnforcement === undefined
+            ? {}
+            : { checks: knowledgeCheckEnforcement }),
         });
         if (args.json) {
           console.log(
@@ -2003,6 +2023,13 @@ main().catch((e: unknown) => {
   if (e instanceof MemoryChangeCheckError) {
     console.error(stringifyBoundedResult(e.toJSON(), 'CLI memory change check failure'));
     process.exitCode = 2;
+    return;
+  }
+  if (e instanceof KnowledgeCheckEnforcementError) {
+    console.error(
+      stringifyBoundedResult(e.toJSON(), 'CLI knowledge check enforcement rejection')
+    );
+    process.exitCode = 8;
     return;
   }
   if (e instanceof IntegrityViolationError) {

@@ -15,6 +15,7 @@ import {
   type RuleChangeProposal,
 } from '../src/knowledge/counterfactual.js';
 import { IntegrityViolationError } from '../src/knowledge/enforcement.js';
+import { KnowledgeCheckEnforcementError } from '../src/knowledge/check-enforcement.js';
 import { diffRecordedKnowledge } from '../src/knowledge/recorded-diff.js';
 import {
   applyRuleChangeProposal,
@@ -195,6 +196,31 @@ describe('digest-bound reviewed rule changes', () => {
       applyRuleChangeProposal(checkStore, failing, { opId: 'failed-checks' })
     ).toThrow(RuleChangeCheckError);
     expect(checkStore.load('default')).toHaveLength(1);
+
+    const globalStore = ruleStore('global-check-guard');
+    globalStore.assert('default', 'base(a).', { opId: 'global-base' });
+    const globallyBlocked = proposalFor(globalStore, 'derived(X)', {
+      assumeRules: 'derived(X) :- base(X).',
+    });
+    expect(() =>
+      applyRuleChangeProposal(globalStore, globallyBlocked, {
+        opId: 'globally-blocked-rule',
+        knowledgeCheckEnforcement: {
+          mode: 'strict',
+          namespaces: ['default'],
+          suite: {
+            version: 1,
+            checks: [
+              {
+                name: 'derived stays absent',
+                query: 'derived(a)',
+                expect: { kind: 'empty' },
+              },
+            ],
+          },
+        },
+      })
+    ).toThrow(KnowledgeCheckEnforcementError);
   });
 
   it('rejects tampering, recorded proposals, and operation-id reuse conflicts', () => {

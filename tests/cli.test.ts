@@ -1499,6 +1499,59 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('enforces an environment-configured knowledge suite on direct writes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-check-enforcement-'));
+    const home = join(root, 'home');
+    const suite = join(root, 'checks.json');
+    writeFileSync(
+      suite,
+      JSON.stringify({
+        version: 1,
+        checks: [
+          {
+            name: 'forbidden stays absent',
+            query: 'forbidden(a)',
+            expect: { kind: 'empty' },
+          },
+        ],
+      })
+    );
+    const env = {
+      ...process.env,
+      REMBERO_HOME: home,
+      REMBERO_CHECK_MODE: 'strict',
+      REMBERO_CHECK_SUITE: suite,
+      REMBERO_CHECK_NAMESPACES: 'default',
+    };
+    const safe = spawnSync(
+      process.execPath,
+      [resolve('dist/cli.js'), 'assert', 'safe(a).', '--op-id', 'safe-check-write'],
+      { encoding: 'utf8', env }
+    );
+    expect(safe.status).toBe(0);
+
+    const blocked = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'assert',
+        'forbidden(a).',
+        '--op-id',
+        'blocked-check-write',
+      ],
+      { encoding: 'utf8', env }
+    );
+    expect(blocked.status).toBe(8);
+    expect(JSON.parse(blocked.stderr)).toMatchObject({
+      error: 'knowledge_check_enforcement',
+      mode: 'strict',
+      candidate: { status: 'failed' },
+    });
+    expect(
+      new MemoryStore(join(home, 'memory')).load('default').map(serializeClause)
+    ).toEqual(['safe(a).']);
+  });
+
   it('returns a focused current or recorded conflict view with meaningful exit status', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-conflicts-'));
     const home = join(root, 'home');

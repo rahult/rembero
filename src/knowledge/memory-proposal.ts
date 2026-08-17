@@ -21,6 +21,7 @@ import {
   type CounterfactualRuleAuditDelta,
 } from './counterfactual.js';
 import type { EntityIdentityMode } from './identity.js';
+import type { KnowledgeCheckEnforcementOptions } from './check-enforcement.js';
 import {
   parseKnowledgeCheckSuite,
   type KnowledgeCheckSuite,
@@ -90,14 +91,31 @@ function configuredNamespaces(
   deps: PipelineDeps,
   namespace: string,
   requested: string[] | '*' | undefined,
-  integrity: RememberOptions['integrityEnforcement']
+  integrity: RememberOptions['integrityEnforcement'],
+  checks: KnowledgeCheckEnforcementOptions | false | undefined
 ): string[] | '*' {
   if (requested !== undefined) return requested;
-  const configured = integrity ?? deps.integrityEnforcement;
-  if (configured !== undefined && configured !== false) {
-    return configured.namespaces ?? [namespace];
-  }
-  return [namespace];
+  const configuredIntegrity = integrity ?? deps.integrityEnforcement;
+  const configuredChecks = checks ?? deps.knowledgeCheckEnforcement;
+  if (
+    configuredIntegrity !== undefined &&
+    configuredIntegrity !== false &&
+    configuredIntegrity.namespaces === '*'
+  ) return '*';
+  if (
+    configuredChecks !== undefined &&
+    configuredChecks !== false &&
+    configuredChecks.namespaces === '*'
+  ) return '*';
+  return [...new Set([
+    namespace,
+    ...(configuredIntegrity === undefined || configuredIntegrity === false
+      ? []
+      : configuredIntegrity.namespaces ?? []),
+    ...(configuredChecks === undefined || configuredChecks === false
+      ? []
+      : configuredChecks.namespaces ?? []),
+  ])];
 }
 
 /**
@@ -124,7 +142,8 @@ export async function proposeRememberText(
     deps,
     namespace,
     options.namespaces,
-    options.integrityEnforcement
+    options.integrityEnforcement,
+    options.knowledgeCheckEnforcement
   );
   const baseline = captureCounterfactualBaseline(deps.store, {
     namespace,
@@ -164,6 +183,12 @@ export async function proposeRememberText(
   const configuredIdentity = options.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
   const configuredIntegrity = options.integrityEnforcement ?? deps.integrityEnforcement;
+  const configuredChecks =
+    options.knowledgeCheckEnforcement ?? deps.knowledgeCheckEnforcement;
+  const effectiveCheckSuite = options.checkSuite ??
+    (configuredChecks === undefined || configuredChecks === false
+      ? undefined
+      : configuredChecks.suite);
   const impact = evaluateCounterfactualKnowledgeView(
     view,
     'rembero_memory_proposal_probe',
@@ -182,9 +207,9 @@ export async function proposeRememberText(
             maxViolations: configuredIntegrity.maxViolations,
             relationIndex: configuredIntegrity.relationIndex,
           }),
-      ...(options.checkSuite === undefined
+      ...(effectiveCheckSuite === undefined
         ? {}
-        : { checkSuite: options.checkSuite }),
+        : { checkSuite: effectiveCheckSuite }),
     }
   );
   const addClauses = [
@@ -220,9 +245,9 @@ export async function proposeRememberText(
     addClauses,
     removeClauses,
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
-    ...(options.checkSuite === undefined
+    ...(effectiveCheckSuite === undefined
       ? {}
-      : { checkSuite: JSON.stringify(parseKnowledgeCheckSuite(options.checkSuite)) }),
+      : { checkSuite: JSON.stringify(parseKnowledgeCheckSuite(effectiveCheckSuite)) }),
   };
   return {
     changed: true,

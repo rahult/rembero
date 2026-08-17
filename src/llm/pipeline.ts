@@ -39,6 +39,7 @@ import {
   type ExplainWhyNotResult,
 } from '../knowledge/why-not.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
+import type { KnowledgeCheckEnforcementOptions } from '../knowledge/check-enforcement.js';
 import {
   canonicalizeKnowledge,
   isEntityMetadataDeclaration,
@@ -92,6 +93,8 @@ export interface PipelineDeps {
   /** Optional default atomic reject-on-write policy for memory mutations. */
   /** `false` explicitly disables an environment-derived server default. */
   integrityEnforcement?: IntegrityEnforcementOptions | false;
+  /** Optional default portable regression and semantic coverage write guard. */
+  knowledgeCheckEnforcement?: KnowledgeCheckEnforcementOptions | false;
   /** Optional default explicit entity projection for recall and schema reads. */
   entityIdentity?: EntityIdentityMode | false;
   /** Optional default trust projection; tentative claims remain excluded by default. */
@@ -113,6 +116,8 @@ export interface RememberOptions {
   validTimeMode?: ValidTimeMode;
   /** Per-call enforcement override; omission uses the dependency default. */
   integrityEnforcement?: IntegrityEnforcementOptions | false;
+  /** Per-call check guard override; omission uses the dependency default. */
+  knowledgeCheckEnforcement?: KnowledgeCheckEnforcementOptions | false;
   /** Opt-in canonical read view for the extraction schema; stored writes stay literal. */
   entityIdentity?: EntityIdentityMode | false;
   /** Explicit caller authority; tentative facts remain outside accepted reasoning. */
@@ -433,12 +438,16 @@ export async function rememberText(
   const configuredIntegrity =
     options.integrityEnforcement ?? deps.integrityEnforcement;
   const integrity = configuredIntegrity === false ? undefined : configuredIntegrity;
+  const configuredChecks =
+    options.knowledgeCheckEnforcement ?? deps.knowledgeCheckEnforcement;
+  const checks = configuredChecks === false ? undefined : configuredChecks;
   const context = {
     opId,
     sourceText: text,
     origin: 'manual' as const,
     at: options.at,
     ...(integrity === undefined ? {} : { integrity }),
+    ...(checks === undefined ? {} : { checks }),
   };
   if (extraction.retractions.length > 0) {
     const patterns = extraction.retractions.map((goals) =>
@@ -545,6 +554,10 @@ export async function rememberTranscriptText(
     ...(deps.integrityEnforcement === undefined || deps.integrityEnforcement === false
       ? {}
       : { integrity: deps.integrityEnforcement }),
+    ...(deps.knowledgeCheckEnforcement === undefined ||
+    deps.knowledgeCheckEnforcement === false
+      ? {}
+      : { checks: deps.knowledgeCheckEnforcement }),
   });
   return {
     added: added.map(serializeClause),

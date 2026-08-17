@@ -106,6 +106,7 @@ import {
   type KnowledgeHealthResult,
 } from '../knowledge/health.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
+import type { KnowledgeCheckEnforcementOptions } from '../knowledge/check-enforcement.js';
 import {
   EntityIdentityError,
   buildEntityResolver,
@@ -139,8 +140,16 @@ export type LlmToolDeps = PipelineDeps;
 export interface StoreToolDeps {
   store: MemoryStore;
   integrityEnforcement?: IntegrityEnforcementOptions | false;
+  knowledgeCheckEnforcement?: KnowledgeCheckEnforcementOptions | false;
   entityIdentity?: EntityIdentityMode | false;
   trustMode?: TrustViewMode | false;
+}
+
+function configuredCheckEnforcement(
+  deps: StoreToolDeps
+): KnowledgeCheckEnforcementOptions | undefined {
+  const configured = deps.knowledgeCheckEnforcement;
+  return configured === false ? undefined : configured;
 }
 
 type NamespacesArg = string[] | '*' | undefined;
@@ -256,11 +265,13 @@ export function applyMemoryProposalTool(
     maxViolations?: number;
   }
 ): ApplyMemoryProposalResult {
+  const checks = configuredCheckEnforcement(deps);
   return applyMemoryProposal(deps.store, args.proposal, {
     opId: args.opId,
     ...(args.maxViolations === undefined
       ? {}
       : { maxViolations: args.maxViolations }),
+    ...(checks === undefined ? {} : { knowledgeCheckEnforcement: checks }),
   });
 }
 
@@ -372,12 +383,14 @@ export function assertFactsTool(
   }
   const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
   const integrity = configured === false ? undefined : configured;
+  const checks = configuredCheckEnforcement(deps);
   const { added, duplicates, opId } = deps.store.assert(
     args.namespace ?? 'default',
     parsed,
     {
       ...(args.opId === undefined ? {} : { opId: args.opId }),
       ...(integrity === undefined ? {} : { integrity }),
+      ...(checks === undefined ? {} : { checks }),
     }
   );
   return { added: added.map(serializeClause), duplicates, opId };
@@ -395,6 +408,7 @@ export function assertTentativeTool(
   assertBoundedInput(args.clauses, 'tentative clauses');
   const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
   const integrity = configured === false ? undefined : configured;
+  const checks = configuredCheckEnforcement(deps);
   return assertTentativeFacts(
     deps.store,
     args.namespace ?? 'default',
@@ -402,6 +416,7 @@ export function assertTentativeTool(
     {
       ...(args.opId === undefined ? {} : { opId: args.opId }),
       ...(integrity === undefined ? {} : { integrity }),
+      ...(checks === undefined ? {} : { checks }),
     }
   );
 }
@@ -430,6 +445,7 @@ export function resolveTentativeTool(
   assertBoundedInput(args.clauses, 'tentative resolution clauses');
   const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
   const integrity = configured === false ? undefined : configured;
+  const checks = configuredCheckEnforcement(deps);
   return resolveTentativeFacts(
     deps.store,
     args.namespace ?? 'default',
@@ -438,6 +454,7 @@ export function resolveTentativeTool(
     {
       ...(args.opId === undefined ? {} : { opId: args.opId }),
       ...(integrity === undefined ? {} : { integrity }),
+      ...(checks === undefined ? {} : { checks }),
     }
   );
 }
@@ -478,6 +495,7 @@ export function supersedeFactsTool(
   assertBoundedInput(replacements, 'replacement clauses');
   const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
   const integrity = configured === false ? undefined : configured;
+  const checks = configuredCheckEnforcement(deps);
   const result: SupersedeResult = deps.store.supersede(
     args.namespace ?? 'default',
     args.patterns,
@@ -486,6 +504,7 @@ export function supersedeFactsTool(
       ...(args.at === undefined ? {} : { at: validTimeInstant(args.at) }),
       ...(args.opId === undefined ? {} : { opId: args.opId }),
       ...(integrity === undefined ? {} : { integrity }),
+      ...(checks === undefined ? {} : { checks }),
     }
   );
   return {
@@ -732,11 +751,13 @@ export function applyRuleChangeProposalTool(
     maxViolations?: number;
   }
 ): ApplyRuleChangeProposalResult {
+  const checks = configuredCheckEnforcement(deps);
   return applyRuleChangeProposal(deps.store, args.proposal, {
     opId: args.opId,
     ...(args.maxViolations === undefined
       ? {}
       : { maxViolations: args.maxViolations }),
+    ...(checks === undefined ? {} : { knowledgeCheckEnforcement: checks }),
   });
 }
 
@@ -1163,12 +1184,14 @@ export function forgetTool(
   assertBoundedInput(args.pattern, 'forget pattern');
   const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
   const integrity = configured === false ? undefined : configured;
+  const checks = configuredCheckEnforcement(deps);
   return deps.store.retract(
     args.namespace ?? 'default',
     args.pattern,
     {
       ...(args.opId === undefined ? {} : { opId: args.opId }),
       ...(integrity === undefined ? {} : { integrity }),
+      ...(checks === undefined ? {} : { checks }),
     }
   );
 }

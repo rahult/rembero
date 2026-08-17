@@ -24,6 +24,7 @@ import {
   isEntityMetadataPredicate,
 } from './identity.js';
 import { isTrustMetadataPredicate } from './trust.js';
+import type { KnowledgeCheckEnforcementOptions } from './check-enforcement.js';
 import {
   parseKnowledgeCheckSuite,
   runKnowledgeChecks,
@@ -38,6 +39,7 @@ export interface ApplyMemoryProposalOptions {
   maxViolations?: number;
   maxFacts?: number;
   maxIterations?: number;
+  knowledgeCheckEnforcement?: KnowledgeCheckEnforcementOptions;
 }
 
 export interface ApplyMemoryProposalResult extends MemoryChangeMutationResult {
@@ -307,6 +309,9 @@ export function applyMemoryProposal(
           ? {}
           : { entityIdentity: proposal.entityIdentity }),
       },
+      ...(options.knowledgeCheckEnforcement === undefined
+        ? {}
+        : { checks: options.knowledgeCheckEnforcement }),
     }
   );
   const committed = store.recordedSnapshot(

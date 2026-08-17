@@ -25,6 +25,7 @@ import {
 } from './checks.js';
 import type { EntityIdentityMode } from './identity.js';
 import type { TrustViewMode } from './trust.js';
+import type { KnowledgeCheckEnforcementOptions } from './check-enforcement.js';
 
 export const RULE_CHANGE_PROPOSAL_VERSION = 1;
 export const MAX_RULE_CHANGE_PROPOSAL_BYTES = 2 * 1024 * 1024;
@@ -35,6 +36,7 @@ export interface ApplyRuleChangeProposalOptions {
   maxViolations?: number;
   maxFacts?: number;
   maxIterations?: number;
+  knowledgeCheckEnforcement?: KnowledgeCheckEnforcementOptions;
 }
 
 export interface ApplyRuleChangeProposalResult extends RuleChangeMutationResult {
@@ -277,6 +279,9 @@ export function applyRuleChangeProposal(
           ? {}
           : { entityIdentity: proposal.entityIdentity }),
       },
+      ...(options.knowledgeCheckEnforcement === undefined
+        ? {}
+        : { checks: options.knowledgeCheckEnforcement }),
     }
   );
   // Reconstruct the exact committed journal position for stable first-call and replay output.

@@ -3,6 +3,7 @@ import type { LlmClient } from '../llm/client.js';
 import { rememberTranscriptText } from '../llm/pipeline.js';
 import type { MemoryStore } from '../store/store.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
+import type { KnowledgeCheckEnforcementOptions } from '../knowledge/check-enforcement.js';
 import type { EntityIdentityMode } from '../knowledge/identity.js';
 import {
   DEFAULT_AUTO_CAPTURE_DAILY_CAP,
@@ -20,6 +21,7 @@ export interface AutoCaptureDeps {
   llm: LlmClient;
   llmAllowedNamespaces?: ReadonlySet<string>;
   integrityEnforcement?: IntegrityEnforcementOptions | false;
+  knowledgeCheckEnforcement?: KnowledgeCheckEnforcementOptions | false;
   entityIdentity?: EntityIdentityMode | false;
 }
 
@@ -153,6 +155,7 @@ export async function autoCaptureClaudeStop(
         llm: deps.llm,
         llmAllowedNamespaces: deps.llmAllowedNamespaces,
         integrityEnforcement: deps.integrityEnforcement,
+        knowledgeCheckEnforcement: deps.knowledgeCheckEnforcement,
         entityIdentity: deps.entityIdentity,
       },
       tail.text,

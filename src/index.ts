@@ -126,6 +126,13 @@ export {
   type KnowledgeHealthResult,
 } from './knowledge/health.js';
 export {
+  enforceKnowledgeCheckCandidate,
+  KnowledgeCheckEnforcementError,
+  type KnowledgeCheckEnforcementMode,
+  type KnowledgeCheckEnforcementOptions,
+  type KnowledgeCheckEnforcementDelta,
+} from './knowledge/check-enforcement.js';
+export {
   type QueryPromptVariant,
   transcriptExtractionSystemPrompt,
 } from './llm/prompts.js';

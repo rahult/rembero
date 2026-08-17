@@ -203,6 +203,37 @@ describe('auto-capture pipeline', () => {
     expect(journal).not.toContain('I prefer dark mode and live in Melbourne');
   });
 
+  it('enforces configured knowledge checks on ambient capture writes', async () => {
+    writeTranscript([transcriptLine('user', 'Remember forbidden A.')]);
+    const llm = new ScriptedLlm(['forbidden(a).']);
+
+    await expect(
+      autoCaptureClaudeStop(
+        {
+          store,
+          llm,
+          knowledgeCheckEnforcement: {
+            mode: 'strict',
+            namespaces: ['default'],
+            suite: {
+              version: 1,
+              checks: [
+                {
+                  name: 'forbidden stays absent',
+                  query: 'forbidden(a)',
+                  expect: { kind: 'empty' },
+                },
+              ],
+            },
+          },
+        },
+        stopInput(),
+        captureOptions()
+      )
+    ).rejects.toMatchObject({ code: 'knowledge_check_enforcement' });
+    expect(store.load('default')).toEqual([]);
+  });
+
   it('rejects rules and retractions from auto-capture even after retry', async () => {
     writeTranscript([transcriptLine('user', 'Remember my current preference.')]);
     const llm = new ScriptedLlm([

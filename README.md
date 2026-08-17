@@ -41,6 +41,9 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_RECALL_ANSWER_MODE` | no | `natural`; use `deterministic` for local binding rendering |
 | `REMBERO_INTEGRITY_MODE` | no | `off`; use `strict` or migration mode `no_new_violations` for atomic write rejection |
 | `REMBERO_INTEGRITY_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view when enforcement is active |
+| `REMBERO_CHECK_MODE` | no | `off`; use `strict` or migration mode `no_regressions` |
+| `REMBERO_CHECK_SUITE` | with check mode | regular JSON v1 suite file path |
+| `REMBERO_CHECK_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view |
 | `REMBERO_ENTITY_IDENTITY` | no | `off`; use `canonical` for explicit position-scoped alias projection |
 
 The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `query`,
@@ -409,6 +412,12 @@ Version 0.49 can bind portable regression checks and semantic coverage into a pe
 memory proposal. Preview compares baseline/candidate results; reviewed apply re-runs the
 normalized suite under the mutation lock and rejects failures before writing. See
 [the reviewed memory check-gate contract](docs/MEMORY-CHECK-GATES.md).
+
+Version 0.50 can enforce one portable check/coverage suite across every supported writer.
+Strict mode requires a green candidate; `no_regressions` permits legacy debt and repairs
+while rejecting newly failed checks or lower coverage. Enforcement runs under the mutation
+lock and composes with integrity policy. See
+[the all-writer check-enforcement contract](docs/CHECK-ENFORCEMENT.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
