@@ -15,6 +15,7 @@ import {
   checkIntegrityTool,
   conflictViewsTool,
   assertFactsTool,
+  assertTentativeTool,
   explainQueryTool,
   forgetTool,
   historyTool,
@@ -23,6 +24,8 @@ import {
   recallExplainTool,
   recallTool,
   rememberTool,
+  resolveTentativeTool,
+  reviewTentativeTool,
   supersedeFactsTool,
 } from './tools.js';
 import {
@@ -32,6 +35,7 @@ import {
 } from '../store/store.js';
 import { MAX_INTEGRITY_VIOLATIONS } from '../knowledge/integrity.js';
 import { MAX_CONFLICT_FOCUS_BYTES } from '../knowledge/conflicts.js';
+import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
   type IntegrityEnforcementMode,
@@ -96,6 +100,14 @@ const entityIdentityField = z
   .literal('canonical')
   .optional()
   .describe('Project aliases only at explicitly declared predicate positions');
+const knowledgeTrustField = z
+  .enum(['accepted', 'tentative'])
+  .optional()
+  .describe('Store extracted facts as accepted (default) or explicitly tentative');
+const trustViewField = z
+  .enum(['accepted', 'include_tentative'])
+  .optional()
+  .describe('Accepted knowledge only (default), or opt in to tentative claims');
 const graphSelectorField = z
   .discriminatedUnion('kind', [
     z.object({
@@ -142,7 +154,11 @@ function asContent(result: unknown) {
 
 function asError(e: unknown) {
   let text: string;
-  if (e instanceof OperationConflictError || e instanceof IncompleteHistoryError) {
+  if (
+    e instanceof OperationConflictError ||
+    e instanceof IncompleteHistoryError ||
+    e instanceof TrustMetadataError
+  ) {
     text = stringifyBoundedResult(e.toJSON(), 'MCP structured error');
   } else if (e instanceof IntegrityViolationError) {
     try {
@@ -229,7 +245,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.20.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.21.0' });
 
   server.registerTool(
     'remember',
@@ -245,6 +261,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
+        trust: knowledgeTrustField,
         graphSelector: graphSelectorField,
       },
     },
@@ -256,6 +273,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       proofLimit,
       maxViolations,
       entityIdentity,
+      trust,
       graphSelector,
     }) => {
       try {
@@ -273,6 +291,7 @@ export function createServer(deps: PipelineDeps): McpServer {
               graphSelector
             ),
             entityIdentity,
+            trust,
           })
         );
       } catch (e) {
@@ -292,6 +311,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         namespaces: namespacesField,
         schemaPredicateLimit: schemaPredicateLimitField,
         entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
         recordedSequence: recordedSequenceField,
       },
     },
@@ -300,6 +320,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       namespaces,
       schemaPredicateLimit,
       entityIdentity,
+      trustMode,
       recordedSequence,
     }) => {
       try {
@@ -309,6 +330,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             namespaces,
             schemaPredicateLimit,
             entityIdentity,
+            trustMode,
             recordedSequence,
           })
         );
@@ -330,6 +352,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         schemaPredicateLimit: schemaPredicateLimitField,
         proofLimit: proofLimitField,
         entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
         graphSelector: graphSelectorField,
         recordedSequence: recordedSequenceField,
       },
@@ -340,6 +363,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       schemaPredicateLimit,
       proofLimit,
       entityIdentity,
+      trustMode,
       graphSelector,
       recordedSequence,
     }) => {
@@ -351,6 +375,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             schemaPredicateLimit,
             proofLimit,
             entityIdentity,
+            trustMode,
             graphSelector,
             recordedSequence,
           })
@@ -406,6 +431,141 @@ export function createServer(deps: PipelineDeps): McpServer {
               graphSelector
             ),
           })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'assert_tentative',
+    {
+      title: 'Assert tentative facts',
+      description:
+        'Store explicit ground Datalog facts as tentative claims. They are journaled but excluded from ordinary query, recall, integrity, and conflict views until accepted or explicitly included.',
+      inputSchema: {
+        clauses: boundedText('One or more ordinary ground facts'),
+        namespace: namespaceField,
+        opId: operationIdField,
+        integrityMode: integrityModeField,
+        integrityNamespaces: integrityNamespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
+      },
+    },
+    async ({
+      clauses,
+      namespace,
+      opId,
+      integrityMode,
+      integrityNamespaces,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      graphSelector,
+    }) => {
+      try {
+        return asContent(
+          assertTentativeTool(
+            { store: resolvedDeps.store },
+            {
+              clauses,
+              namespace,
+              opId,
+              integrityEnforcement: requestedIntegrity(
+                resolvedDeps.integrityEnforcement,
+                integrityMode,
+                integrityNamespaces,
+                proofLimit,
+                maxViolations,
+                entityIdentity,
+                graphSelector
+              ),
+            }
+          )
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'review_tentative',
+    {
+      title: 'Review tentative claims',
+      description:
+        'List bounded tentative facts awaiting explicit acceptance or rejection, with stable IDs and durable sources.',
+      inputSchema: { namespaces: namespacesField },
+    },
+    async ({ namespaces }) => {
+      try {
+        return asContent(
+          reviewTentativeTool(
+            { store: resolvedDeps.store },
+            { namespaces }
+          )
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'resolve_tentative',
+    {
+      title: 'Accept or reject tentative facts',
+      description:
+        'Atomically accept or reject exact tentative ground facts. Every requested claim must still be current; acceptance passes configured integrity enforcement.',
+      inputSchema: {
+        clauses: boundedText('Exact ground facts previously stored as tentative'),
+        action: z.enum(['accept', 'reject']),
+        namespace: namespaceField,
+        opId: operationIdField,
+        integrityMode: integrityModeField,
+        integrityNamespaces: integrityNamespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
+      },
+    },
+    async ({
+      clauses,
+      action,
+      namespace,
+      opId,
+      integrityMode,
+      integrityNamespaces,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      graphSelector,
+    }) => {
+      try {
+        return asContent(
+          resolveTentativeTool(
+            { store: resolvedDeps.store },
+            {
+              clauses,
+              action,
+              namespace,
+              opId,
+              integrityEnforcement: requestedIntegrity(
+                resolvedDeps.integrityEnforcement,
+                integrityMode,
+                integrityNamespaces,
+                proofLimit,
+                maxViolations,
+                entityIdentity,
+                graphSelector
+              ),
+            }
+          )
         );
       } catch (e) {
         return asError(e);
@@ -488,13 +648,20 @@ export function createServer(deps: PipelineDeps): McpServer {
         query: boundedText(),
         namespaces: namespacesField,
         entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
         recordedSequence: recordedSequenceField,
       },
     },
-    async ({ query, namespaces, entityIdentity, recordedSequence }) => {
+    async ({ query, namespaces, entityIdentity, trustMode, recordedSequence }) => {
       try {
         return asContent(
-          queryTool(resolvedDeps, { query, namespaces, entityIdentity, recordedSequence })
+          queryTool(resolvedDeps, {
+            query,
+            namespaces,
+            entityIdentity,
+            trustMode,
+            recordedSequence,
+          })
         );
       } catch (e) {
         return asError(e);
@@ -513,6 +680,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         namespaces: namespacesField,
         proofLimit: proofLimitField,
         entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
         graphSelector: graphSelectorField,
         recordedSequence: recordedSequenceField,
       },
@@ -522,6 +690,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       namespaces,
       proofLimit,
       entityIdentity,
+      trustMode,
       graphSelector,
       recordedSequence,
     }) => {
@@ -532,6 +701,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             namespaces,
             proofLimit,
             entityIdentity,
+            trustMode,
             graphSelector,
             recordedSequence,
           })
@@ -553,6 +723,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
         graphSelector: graphSelectorField,
         recordedSequence: recordedSequenceField,
       },
@@ -562,6 +733,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       proofLimit,
       maxViolations,
       entityIdentity,
+      trustMode,
       graphSelector,
       recordedSequence,
     }) => {
@@ -572,6 +744,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             proofLimit,
             maxViolations,
             entityIdentity,
+            trustMode,
             graphSelector,
             recordedSequence,
           })
@@ -594,6 +767,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         maxViolations: maxViolationsField,
         entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
         graphSelector: graphSelectorField,
         recordedSequence: recordedSequenceField,
       },
@@ -604,6 +778,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       proofLimit,
       maxViolations,
       entityIdentity,
+      trustMode,
       graphSelector,
       recordedSequence,
     }) => {
@@ -615,6 +790,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             proofLimit,
             maxViolations,
             entityIdentity,
+            trustMode,
             graphSelector,
             recordedSequence,
           })
@@ -707,13 +883,19 @@ export function createServer(deps: PipelineDeps): McpServer {
       inputSchema: {
         namespaces: namespacesField,
         predicate: z.string().optional().describe("Filter: 'name' or 'name/arity'"),
+        trustMode: trustViewField,
         recordedSequence: recordedSequenceField,
       },
     },
-    async ({ namespaces, predicate, recordedSequence }) => {
+    async ({ namespaces, predicate, trustMode, recordedSequence }) => {
       try {
         return asContent(
-          listMemoriesTool(resolvedDeps, { namespaces, predicate, recordedSequence })
+          listMemoriesTool(resolvedDeps, {
+            namespaces,
+            predicate,
+            trustMode,
+            recordedSequence,
+          })
         );
       } catch (e) {
         return asError(e);

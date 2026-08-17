@@ -80,6 +80,11 @@ Version 0.20 lets policy inspect reusable aggregate-derived facts. A constraint 
 is enforced atomically like every other explicit forbidden state. See
 [the aggregate-rule contract](RULE-AGGREGATION.md).
 
+Tentative claims do not participate in default audit or enforcement. Version 0.21 permits
+an explicit `include_tentative` audit/conflict view before promotion; accepting a claim
+then runs the ordinary atomic write guard. See
+[the knowledge-trust contract](TRUSTED-KNOWLEDGE.md).
+
 ## Deterministic and temporal boundary
 
 - Constraints are stored, diffed, exported, imported, journaled, sourced, and

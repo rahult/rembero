@@ -13,6 +13,13 @@ import {
   serializeClause,
 } from '../engine/index.js';
 import type { MemorySource } from '../store/store.js';
+import {
+  isTentativeDeclaration,
+  isTrustMetadataPredicate,
+  projectTrustKnowledge,
+  type KnowledgeTrust,
+  type TrustViewMode,
+} from './trust.js';
 
 export const ENTITY_ALIAS_PREDICATE = 'rembero_alias';
 export const ENTITY_POSITION_PREDICATE = 'rembero_entity_position';
@@ -47,6 +54,7 @@ export interface EntityRewrite {
 export interface EntityProjection {
   projectedFrom: string;
   identityRewrites: EntityRewrite[];
+  trust?: Extract<KnowledgeTrust, 'tentative'>;
 }
 
 export class EntityIdentityError extends Error {
@@ -59,7 +67,11 @@ export class EntityIdentityError extends Error {
 }
 
 function reservedPredicate(predicate: string): boolean {
-  return predicate === ENTITY_ALIAS_PREDICATE || predicate === ENTITY_POSITION_PREDICATE;
+  return (
+    predicate === ENTITY_ALIAS_PREDICATE ||
+    predicate === ENTITY_POSITION_PREDICATE ||
+    isTrustMetadataPredicate(predicate)
+  );
 }
 
 export function isEntityMetadataPredicate(predicate: string): boolean {
@@ -399,26 +411,42 @@ export interface CanonicalKnowledgeView {
 
 export function canonicalizeKnowledge(
   clauses: Clause[],
-  sourceIndex: Map<string, MemorySource[]> = new Map()
+  sourceIndex: Map<string, MemorySource[]> = new Map(),
+  trustMode: TrustViewMode = 'accepted'
 ): CanonicalKnowledgeView {
-  const resolver = buildEntityResolver(clauses, sourceIndex);
+  const trustView = projectTrustKnowledge(clauses, sourceIndex, trustMode);
+  const resolver = buildEntityResolver(trustView.clauses, trustView.sources);
   const normalized: Clause[] = [];
   const sources = new Map<string, MemorySource[]>();
   const exactClaims = new Set<string>();
   const projections = new Map<string, EntityProjection[]>();
   const seen = new Set<string>();
 
-  for (const original of clauses) {
+  for (const original of trustView.clauses) {
     if (declarationKind(original) !== undefined) continue;
+    const originalKey = canonicalKey(original);
+    const trustProjections = trustView.projections.get(originalKey) ?? [];
     const { clause, rewrites } = resolver.canonicalizeClause(original);
     const key = canonicalKey(clause);
-    if (rewrites.length === 0) {
+    if (rewrites.length === 0 && trustView.acceptedKeys.has(originalKey)) {
       exactClaims.add(key);
-    } else {
-      const evidence: EntityProjection = {
-        projectedFrom: serializeClause(original),
-        identityRewrites: rewrites,
-      };
+    }
+    const evidenceRecords: EntityProjection[] =
+      trustProjections.length > 0
+        ? trustProjections.map((projection) => ({
+            projectedFrom: projection.projectedFrom,
+            identityRewrites: rewrites,
+            trust: 'tentative',
+          }))
+        : rewrites.length > 0
+          ? [
+              {
+                projectedFrom: serializeClause(original),
+                identityRewrites: rewrites,
+              },
+            ]
+          : [];
+    for (const evidence of evidenceRecords) {
       const existing = projections.get(key) ?? [];
       if (!existing.some((candidate) => JSON.stringify(candidate) === JSON.stringify(evidence))) {
         existing.push(evidence);
@@ -430,15 +458,18 @@ export function canonicalizeKnowledge(
       normalized.push(clause);
     }
     const merged = sources.get(key) ?? [];
-    const originalSources = sourceIndex.get(canonicalKey(original));
+    const originalSources = trustView.sources.get(originalKey);
     mergeSources(
       merged,
       rewrites.length === 0 || originalSources === undefined
         ? originalSources
         : originalSources.map((source) => ({
             ...source,
-            projectedFrom: serializeClause(original),
-            identityRewrites: rewrites,
+            projectedFrom: source.projectedFrom ?? serializeClause(original),
+            identityRewrites: [
+              ...(source.identityRewrites ?? []),
+              ...rewrites,
+            ],
           }))
     );
     if (merged.length > 0) sources.set(key, merged);
@@ -457,28 +488,37 @@ export function canonicalizeKnowledge(
 
 export function literalKnowledge(
   clauses: Clause[],
-  sourceIndex: Map<string, MemorySource[]> = new Map()
+  sourceIndex: Map<string, MemorySource[]> = new Map(),
+  trustMode: TrustViewMode = 'accepted'
 ): CanonicalKnowledgeView {
   // Literal reads deliberately do not interpret or validate identity metadata.
   // This keeps the pre-identity query contract stable even when a namespace
   // contains declarations that a canonical read would reject.
+  const trustView = projectTrustKnowledge(clauses, sourceIndex, trustMode);
   const resolver = new EntityResolver(new Map(), new Map(), new Map());
-  const visibleClauses = clauses.filter((clause) => declarationKind(clause) === undefined);
+  const visibleClauses = trustView.clauses.filter(
+    (clause) => declarationKind(clause) === undefined
+  );
+  const visibleKeys = new Set(visibleClauses.map(canonicalKey));
   const visibleSources = new Map<string, MemorySource[]>();
   for (const clause of visibleClauses) {
     const key = canonicalKey(clause);
-    const sources = sourceIndex.get(key);
+    const sources = trustView.sources.get(key);
     if (sources !== undefined) visibleSources.set(key, [...sources]);
   }
   return {
     clauses: visibleClauses,
     sources: visibleSources,
     resolver,
-    exactClaims: new Set(visibleClauses.map(canonicalKey)),
-    projections: new Map(),
+    exactClaims: new Set(
+      [...visibleKeys].filter((key) => trustView.acceptedKeys.has(key))
+    ),
+    projections: new Map(
+      [...trustView.projections].filter(([key]) => visibleKeys.has(key))
+    ),
   };
 }
 
 export function isEntityMetadataDeclaration(clause: Clause): boolean {
-  return declarationKind(clause) !== undefined;
+  return declarationKind(clause) !== undefined || isTentativeDeclaration(clause);
 }

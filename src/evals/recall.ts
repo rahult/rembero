@@ -9,6 +9,7 @@ import {
 } from '../engine/index.js';
 import type { QueryPromptVariant } from '../llm/prompts.js';
 import type { RecallStatus } from '../llm/pipeline.js';
+import type { TrustViewMode } from '../knowledge/trust.js';
 
 export const RECALL_EVAL_DISTRACTOR_COUNT = 100;
 const RECALL_EVAL_DISTRACTORS = Array.from(
@@ -65,6 +66,7 @@ grandparent(X, Y) :- parent(X, Z), parent(Z, Y).
 ancestor(X, Y) :- parent(X, Y).
 ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y).
 ${RECALL_EVAL_DISTRACTORS}
+rembero_tentative('favorite_color(rahul, blue).').
 `;
 
 export type ExpectedQueryDecision = 'required' | 'unanswerable';
@@ -76,6 +78,7 @@ export interface RecallEvalCase {
   /** Values in each expected binding row. Variable names are intentionally ignored. */
   expectedRows: string[][];
   tags: string[];
+  trustMode?: TrustViewMode;
 }
 
 export const RECALL_EVAL_CASES: RecallEvalCase[] = [
@@ -259,6 +262,14 @@ export const RECALL_EVAL_CASES: RecallEvalCase[] = [
     expectedQuery: 'unanswerable',
     expectedRows: [],
     tags: ['unanswerable', 'unknown-predicate'],
+  },
+  {
+    id: 'tentative_preference',
+    question: "What might Rahul's favorite color be?",
+    expectedQuery: 'required',
+    expectedRows: [['blue']],
+    tags: ['tentative', 'direct', 'single-answer'],
+    trustMode: 'include_tentative',
   },
 ];
 

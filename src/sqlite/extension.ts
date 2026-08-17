@@ -78,6 +78,7 @@ interface SyntaxInspection {
   negation: boolean;
   aggregation: boolean;
   identity: boolean;
+  trust: boolean;
   arithmetic: boolean;
   rule: boolean;
   headless: boolean;
@@ -124,6 +125,7 @@ function inspectSyntax(program: string): SyntaxInspection {
         visible
       ),
     identity: /\b(?:rembero_alias|rembero_entity_position)\s*\(/.test(visible),
+    trust: /\brembero_tentative\s*\(/.test(visible),
     arithmetic: containsArithmeticSyntax(visible),
     rule: visible.includes(':-'),
     headless: visible.trimStart().startsWith(':-'),
@@ -134,6 +136,11 @@ function assertNoIdentitySyntax(inspection: SyntaxInspection): void {
   if (inspection.identity) {
     throw new Error(
       'entity identity declarations are currently supported by the portable Datalog engine, not the SQLite extension'
+    );
+  }
+  if (inspection.trust) {
+    throw new Error(
+      'tentative trust declarations are personal knowledge-store metadata, not SQLite predicates'
     );
   }
 }

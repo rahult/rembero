@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.20.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.21.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -57,6 +57,9 @@ describe('MCP explanation surfaces', () => {
           'recall_explain',
           'check_integrity',
           'conflict_views',
+          'assert_tentative',
+          'review_tentative',
+          'resolve_tentative',
           'history',
           'supersede_facts',
         ])
@@ -96,6 +99,78 @@ describe('MCP explanation surfaces', () => {
         namespace: 'default',
         opId: 'mcp-assert-retry',
       });
+
+      const tentative = await client.callTool({
+        name: 'assert_tentative',
+        arguments: {
+          clauses: 'tentative_note(atlas).',
+          opId: 'mcp-tentative-note',
+        },
+      });
+      const tentativeText = tentative.content.find((item) => item.type === 'text');
+      expect(JSON.parse(tentativeText?.type === 'text' ? tentativeText.text : '')).toEqual({
+        added: ['tentative_note(atlas).'],
+        duplicates: 0,
+        opId: 'mcp-tentative-note',
+      });
+      const hiddenTentative = await client.callTool({
+        name: 'query',
+        arguments: { query: 'tentative_note(atlas)' },
+      });
+      const hiddenTentativeText = hiddenTentative.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          hiddenTentativeText?.type === 'text' ? hiddenTentativeText.text : ''
+        ).bindings
+      ).toEqual([]);
+      const includedTentative = await client.callTool({
+        name: 'explain_query',
+        arguments: {
+          query: 'tentative_note(atlas)',
+          trustMode: 'include_tentative',
+        },
+      });
+      const includedTentativeText = includedTentative.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          includedTentativeText?.type === 'text' ? includedTentativeText.text : ''
+        )
+      ).toMatchObject({
+        trustMode: 'include_tentative',
+        rows: [{ proofs: [{ trust: 'tentative' }] }],
+      });
+      const reviewedTentative = await client.callTool({
+        name: 'review_tentative',
+        arguments: {},
+      });
+      const reviewedTentativeText = reviewedTentative.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          reviewedTentativeText?.type === 'text' ? reviewedTentativeText.text : ''
+        )
+      ).toMatchObject({ count: 1, claims: [{ clause: 'tentative_note(atlas).' }] });
+      const resolvedTentative = await client.callTool({
+        name: 'resolve_tentative',
+        arguments: {
+          clauses: 'tentative_note(atlas).',
+          action: 'accept',
+          opId: 'mcp-accept-note',
+        },
+      });
+      const resolvedTentativeText = resolvedTentative.content.find(
+        (item) => item.type === 'text'
+      );
+      expect(
+        JSON.parse(
+          resolvedTentativeText?.type === 'text' ? resolvedTentativeText.text : ''
+        )
+      ).toMatchObject({ action: 'accept', resolved: 1, added: ['tentative_note(atlas).'] });
 
       await client.callTool({
         name: 'assert_facts',

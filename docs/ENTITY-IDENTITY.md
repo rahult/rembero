@@ -76,3 +76,8 @@ declarations.
 
 The experimental SQLite extension rejects identity declarations explicitly until it can
 provide the same position-scoped semantics and provenance contract.
+
+Version 0.21 composes identity after trust projection. A tentative fact is first decoded
+only for an explicit `include_tentative` view, then canonicalized at declared positions;
+its proof carries both `trust: tentative` and the exact alias rewrite chain. Tentative
+claims cannot contain identity declarations.

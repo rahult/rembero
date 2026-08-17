@@ -88,7 +88,7 @@ async function runConfiguration(
   const root = mkdtempSync(join(tmpdir(), 'rembero-recall-eval-'));
   try {
     const store = new MemoryStore(root);
-    store.assert('default', RECALL_EVAL_PROGRAM);
+    store.importClauses('default', RECALL_EVAL_PROGRAM);
     const llm = new OpenRouterClient({ apiKey, baseUrl, model });
     const cases = RECALL_EVAL_CASES.filter((testCase) =>
       caseIds === null ? true : caseIds.has(testCase.id)
@@ -101,7 +101,12 @@ async function runConfiguration(
           { store, llm },
           testCase.question,
           ['default'],
-          { queryPromptVariant: variant }
+          {
+            queryPromptVariant: variant,
+            ...(testCase.trustMode === undefined
+              ? {}
+              : { trustMode: testCase.trustMode }),
+          }
         );
         observations.push({
           case: testCase,

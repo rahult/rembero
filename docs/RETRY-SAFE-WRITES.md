@@ -42,11 +42,12 @@ const replay = store.assert('personal', 'prefers_theme(rahul, dark).', {
 });
 ```
 
-CLI `assert`, `supersede`, `forget`, and `import` accept `--op-id`. A conflicting reuse writes a JSON
-error to stderr and exits `4`.
+CLI `assert`, `accept`, `reject`, `supersede`, `forget`, and `import` accept `--op-id`.
+A conflicting reuse writes a JSON error to stderr and exits `4`.
 
-MCP `assert_facts`, `supersede_facts`, and `forget` accept `opId`. Conflicts return `isError: true` with a
-JSON `operation_conflict` payload.
+MCP `assert_facts`, `assert_tentative`, `resolve_tentative`, `supersede_facts`, and
+`forget` accept `opId`. Conflicts return `isError: true` with a JSON
+`operation_conflict` payload.
 
 For explicit supersession timestamps, the canonical UTC instant is part of the normalized
 request: retrying an operation ID with a different supplied instant conflicts. When the

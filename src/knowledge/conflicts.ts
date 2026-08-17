@@ -29,6 +29,7 @@ import {
   type IntegrityCheckOptions,
   type IntegrityStatus,
 } from './integrity.js';
+import type { TrustViewMode } from './trust.js';
 
 export const MAX_CONFLICT_FOCUS_BYTES = 4_096;
 
@@ -86,6 +87,7 @@ export interface ConflictViewResult {
   matchingViolationCount: number;
   clusterCount: number;
   clusters: ConflictCluster[];
+  trustMode?: TrustViewMode;
 }
 
 interface ConflictClusterBuilder {
@@ -220,6 +222,7 @@ export function inspectConflicts(
 ): ConflictViewResult {
   const { focus: requestedFocus, graphSelector, ...integrityOptions } = options;
   const entityIdentity = integrityOptions.entityIdentity;
+  const trustMode = integrityOptions.trustMode;
   const focus = normalizedFocus(
     requestedFocus,
     entityIdentity,
@@ -348,5 +351,6 @@ export function inspectConflicts(
     ),
     clusterCount: clusters.length,
     clusters,
+    ...(trustMode === undefined || trustMode === 'accepted' ? {} : { trustMode }),
   };
 }

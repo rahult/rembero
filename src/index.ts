@@ -151,6 +151,35 @@ export {
   type ConflictViewResult,
 } from './knowledge/conflicts.js';
 export {
+  TENTATIVE_PREDICATE,
+  MAX_TENTATIVE_FACTS,
+  MAX_TENTATIVE_CLAUSE_BYTES,
+  TrustMetadataError,
+  assertTrustMetadataSafety,
+  decodeTentativeDeclaration,
+  isTentativeDeclaration,
+  isTrustMetadataPredicate,
+  listTentativeClaims,
+  projectTrustKnowledge,
+  tentativeClaimId,
+  wrapTentativeFacts,
+  type KnowledgeTrust,
+  type TentativeClaim,
+  type TentativeResolutionAction,
+  type TrustKnowledgeView,
+  type TrustProjection,
+  type TrustViewMode,
+} from './knowledge/trust.js';
+export {
+  MAX_TENTATIVE_REVIEW_CLAIMS,
+  assertTentativeFacts,
+  resolveTentativeFacts,
+  reviewTentativeClaims,
+  type StoredTentativeClaim,
+  type TentativeAssertionResult,
+  type TentativeResolutionResult,
+} from './knowledge/trust-store.js';
+export {
   MAX_GRAPH_NEIGHBOR_DEPTH,
   MAX_GRAPH_NODE_ID_BYTES,
   MAX_GRAPH_RESULT_ROW,

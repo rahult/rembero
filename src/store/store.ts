@@ -36,6 +36,14 @@ import {
   type IntegrityEnforcementOptions,
 } from '../knowledge/enforcement.js';
 import type { EntityRewrite } from '../knowledge/identity.js';
+import {
+  decodeTentativeDeclaration,
+  assertTrustMetadataSafety,
+  isTrustMetadataPredicate,
+  TrustMetadataError,
+  wrapTentativeFacts,
+  type TentativeResolutionAction,
+} from '../knowledge/trust.js';
 
 const NAMESPACE_RE = /^[a-z0-9_-]+$/;
 const HEADER = '% rembero memory — one Datalog clause per line; edit by hand if you like.\n';
@@ -73,7 +81,11 @@ export interface MutationContext {
   integrity?: IntegrityEnforcementOptions;
 }
 
-export type IdempotentMutationOperation = 'assert' | 'retract' | 'supersede';
+export type IdempotentMutationOperation =
+  | 'assert'
+  | 'retract'
+  | 'supersede'
+  | 'resolve_tentative';
 
 export class OperationConflictError extends Error {
   readonly code = 'operation_conflict';
@@ -129,6 +141,7 @@ export interface MemoryHistoryEvent {
   previousSourceOpId?: string;
   archivedAs?: string;
   validUntil?: string;
+  trustAction?: TentativeResolutionAction;
 }
 
 export interface MemoryHistory {
@@ -187,9 +200,11 @@ export interface MemorySource {
   text?: string;
   redacted?: boolean;
   temporal?: TemporalMemorySource;
-  /** Present when an opt-in identity view projected a literal stored clause. */
+  /** Present when an opt-in identity or trust view projected a stored clause. */
   projectedFrom?: string;
   identityRewrites?: EntityRewrite[];
+  trust?: 'tentative';
+  trustAction?: TentativeResolutionAction;
 }
 
 export type AutoCaptureStatus = 'started' | 'captured' | 'empty' | 'failed' | 'skipped';
@@ -428,6 +443,9 @@ function journalMemorySource(
     ...(typeof entry.sourceText === 'string' ? { text: entry.sourceText } : {}),
     ...(entry.sourceRedacted === true ? { redacted: true } : {}),
     ...(temporal === undefined ? {} : { temporal }),
+    ...(entry.trustAction === 'accept' || entry.trustAction === 'reject'
+      ? { trustAction: entry.trustAction }
+      : {}),
   };
 }
 
@@ -1018,11 +1036,21 @@ export class MemoryStore {
     clauses: string | Clause[],
     context: MutationContext = {}
   ): AssertResult {
+    return this.assertInternal(namespace, clauses, context, false);
+  }
+
+  private assertInternal(
+    namespace: string,
+    clauses: string | Clause[],
+    context: MutationContext,
+    allowTrustMetadata: boolean
+  ): AssertResult {
     const explicitOpId = context.opId !== undefined;
     const opId = validateOperationId(context.opId ?? this.createOperationId());
     const at = validDate(context.at ?? new Date(), 'assert timestamp');
     const effectiveContext = { ...context, opId };
     const parsed = typeof clauses === 'string' ? parseProgram(clauses) : clauses;
+    assertTrustMetadataSafety(parsed, allowTrustMetadata);
     const requested = parsed.map(serializeClause);
     const requestKeys = parsed.map(canonicalKey);
     return this.withMutationLock(() =>
@@ -1159,6 +1187,17 @@ export class MemoryStore {
     const at = validDate(context.at ?? new Date(), 'retract timestamp');
     const effectiveContext = { ...context, opId };
     const target = parseRetractionTarget(pattern, 'forget pattern');
+    const targetPredicate = 'literal' in target
+      ? target.literal.predicate
+      : parseProgram(target.serialized)[0]?.head.predicate;
+    if (
+      targetPredicate !== undefined &&
+      isTrustMetadataPredicate(targetPredicate)
+    ) {
+      throw new TrustMetadataError(
+        'raw retraction may not mutate trust metadata; use resolveTentative'
+      );
+    }
     return this.withMutationLock(() =>
       this.withNamespaceLock(namespace, () => {
         return this.withLock('journal', () => {
@@ -1361,12 +1400,74 @@ export class MemoryStore {
     return this.replaceFacts(namespace, patterns, replacements, false, context);
   }
 
+  /** Store explicit ground facts outside the accepted reasoning view pending review. */
+  assertTentative(
+    namespace: string,
+    clauses: string | Clause[],
+    context: MutationContext = {}
+  ): AssertResult {
+    return this.assertInternal(
+      namespace,
+      wrapTentativeFacts(clauses),
+      context,
+      true
+    );
+  }
+
+  /** Import portable clauses, including fully validated tentative declarations. */
+  importClauses(
+    namespace: string,
+    clauses: string | Clause[],
+    context: MutationContext = {}
+  ): AssertResult {
+    const parsed = typeof clauses === 'string' ? parseProgram(clauses) : clauses;
+    assertTrustMetadataSafety(parsed, true);
+    return this.assertInternal(namespace, parsed, context, true);
+  }
+
+  /** Atomically accept or reject exact tentative facts; every requested claim must exist. */
+  resolveTentative(
+    namespace: string,
+    clauses: string | Clause[],
+    action: TentativeResolutionAction,
+    context: MutationContext = {}
+  ): SupersedeResult {
+    if (action !== 'accept' && action !== 'reject') {
+      throw new TrustMetadataError("tentative action must be 'accept' or 'reject'");
+    }
+    const declarations = wrapTentativeFacts(clauses);
+    if (new Set(declarations.map(canonicalKey)).size !== declarations.length) {
+      throw new TrustMetadataError('tentative resolution contains duplicate claims');
+    }
+    const facts = declarations.map((declaration) => {
+      const fact = decodeTentativeDeclaration(declaration);
+      if (fact === undefined) throw new Error('expected tentative declaration');
+      return fact;
+    });
+    const patterns = declarations.map((declaration) =>
+      serializeGoal(declaration.head)
+    );
+    return this.replaceFacts(
+      namespace,
+      patterns,
+      action === 'accept' ? facts : [],
+      false,
+      context,
+      true,
+      action,
+      true
+    );
+  }
+
   private replaceFacts(
     namespace: string,
     patterns: string[],
     replacements: string | Clause[],
     archive: boolean,
-    context: MutationContext
+    context: MutationContext,
+    requireEveryPattern = false,
+    trustAction?: TentativeResolutionAction,
+    allowTrustMetadata = false
   ): SupersedeResult {
     if (patterns.length === 0) throw new Error('supersede requires at least one fact pattern');
     if (patterns.length > MAX_SUPERSEDE_PATTERNS) {
@@ -1375,9 +1476,20 @@ export class MemoryStore {
     const parsedPatterns = patterns.map((pattern) => ({
       literal: parseFactPattern(pattern, 'supersede pattern'),
     }));
+    if (
+      !allowTrustMetadata &&
+      parsedPatterns.some(({ literal }) =>
+        isTrustMetadataPredicate(literal.predicate)
+      )
+    ) {
+      throw new TrustMetadataError(
+        'raw replacement may not mutate trust metadata; use resolveTentative'
+      );
+    }
     const requestedPatterns = parsedPatterns.map((pattern) => serializeGoal(pattern.literal));
     const parsedReplacements =
       typeof replacements === 'string' ? parseProgram(replacements) : replacements;
+    assertTrustMetadataSafety(parsedReplacements, allowTrustMetadata);
     const explicitOpId = context.opId !== undefined;
     const opId = validateOperationId(context.opId ?? this.createOperationId());
     const at = validDate(
@@ -1412,6 +1524,9 @@ export class MemoryStore {
             !Array.isArray(priorOperation.replacementRequested) ||
             !priorOperation.replacementRequested.every((value) => typeof value === 'string') ||
             typeof priorOperation.ts !== 'string' ||
+            (priorOperation.trustAction !== undefined &&
+              priorOperation.trustAction !== 'accept' &&
+              priorOperation.trustAction !== 'reject') ||
             (priorOperation.atProvided !== undefined &&
               typeof priorOperation.atProvided !== 'boolean')
           ) {
@@ -1424,12 +1539,17 @@ export class MemoryStore {
               JSON.stringify(requestedReplacementClauses) ||
             (priorOperation.validTimeMode ?? 'archive_until') !==
               (archive ? 'archive_until' : 'delete') ||
+            priorOperation.trustAction !== trustAction ||
             (priorOperation.atProvided === undefined && context.at === undefined) ||
             (typeof priorOperation.atProvided === 'boolean' &&
               priorOperation.atProvided !== (context.at !== undefined)) ||
             (context.at !== undefined && priorOperation.ts !== validUntil)
           ) {
-            throw new OperationConflictError('supersede', namespace, opId);
+            throw new OperationConflictError(
+              trustAction === undefined ? 'supersede' : 'resolve_tentative',
+              namespace,
+              opId
+            );
           }
           if (!Array.isArray(priorOperation.ended)) {
             throw new Error(`supersede operation '${opId}' has invalid ended facts`);
@@ -1481,6 +1601,11 @@ export class MemoryStore {
               ended.push(clause);
             }
           }
+        }
+        if (requireEveryPattern && ended.length !== parsedPatterns.length) {
+          throw new TrustMetadataError(
+            `tentative resolution requires all ${parsedPatterns.length} requested claims to be current`
+          );
         }
 
         const archives = archive
@@ -1559,6 +1684,7 @@ export class MemoryStore {
               replacementRequested: requestedReplacementClauses,
               replacementAdded: replacementAdded.map(serializeClause),
               duplicates,
+              ...(trustAction === undefined ? {} : { trustAction }),
               ...(context.sourceText === undefined ? {} : { sourceText: context.sourceText }),
               ...(context.origin === undefined ? {} : { origin: context.origin }),
               ...(context.captureId === undefined ? {} : { captureId: context.captureId }),
@@ -2268,6 +2394,14 @@ export class MemoryStore {
         if (validTimeMode === 'delete' && journalEntry.archived.length !== 0) {
           throw new Error(`${label} delete replacement cannot contain archives`);
         }
+        const trustAction = journalEntry.trustAction;
+        if (
+          trustAction !== undefined &&
+          trustAction !== 'accept' &&
+          trustAction !== 'reject'
+        ) {
+          throw new Error(`${label} has an invalid trust action`);
+        }
         const archives = new Map<
           string,
           { to: Clause; validUntil: string }
@@ -2367,6 +2501,7 @@ export class MemoryStore {
                       archivedAs: serializeClause(archive.to),
                       validUntil: archive.validUntil,
                     }),
+                ...(trustAction === undefined ? {} : { trustAction }),
                 ...source,
               });
             }
@@ -2424,6 +2559,7 @@ export class MemoryStore {
                 clause: serializeClause(clause),
                 current: false,
                 ...(previousSourceOpId === undefined ? {} : { previousSourceOpId }),
+                ...(trustAction === undefined ? {} : { trustAction }),
                 ...source,
               });
             }
@@ -2589,6 +2725,13 @@ export class MemoryStore {
           const validTimeMode = entry.validTimeMode ?? 'archive_until';
           if (validTimeMode !== 'delete' && validTimeMode !== 'archive_until') {
             throw new Error(`${label} has an invalid valid-time mode`);
+          }
+          if (
+            entry.trustAction !== undefined &&
+            entry.trustAction !== 'accept' &&
+            entry.trustAction !== 'reject'
+          ) {
+            throw new Error(`${label} has an invalid trust action`);
           }
           if (!Array.isArray(entry.ended)) throw new Error(`${label} ended must be an array`);
           const temporalByKey = new Map<string, TemporalMemorySource>();
@@ -2824,16 +2967,7 @@ export class MemoryStore {
         if (!current.has(currentKey)) continue;
         latest.set(currentKey, {
           key,
-          source: {
-            namespace: entry.namespace,
-            opId: entry.opId,
-            ts: entry.ts,
-            ...(typeof entry.sourceText === 'string' ? { text: entry.sourceText } : {}),
-            ...(entry.sourceRedacted === true ? { redacted: true } : {}),
-            ...(temporalByClause.get(key) === undefined
-              ? {}
-              : { temporal: temporalByClause.get(key) }),
-          },
+          source: journalMemorySource(entry, temporalByClause.get(key)),
         });
       }
     }

@@ -42,9 +42,10 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_INTEGRITY_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view when enforcement is active |
 | `REMBERO_ENTITY_IDENTITY` | no | `off`; use `canonical` for explicit position-scoped alias projection |
 
-The raw Datalog tools (`assert`, `supersede`, `query`, `check`, `assert_facts`,
-`supersede_facts`, `forget`, `list_memories`) work with no API key at all — only natural-language
-`remember`/`recall` call the LLM.
+The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `query`,
+`check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
+`supersede_facts`, `forget`, `list_memories`) work with no API key at all—only
+natural-language `remember`/`recall` call the LLM.
 
 ## Use from Claude Code (MCP)
 
@@ -66,8 +67,9 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 ```
 
 Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
-`supersede_facts`, `query`, `explain_query`, `check_integrity`, `conflict_views`,
-`history`, `forget`, and `list_memories`.
+`assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
+`query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
+and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -128,6 +130,9 @@ node dist/cli.js check    --proof-limit 2 --max-violations 100
 node dist/cli.js conflicts mira # focused cross-policy conflict evidence
 node dist/cli.js conflicts mira --as-of-sequence 17 # exact recorded conflict view
 node dist/cli.js assert   'status(mira, terminated).' --integrity-mode strict
+node dist/cli.js assert   'status(mira, paused).' --trust tentative
+node dist/cli.js claims
+node dist/cli.js accept   'status(mira, paused).' --op-id review-17
 node dist/cli.js assert   'status(mira, active).' --op-id change-123 # retry-safe
 node dist/cli.js supersede 'works_at(mira, initech).' \
   --pattern 'works_at(mira, _)' --at '2026-08-16T16:59:00.000Z' --op-id job-42
@@ -194,6 +199,12 @@ Version 0.20 makes exact aggregation reusable inside rules. A clause such as
 proof-carrying count per team for later rules, recall, integrity policy, graphs, and the
 SQLite portable bridge. Aggregate dependency cycles fail stratification. See
 [the aggregate-rule contract](docs/RULE-AGGREGATION.md).
+
+Version 0.21 separates tentative claims from accepted knowledge. Tentative facts remain
+explicit `.dl` declarations and journal entries but are excluded from reasoning by
+default. Opt-in reads label their proofs, sources, and graph claims; deterministic
+accept/reject operations preserve recorded-time and integrity authority. See
+[the knowledge-trust contract](docs/TRUSTED-KNOWLEDGE.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the
@@ -400,6 +411,9 @@ closed. Extension loading is disabled again immediately after the library is loa
 - Entity identity is explicit metadata: `rembero_alias('Mira Patel', mira).` declares
   an alias and `rembero_entity_position(works_at, 2, 0).` opts one zero-based argument
   position into canonical reads. The declarations never rewrite durable facts or history.
+- Tentative trust is explicit metadata:
+  `rembero_tentative('works_at(mira, acme).').` remains outside accepted reasoning until
+  reviewed; use the typed CLI/MCP/library surfaces instead of authoring wrappers manually.
 - Stratified closed-world negation: `available(X) :- employee(X), \+ suspended(X).`
   Variables in comparisons and negated literals must be bound by an earlier positive
   goal. Recursive dependency cycles containing negation are rejected.

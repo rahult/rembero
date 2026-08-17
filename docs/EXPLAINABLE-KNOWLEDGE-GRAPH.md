@@ -121,3 +121,7 @@ Version 0.20 nests an aggregate node beneath each aggregate-derived claim, prese
 ordered contributor results, sources, tied witnesses, and further aggregate strata. The
 node is scoped to its parent claim so unrelated empty reductions cannot collide. See
 [the aggregate-rule contract](RULE-AGGREGATION.md).
+Version 0.21 keeps tentative claims outside the graph by default. An explicit trust view
+adds `trust: tentative` and the stored declaration to proof/source/claim nodes without
+changing node authority or persisting a trust graph. See
+[the knowledge-trust contract](TRUSTED-KNOWLEDGE.md).

@@ -28,6 +28,11 @@ import {
 } from './knowledge/enforcement.js';
 import type { EntityIdentityMode } from './knowledge/identity.js';
 import {
+  TrustMetadataError,
+  type KnowledgeTrust,
+  type TrustViewMode,
+} from './knowledge/trust.js';
+import {
   MAX_GRAPH_NEIGHBOR_DEPTH,
   MAX_GRAPH_NODE_ID_BYTES,
   MAX_GRAPH_RESULT_ROW,
@@ -38,11 +43,14 @@ import {
   checkIntegrityTool,
   conflictViewsTool,
   assertFactsTool,
+  assertTentativeTool,
   explainQueryTool,
   forgetTool,
   historyTool,
   listMemoriesTool,
   queryTool,
+  resolveTentativeTool,
+  reviewTentativeTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -72,6 +80,9 @@ Usage:
   rembero recall-explain <question>      Recall with proofs, sources, and a graph
   rembero query <datalog>                Run a raw Datalog query
   rembero assert <datalog>               Store raw Datalog facts, rules, or constraints
+  rembero claims                         List tentative facts awaiting review
+  rembero accept <datalog>               Promote exact tentative facts to accepted
+  rembero reject <datalog>               Reject exact tentative facts without accepting
   rembero supersede [datalog]            End matching facts; optionally add replacements
   rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
   rembero check                          Check explicit integrity constraints with evidence
@@ -91,7 +102,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/check/conflicts/list/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -99,9 +110,10 @@ Options:
       --integrity-mode <mode>  Write guard: off, strict, or no_new_violations
       --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
       --entity-identity <mode>  Read projection: off (default) or canonical
+      --trust <mode>        Writes: accepted/tentative; reads: accepted/include_tentative
       --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
       --at <ISO>           Canonical UTC valid-until instant for supersede
-      --op-id <id>        Stable idempotency key for assert, supersede, forget, or import retries
+      --op-id <id>        Stable idempotency key for assert/accept/reject/supersede/forget/import
       --as-of-sequence <n> Read the knowledge view after global journal entry n (0 = empty)
       --graph-result <n>  Export the complete support graph for result row n
       --graph-support <node-id>  Export the support closure for one graph node
@@ -138,6 +150,7 @@ interface ParsedArgs {
   integrityMode?: string;
   integrityNamespaces?: string[] | '*';
   entityIdentity?: string;
+  trust?: string;
   opId?: string;
   graphResult?: string;
   graphSupport?: string;
@@ -207,6 +220,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.integrityNamespaces = value === '*' ? '*' : value.split(',');
     } else if (arg === '--entity-identity') {
       parsed.entityIdentity = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--trust') {
+      parsed.trust = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--op-id') {
       parsed.opId = valueAfter(i, arg);
@@ -306,6 +322,18 @@ function entityIdentityOption(
   if (value === 'off') return false;
   if (value === 'canonical') return value;
   throw new Error("--entity-identity must be 'off' or 'canonical'");
+}
+
+function knowledgeTrustOption(value: string | undefined): KnowledgeTrust {
+  if (value === undefined || value === 'accepted') return 'accepted';
+  if (value === 'tentative') return value;
+  throw new Error("write --trust must be 'accepted' or 'tentative'");
+}
+
+function trustViewOption(value: string | undefined): TrustViewMode {
+  if (value === undefined || value === 'accepted') return 'accepted';
+  if (value === 'include_tentative') return value;
+  throw new Error("read --trust must be 'accepted' or 'include_tentative'");
 }
 
 function graphNodeIdOption(value: string, label: string): string {
@@ -465,6 +493,8 @@ async function main(): Promise<void> {
     'serve',
     'remember',
     'assert',
+    'accept',
+    'reject',
     'supersede',
     'forget',
     'import',
@@ -478,9 +508,29 @@ async function main(): Promise<void> {
   }
   if (
     operationId !== undefined &&
-    !['assert', 'supersede', 'forget', 'import'].includes(command ?? '')
+    !['assert', 'accept', 'reject', 'supersede', 'forget', 'import'].includes(command ?? '')
   ) {
-    throw new Error('--op-id is available for assert, supersede, forget, and import');
+    throw new Error('--op-id is available for assert, accept, reject, supersede, forget, and import');
+  }
+  if (
+    args.trust !== undefined &&
+    ![
+      'serve',
+      'remember',
+      'recall',
+      'recall-explain',
+      'query',
+      'assert',
+      'explain',
+      'check',
+      'conflicts',
+      'list',
+    ].includes(command ?? '')
+  ) {
+    throw new Error('--trust is unavailable for this command');
+  }
+  if (args.batch && args.trust !== undefined) {
+    throw new Error('--trust does not apply to auto-capture batches');
   }
   if (args.patterns.length > 0 && command !== 'supersede') {
     throw new Error('--pattern is available only for supersede');
@@ -534,6 +584,7 @@ async function main(): Promise<void> {
         ),
         integrityEnforcement: integritySetting,
         entityIdentity: entityIdentitySetting,
+        trustMode: trustViewOption(args.trust),
       });
       return; // keep process alive; transport owns stdio
     case 'remember': {
@@ -582,6 +633,7 @@ async function main(): Promise<void> {
           validTimeMode,
           integrityEnforcement: integritySetting,
           entityIdentity: entityIdentitySetting,
+          trust: knowledgeTrustOption(args.trust),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
@@ -597,6 +649,7 @@ async function main(): Promise<void> {
             args.schemaPredicateLimit
           ),
           entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
         },
         text,
         namespaces,
@@ -608,7 +661,7 @@ async function main(): Promise<void> {
         ? ''
         : `, recorded: ${result.recordedSnapshot.sequence}/${result.recordedSnapshot.journalEntries}`;
       console.log(
-        `  (status: ${result.status}, query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length}${recorded})`
+        `  (status: ${result.status}, query: ${result.query ?? 'n/a'}, matches: ${result.bindings.length}, trust: ${result.trustMode ?? 'accepted'}${recorded})`
       );
       return;
     }
@@ -623,6 +676,7 @@ async function main(): Promise<void> {
             args.schemaPredicateLimit
           ),
           entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
         },
         text,
         namespaces,
@@ -638,7 +692,11 @@ async function main(): Promise<void> {
     }
     case 'query': {
       const result = queryTool(
-        { store, entityIdentity: entityIdentitySetting },
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
         {
           query: text,
           namespaces,
@@ -647,16 +705,37 @@ async function main(): Promise<void> {
       );
       console.log(
         stringifyBoundedResult(
-          recordedSequence === undefined ? result.bindings : result,
+          recordedSequence === undefined && result.trustMode === undefined
+            ? result.bindings
+            : result,
           'CLI result'
         )
       );
       return;
     }
     case 'assert': {
-      const result = assertFactsTool(
+      const result = knowledgeTrustOption(args.trust) === 'tentative'
+        ? assertTentativeTool(
+            { store, integrityEnforcement },
+            { clauses: text, namespace: args.namespace, opId: operationId }
+          )
+        : assertFactsTool(
+            { store, integrityEnforcement },
+            { clauses: text, namespace: args.namespace, opId: operationId }
+          );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'accept':
+    case 'reject': {
+      const result = resolveTentativeTool(
         { store, integrityEnforcement },
-        { clauses: text, namespace: args.namespace, opId: operationId }
+        {
+          clauses: text,
+          action: command === 'accept' ? 'accept' : 'reject',
+          namespace: args.namespace,
+          opId: operationId,
+        }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
@@ -664,7 +743,11 @@ async function main(): Promise<void> {
     case 'explain': {
       const proofLimit = proofLimitOption(args.proofLimit);
       const result = explainQueryTool(
-        { store, entityIdentity: entityIdentitySetting },
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
         {
           query: text,
           namespaces,
@@ -680,7 +763,11 @@ async function main(): Promise<void> {
       const proofLimit = proofLimitOption(args.proofLimit);
       const maxViolations = maxViolationsOption(args.maxViolations);
       const result = checkIntegrityTool(
-        { store, entityIdentity: entityIdentitySetting },
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
         {
           namespaces,
           ...(proofLimit === undefined ? {} : { proofLimit }),
@@ -697,7 +784,11 @@ async function main(): Promise<void> {
       const proofLimit = proofLimitOption(args.proofLimit);
       const maxViolations = maxViolationsOption(args.maxViolations);
       const result = conflictViewsTool(
-        { store, entityIdentity: entityIdentitySetting },
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
         {
           ...(text.length === 0 ? {} : { focus: text }),
           namespaces,
@@ -753,8 +844,9 @@ async function main(): Promise<void> {
       for (const event of result.events) {
         const current = event.current ? ' [current]' : '';
         const archive = event.archivedAs ? ` -> ${event.archivedAs}` : '';
+        const trust = event.trustAction ? ` [trust: ${event.trustAction}]` : '';
         console.log(
-          `${event.sequence}.${event.position} ${event.ts} ${event.namespace} ${event.action}${current}: ${event.clause}${archive}`
+          `${event.sequence}.${event.position} ${event.ts} ${event.namespace} ${event.action}${current}${trust}: ${event.clause}${archive}`
         );
         if (event.sourceText) console.log(`  source: ${event.sourceText}`);
       }
@@ -779,7 +871,7 @@ async function main(): Promise<void> {
       if (size > MAX_INPUT_BYTES) {
         throw new Error(`import file exceeds ${MAX_INPUT_BYTES} bytes`);
       }
-      const result = store.assert(
+      const result = store.importClauses(
         ns,
         readFileSync(file, 'utf8'),
         {
@@ -823,11 +915,19 @@ async function main(): Promise<void> {
     }
     case 'list': {
       const result = listMemoriesTool(
-        { store },
+        { store, trustMode: trustViewOption(args.trust) },
         {
           namespaces,
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'claims': {
+      const result = reviewTentativeTool(
+        { store },
+        { namespaces }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
       return;
@@ -912,6 +1012,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((e: unknown) => {
+  if (e instanceof TrustMetadataError) {
+    console.error(stringifyBoundedResult(e.toJSON(), 'CLI trust metadata error'));
+    process.exitCode = 6;
+    return;
+  }
   if (e instanceof IncompleteHistoryError) {
     console.error(stringifyBoundedResult(e.toJSON(), 'CLI recorded history error'));
     process.exitCode = 5;

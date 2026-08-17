@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, isAggregateRule, parseProgram, parseQuery, parseQuerySpec, retrieveQuestion, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, assertTentativeFacts, canonicalizeKnowledge, checkIntegrity, evaluate, evaluateQuerySpec, explainKnowledge, inspectConflicts, isAggregateRule, parseProgram, parseQuery, parseQuerySpec, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const arithmetic = evaluateQuerySpec(parseProgram('score(a, 20). score(b, 14).'), parseQuerySpec('score(X, S), S > 10 + 5')); " +
@@ -60,6 +60,12 @@ try {
         "const reviewLlm = { responses: ['?- uses_language(atlas, Value).', '?- project_owner(atlas, Owner).'], async complete() { const value = this.responses.shift(); if (value === undefined) throw new Error('review responses exhausted'); return value; } }; " +
         "const review = await retrieveQuestion({ store: reviewStore, llm: reviewLlm }, 'Who owns Atlas?'); " +
         "if (review.query !== 'project_owner(atlas, Owner)' || review.bindings[0]?.Owner !== 'rahul' || review.queryReviews?.[0]?.outcome !== 'corrected') throw new Error('public recall disambiguation API failed'); " +
+        "const trustStore = new MemoryStore('./trust-memory'); assertTentativeFacts(trustStore, 'default', 'status(mira, active).', { opId: 'tentative' }); " +
+        "if (explainKnowledge(trustStore.clausesFor(['default']), 'status(mira, State)', trustStore.sourcesFor(['default'])).rows.length !== 0) throw new Error('tentative default isolation failed'); " +
+        "const tentativeExplain = explainKnowledge(trustStore.clausesFor(['default']), 'status(mira, State)', trustStore.sourcesFor(['default']), { trustMode: 'include_tentative' }); " +
+        "if (tentativeExplain.rows[0]?.proofs[0]?.trust !== 'tentative' || reviewTentativeClaims(trustStore).length !== 1) throw new Error('public tentative review API failed'); " +
+        "resolveTentativeFacts(trustStore, 'default', 'status(mira, active).', 'accept', { opId: 'accepted' }); " +
+        "if (explainKnowledge(trustStore.clausesFor(['default']), 'status(mira, State)', trustStore.sourcesFor(['default'])).rows[0]?.bindings?.State !== 'active') throw new Error('public tentative promotion API failed'); " +
         "if (typeof IntegrityViolationError !== 'function') throw new Error('public integrity enforcement API failed'); " +
         "const identity = canonicalizeKnowledge(parseProgram(\"rembero_alias('Mira Patel', mira). rembero_entity_position(works_at, 2, 0). works_at('Mira Patel', acme).\")); " +
         "if (identity.clauses[0]?.head.args[0]?.value !== 'mira') throw new Error('public identity API failed'); " +
@@ -108,6 +114,73 @@ try {
   const removedSettings = JSON.parse(readFileSync(claudeSettings, 'utf8'));
   if (removedSettings.hooks?.Stop !== undefined) {
     throw new Error('packaged auto-capture hook removal failed');
+  }
+  const trustHome = join(directory, 'trust-home');
+  const trustEnv = { ...process.env, REMBERO_HOME: trustHome };
+  run(
+    process.execPath,
+    [
+      installedCli,
+      'assert',
+      'status(mira, active).',
+      '--trust',
+      'tentative',
+      '--op-id',
+      'package-tentative',
+    ],
+    { cwd: directory, env: trustEnv }
+  );
+  const hiddenTrust = JSON.parse(
+    run(process.execPath, [installedCli, 'query', 'status(mira, State)'], {
+      cwd: directory,
+      env: trustEnv,
+    })
+  );
+  const includedTrust = JSON.parse(
+    run(
+      process.execPath,
+      [
+        installedCli,
+        'explain',
+        'status(mira, State)',
+        '--trust',
+        'include_tentative',
+      ],
+      { cwd: directory, env: trustEnv }
+    )
+  );
+  const trustClaims = JSON.parse(
+    run(process.execPath, [installedCli, 'claims'], {
+      cwd: directory,
+      env: trustEnv,
+    })
+  );
+  if (
+    hiddenTrust.length !== 0 ||
+    includedTrust.rows[0]?.proofs[0]?.trust !== 'tentative' ||
+    trustClaims.count !== 1
+  ) {
+    throw new Error('packaged tentative trust inspection failed');
+  }
+  run(
+    process.execPath,
+    [
+      installedCli,
+      'accept',
+      'status(mira, active).',
+      '--op-id',
+      'package-accept',
+    ],
+    { cwd: directory, env: trustEnv }
+  );
+  const acceptedTrust = JSON.parse(
+    run(process.execPath, [installedCli, 'query', 'status(mira, State)'], {
+      cwd: directory,
+      env: trustEnv,
+    })
+  );
+  if (acceptedTrust[0]?.State !== 'active') {
+    throw new Error('packaged tentative trust acceptance failed');
   }
   const extensionPath = run(process.execPath, [installedCli, 'sqlite-build'], {
     cwd: directory,
@@ -415,7 +488,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

@@ -32,6 +32,7 @@ import type {
   ExplanationGraphSelection,
   ExplanationGraphSelector,
 } from './graph-navigation.js';
+import type { TrustViewMode } from './trust.js';
 
 export const DEFAULT_MAX_INTEGRITY_VIOLATIONS = 1_000;
 export const MAX_INTEGRITY_VIOLATIONS = 10_000;
@@ -45,6 +46,8 @@ export interface IntegrityCheckOptions
   maxViolations?: number;
   /** Opt-in deterministic projection through explicit entity-position declarations. */
   entityIdentity?: EntityIdentityMode;
+  /** Tentative claims are excluded unless explicitly included. */
+  trustMode?: TrustViewMode;
   /** Optional deterministic subgraph selection for every constraint result. */
   graphSelector?: ExplanationGraphSelector;
 }
@@ -102,6 +105,7 @@ export interface IntegrityCheckResult {
   constraintCount: number;
   violationCount: number;
   checks: IntegrityConstraintCheck[];
+  trustMode?: TrustViewMode;
 }
 
 function resolveMaxViolations(value: number | undefined): number {
@@ -134,12 +138,13 @@ export function checkIntegrity(
   const {
     maxViolations: requestedMaxViolations,
     entityIdentity,
+    trustMode,
     ...proofOptions
   } = options;
   const maxViolations = resolveMaxViolations(requestedMaxViolations);
   const view = entityIdentity === 'canonical'
-    ? canonicalizeKnowledge(clauses, sourceIndex)
-    : literalKnowledge(clauses, sourceIndex);
+    ? canonicalizeKnowledge(clauses, sourceIndex, trustMode)
+    : literalKnowledge(clauses, sourceIndex, trustMode);
   const constraints: Array<{ clause: Clause; key: string }> = [];
   const seen = new Set<string>();
 
@@ -162,6 +167,7 @@ export function checkIntegrity(
       constraintCount: 0,
       violationCount: 0,
       checks: [],
+      ...(trustMode === undefined || trustMode === 'accepted' ? {} : { trustMode }),
     };
   }
 
@@ -174,6 +180,7 @@ export function checkIntegrity(
       ...proofOptions,
       maxRows: remaining + 1,
       ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(trustMode === undefined ? {} : { trustMode }),
     });
     if (explanation.rows.length > remaining) {
       throw new EngineLimitError(
@@ -204,5 +211,6 @@ export function checkIntegrity(
     constraintCount: constraints.length,
     violationCount,
     checks,
+    ...(trustMode === undefined || trustMode === 'accepted' ? {} : { trustMode }),
   };
 }

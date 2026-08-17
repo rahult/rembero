@@ -3,6 +3,7 @@ import {
   isComparison,
   isIntegrityConstraint,
   isNegation,
+  parseProgram,
   parseQuerySpec,
   predKey,
   serializeClause,
@@ -45,6 +46,21 @@ import {
 } from '../knowledge/identity.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 import type { ExplanationGraphSelector } from '../knowledge/graph-navigation.js';
+import {
+  assertTentativeFacts,
+  resolveTentativeFacts,
+  reviewTentativeClaims,
+  type StoredTentativeClaim,
+  type TentativeAssertionResult,
+  type TentativeResolutionResult,
+} from '../knowledge/trust-store.js';
+import {
+  isTentativeDeclaration,
+  TrustMetadataError,
+  type KnowledgeTrust,
+  type TentativeResolutionAction,
+  type TrustViewMode,
+} from '../knowledge/trust.js';
 
 export type LlmToolDeps = PipelineDeps;
 
@@ -52,6 +68,7 @@ export interface StoreToolDeps {
   store: MemoryStore;
   integrityEnforcement?: IntegrityEnforcementOptions | false;
   entityIdentity?: EntityIdentityMode | false;
+  trustMode?: TrustViewMode | false;
 }
 
 type NamespacesArg = string[] | '*' | undefined;
@@ -61,6 +78,14 @@ const namespacesOrDefault = (namespaces: NamespacesArg): string[] | '*' => {
   assertNamespaceCount(resolved);
   return resolved;
 };
+
+function configuredTrustMode(
+  deps: StoreToolDeps,
+  requested: TrustViewMode | undefined
+): TrustViewMode {
+  const configured = requested ?? deps.trustMode;
+  return configured === false || configured === undefined ? 'accepted' : configured;
+}
 
 function recordedView(
   store: MemoryStore,
@@ -93,6 +118,7 @@ export function rememberTool(
     namespace?: string;
     integrityEnforcement?: IntegrityEnforcementOptions;
     entityIdentity?: EntityIdentityMode;
+    trust?: KnowledgeTrust;
   }
 ): Promise<RememberResult> {
   assertBoundedInput(args.text, 'memory text');
@@ -103,6 +129,7 @@ export function rememberTool(
     ...(args.entityIdentity === undefined
       ? {}
       : { entityIdentity: args.entityIdentity }),
+    ...(args.trust === undefined ? {} : { trust: args.trust }),
   });
 }
 
@@ -113,6 +140,7 @@ export function recallTool(
     namespaces?: string[] | '*';
     schemaPredicateLimit?: number;
     entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
     recordedSequence?: number;
   }
 ): Promise<RecallResult> {
@@ -124,6 +152,7 @@ export function recallTool(
     ...(args.entityIdentity === undefined
       ? {}
       : { entityIdentity: args.entityIdentity }),
+    ...(args.trustMode === undefined ? {} : { trustMode: args.trustMode }),
     ...(args.recordedSequence === undefined
       ? {}
       : { recordedSequence: args.recordedSequence }),
@@ -138,6 +167,7 @@ export function recallExplainTool(
     schemaPredicateLimit?: number;
     proofLimit?: number;
     entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
     graphSelector?: ExplanationGraphSelector;
     recordedSequence?: number;
   }
@@ -152,6 +182,7 @@ export function recallExplainTool(
     ...(args.entityIdentity === undefined
       ? {}
       : { entityIdentity: args.entityIdentity }),
+    ...(args.trustMode === undefined ? {} : { trustMode: args.trustMode }),
     ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
     ...(args.recordedSequence === undefined
       ? {}
@@ -169,9 +200,39 @@ export function assertFactsTool(
   }
 ): { added: string[]; duplicates: number; opId: string } {
   assertBoundedInput(args.clauses, 'clauses');
+  const parsed = parseProgram(args.clauses);
+  if (parsed.some(isTentativeDeclaration)) {
+    throw new TrustMetadataError(
+      'raw assertion may not assign trust metadata; use assert_tentative'
+    );
+  }
   const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
   const integrity = configured === false ? undefined : configured;
   const { added, duplicates, opId } = deps.store.assert(
+    args.namespace ?? 'default',
+    parsed,
+    {
+      ...(args.opId === undefined ? {} : { opId: args.opId }),
+      ...(integrity === undefined ? {} : { integrity }),
+    }
+  );
+  return { added: added.map(serializeClause), duplicates, opId };
+}
+
+export function assertTentativeTool(
+  deps: StoreToolDeps,
+  args: {
+    clauses: string;
+    namespace?: string;
+    opId?: string;
+    integrityEnforcement?: IntegrityEnforcementOptions;
+  }
+): TentativeAssertionResult {
+  assertBoundedInput(args.clauses, 'tentative clauses');
+  const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
+  const integrity = configured === false ? undefined : configured;
+  return assertTentativeFacts(
+    deps.store,
     args.namespace ?? 'default',
     args.clauses,
     {
@@ -179,7 +240,42 @@ export function assertFactsTool(
       ...(integrity === undefined ? {} : { integrity }),
     }
   );
-  return { added: added.map(serializeClause), duplicates, opId };
+}
+
+export function reviewTentativeTool(
+  deps: StoreToolDeps,
+  args: { namespaces?: string[] | '*' }
+): { claims: StoredTentativeClaim[]; count: number } {
+  const claims = reviewTentativeClaims(
+    deps.store,
+    namespacesOrDefault(args.namespaces)
+  );
+  return { claims, count: claims.length };
+}
+
+export function resolveTentativeTool(
+  deps: StoreToolDeps,
+  args: {
+    clauses: string;
+    action: TentativeResolutionAction;
+    namespace?: string;
+    opId?: string;
+    integrityEnforcement?: IntegrityEnforcementOptions;
+  }
+): TentativeResolutionResult {
+  assertBoundedInput(args.clauses, 'tentative resolution clauses');
+  const configured = args.integrityEnforcement ?? deps.integrityEnforcement;
+  const integrity = configured === false ? undefined : configured;
+  return resolveTentativeFacts(
+    deps.store,
+    args.namespace ?? 'default',
+    args.clauses,
+    args.action,
+    {
+      ...(args.opId === undefined ? {} : { opId: args.opId }),
+      ...(integrity === undefined ? {} : { integrity }),
+    }
+  );
 }
 
 export function validTimeInstant(value: string): Date {
@@ -243,18 +339,24 @@ export function queryTool(
     query: string;
     namespaces?: string[] | '*';
     entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
     recordedSequence?: number;
   }
-): { bindings: Record<string, string>[]; recordedSnapshot?: RecordedSnapshotMetadata } {
+): {
+  bindings: Record<string, string>[];
+  trustMode?: TrustViewMode;
+  recordedSnapshot?: RecordedSnapshotMetadata;
+} {
   assertBoundedInput(args.query, 'query');
   const namespaces = namespacesOrDefault(args.namespaces);
   const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
   const { clauses, sources } = recorded;
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
   const view = entityIdentity === 'canonical'
-    ? canonicalizeKnowledge(clauses, sources)
-    : literalKnowledge(clauses, sources);
+    ? canonicalizeKnowledge(clauses, sources, trustMode)
+    : literalKnowledge(clauses, sources, trustMode);
   const parsed = parseQuerySpec(args.query);
   const query = entityIdentity === 'canonical'
     ? view.resolver.canonicalizeQuery(parsed).query
@@ -264,6 +366,7 @@ export function queryTool(
   );
   return {
     bindings,
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
     ...(recorded.recordedSnapshot === undefined
       ? {}
       : { recordedSnapshot: recorded.recordedSnapshot }),
@@ -277,6 +380,7 @@ export function explainQueryTool(
     namespaces?: string[] | '*';
     proofLimit?: number;
     entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
     graphSelector?: ExplanationGraphSelector;
     recordedSequence?: number;
   }
@@ -285,6 +389,7 @@ export function explainQueryTool(
   const namespaces = namespacesOrDefault(args.namespaces);
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
   const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
   const result = explainKnowledge(
     recorded.clauses,
@@ -293,11 +398,13 @@ export function explainQueryTool(
     {
       ...(args.proofLimit === undefined ? {} : { maxProofsPerRow: args.proofLimit }),
       ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(trustMode === 'accepted' ? {} : { trustMode }),
       ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
     }
   );
   return {
     ...result,
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
     ...(recorded.recordedSnapshot === undefined
       ? {}
       : { recordedSnapshot: recorded.recordedSnapshot }),
@@ -311,6 +418,7 @@ export function checkIntegrityTool(
     proofLimit?: number;
     maxViolations?: number;
     entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
     graphSelector?: ExplanationGraphSelector;
     recordedSequence?: number;
   }
@@ -318,6 +426,7 @@ export function checkIntegrityTool(
   const namespaces = namespacesOrDefault(args.namespaces);
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
   const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
   const result = checkIntegrity(
     recorded.clauses,
@@ -330,11 +439,13 @@ export function checkIntegrityTool(
         ? {}
         : { maxViolations: args.maxViolations }),
       ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(trustMode === 'accepted' ? {} : { trustMode }),
       ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
     }
   );
   return {
     ...result,
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
     ...(recorded.recordedSnapshot === undefined
       ? {}
       : { recordedSnapshot: recorded.recordedSnapshot }),
@@ -349,6 +460,7 @@ export function conflictViewsTool(
     proofLimit?: number;
     maxViolations?: number;
     entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
     graphSelector?: ExplanationGraphSelector;
     recordedSequence?: number;
   }
@@ -357,6 +469,7 @@ export function conflictViewsTool(
   const namespaces = namespacesOrDefault(args.namespaces);
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
   const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
   const result = inspectConflicts(recorded.clauses, recorded.sources, {
     ...(args.focus === undefined ? {} : { focus: args.focus }),
@@ -367,10 +480,12 @@ export function conflictViewsTool(
       ? {}
       : { maxViolations: args.maxViolations }),
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
     ...(args.graphSelector === undefined ? {} : { graphSelector: args.graphSelector }),
   });
   return {
     ...result,
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
     ...(recorded.recordedSnapshot === undefined
       ? {}
       : { recordedSnapshot: recorded.recordedSnapshot }),
@@ -419,20 +534,27 @@ export interface PredicateGroup {
 
 export function listMemoriesTool(
   deps: StoreToolDeps,
-  args: { namespaces?: string[] | '*'; predicate?: string; recordedSequence?: number }
+  args: {
+    namespaces?: string[] | '*';
+    predicate?: string;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+  }
 ): {
   predicates: PredicateGroup[];
   constraints?: string[];
   aliases?: EntityAlias[];
   entityPositions?: EntityPosition[];
   identityError?: { code: 'entity_identity_error'; message: string };
+  trustMode?: TrustViewMode;
   recordedSnapshot?: RecordedSnapshotMetadata;
 } {
   const namespaces = namespacesOrDefault(args.namespaces);
   const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
   const storedClauses = recorded.clauses;
   const storedSources = recorded.sources;
-  const view = literalKnowledge(storedClauses, storedSources);
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const view = literalKnowledge(storedClauses, storedSources, trustMode);
   let resolver: EntityResolver | undefined;
   let identityError: { code: 'entity_identity_error'; message: string } | undefined;
   try {
@@ -482,6 +604,7 @@ export function listMemoriesTool(
     ...(aliases.length === 0 ? {} : { aliases }),
     ...(entityPositions.length === 0 ? {} : { entityPositions }),
     ...(identityError === undefined ? {} : { identityError }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
     ...(recorded.recordedSnapshot === undefined
       ? {}
       : { recordedSnapshot: recorded.recordedSnapshot }),

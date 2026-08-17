@@ -190,6 +190,105 @@ describe('CLI ingress limits', () => {
     expect(replayForget.stdout).toBe(firstForget.stdout);
   });
 
+  it('keeps tentative CLI facts hidden until explicitly reviewed and accepted', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-trust-'));
+    const home = join(root, 'home');
+    const run = (args: string[]) =>
+      spawnSync(process.execPath, [resolve('dist/cli.js'), ...args], {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      });
+
+    const asserted = run([
+      'assert',
+      'status(mira, active).',
+      '--namespace',
+      'personal',
+      '--trust',
+      'tentative',
+      '--op-id',
+      'cli-tentative-status',
+    ]);
+    expect(asserted.status).toBe(0);
+    expect(JSON.parse(asserted.stdout)).toMatchObject({
+      added: ['status(mira, active).'],
+    });
+
+    const hidden = run([
+      'query',
+      'status(mira, State)',
+      '--namespaces',
+      'personal',
+    ]);
+    expect(JSON.parse(hidden.stdout)).toEqual([]);
+    const included = run([
+      'explain',
+      'status(mira, State)',
+      '--namespaces',
+      'personal',
+      '--trust',
+      'include_tentative',
+    ]);
+    expect(JSON.parse(included.stdout)).toMatchObject({
+      trustMode: 'include_tentative',
+      rows: [{ bindings: { State: 'active' }, proofs: [{ trust: 'tentative' }] }],
+    });
+    const claims = run(['claims', '--namespaces', 'personal']);
+    expect(JSON.parse(claims.stdout)).toMatchObject({
+      count: 1,
+      claims: [{ clause: 'status(mira, active).', namespace: 'personal' }],
+    });
+
+    const accepted = run([
+      'accept',
+      'status(mira, active).',
+      '--namespace',
+      'personal',
+      '--op-id',
+      'cli-accept-status',
+    ]);
+    expect(accepted.status).toBe(0);
+    expect(JSON.parse(accepted.stdout)).toMatchObject({
+      action: 'accept',
+      resolved: 1,
+      added: ['status(mira, active).'],
+    });
+    const visible = run([
+      'query',
+      'status(mira, State)',
+      '--namespaces',
+      'personal',
+    ]);
+    expect(JSON.parse(visible.stdout)).toEqual([{ State: 'active' }]);
+
+    expect(
+      run([
+        'assert',
+        'prefers(mira, tea).',
+        '--namespace',
+        'personal',
+        '--trust',
+        'tentative',
+      ]).status
+    ).toBe(0);
+    const rejected = run([
+      'reject',
+      'prefers(mira, tea).',
+      '--namespace',
+      'personal',
+      '--op-id',
+      'cli-reject-preference',
+    ]);
+    expect(JSON.parse(rejected.stdout)).toMatchObject({
+      action: 'reject',
+      resolved: 1,
+      added: [],
+    });
+    expect(JSON.parse(run(['claims', '--namespaces', 'personal']).stdout)).toMatchObject({
+      count: 0,
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');
@@ -330,7 +429,7 @@ describe('CLI ingress limits', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(
-      /--op-id is available for assert, supersede, forget, and import/i
+      /--op-id is available for assert, accept, reject, supersede, forget, and import/i
     );
   });
 

@@ -69,3 +69,7 @@ Version 0.20 includes grouped aggregate rules in the portable path. Their inputs
 lower-stratum fixpoint before reduction, and `datalog_explain` returns the same nested
 contributor proof as the standalone engine. Native `datalog_sql` rejects aggregate query
 and rule syntax because its contract remains one compiled `SELECT`.
+
+Version 0.21 keeps tentative trust declarations personal-store only. SQLite rejects
+`rembero_tentative` explicitly rather than treating metadata as a table predicate; callers
+must review and accept a claim before exporting it as an ordinary SQLite fact.

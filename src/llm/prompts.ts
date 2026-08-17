@@ -180,9 +180,15 @@ export const PHRASING_SYSTEM_PROMPT = `Answer the user's question in one or two 
 export function phrasingUserPrompt(
   question: string,
   query: string,
-  bindings: Record<string, string>[]
+  bindings: Record<string, string>[],
+  trustMode: 'accepted' | 'include_tentative' = 'accepted',
+  rowTrust: Array<'accepted' | 'tentative'> = []
 ): string {
   return `Question: ${question}
 Query used: ${query}
-Results: ${JSON.stringify(bindings)}`;
+Results: ${JSON.stringify(bindings)}${
+    trustMode === 'include_tentative'
+      ? `\nTrust by result row: ${JSON.stringify(rowTrust)}. Qualify only rows labeled tentative; accepted rows remain authoritative even when the selected view also contains unrelated tentative claims.`
+      : ''
+  }`;
 }

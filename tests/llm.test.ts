@@ -8,6 +8,7 @@ import { buildSchemaSummary } from '../src/llm/prompts.js';
 import { rememberText, recallQuestion, retrieveQuestion } from '../src/llm/pipeline.js';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { OpenRouterClient } from '../src/llm/client.js';
+import { wrapTentativeFacts } from '../src/knowledge/trust.js';
 
 /** LlmClient returning scripted responses, recording every request. */
 class ScriptedLlm implements LlmClient {
@@ -72,6 +73,12 @@ describe('buildSchemaSummary', () => {
     expect(summary).not.toContain('rembero_alias');
     expect(summary).not.toContain('rembero_entity_position');
   });
+
+  it('keeps tentative metadata hidden unless recall explicitly includes its fact', () => {
+    const summary = buildSchemaSummary(wrapTentativeFacts('status(mira, active).'));
+    expect(summary).toContain('no memories yet');
+    expect(summary).not.toContain('rembero_tentative');
+  });
 });
 
 describe('rememberText', () => {
@@ -132,6 +139,89 @@ describe('rememberText', () => {
     await expect(
       rememberText({ store, llm }, 'Mira Patel and Mira are the same person')
     ).rejects.toThrow(/may not create entity identity metadata/i);
+    expect(store.load('default')).toEqual([]);
+  });
+
+  it('assigns tentative trust only from explicit caller authority', async () => {
+    const result = await rememberText(
+      { store, llm: new ScriptedLlm(['project(atlas).']) },
+      'Atlas may be the active project',
+      'default',
+      { trust: 'tentative' }
+    );
+    expect(result).toMatchObject({
+      added: ['project(atlas).'],
+      duplicates: 0,
+      retracted: 0,
+      trust: 'tentative',
+    });
+    expect(store.load('default').map(serializeClause)).toEqual([
+      "rembero_tentative('project(atlas).').",
+    ]);
+
+    const defaultLlm = new ScriptedLlm([]);
+    expect(
+      await retrieveQuestion(
+        { store, llm: defaultLlm },
+        'Is Atlas the active project?'
+      )
+    ).toMatchObject({ status: 'unanswerable', bindings: [] });
+    expect(defaultLlm.calls).toHaveLength(0);
+
+    const includedLlm = new ScriptedLlm([
+      '?- project(atlas).',
+      'Tentatively, Atlas is the active project.',
+    ]);
+    const included = await recallQuestion(
+      { store, llm: includedLlm },
+      'Is Atlas the active project?',
+      ['default'],
+      { trustMode: 'include_tentative', explain: true }
+    );
+    expect(included).toMatchObject({
+      status: 'answered',
+      trustMode: 'include_tentative',
+      rowTrust: ['tentative'],
+      bindings: [{}],
+      answer: 'Tentatively, Atlas is the active project.',
+      explanation: { rows: [{ proofs: [{ trust: 'tentative' }] }] },
+    });
+    expect(includedLlm.calls[1].at(-1)?.content).toContain(
+      'Trust by result row: ["tentative"]'
+    );
+  });
+
+  it('phrases an accepted duplicate as accepted in an opt-in trust view', async () => {
+    store.assertTentative('default', 'status(mira, active).');
+    store.assert('default', 'status(mira, active).');
+    const llm = new ScriptedLlm([
+      '?- status(mira, active).',
+      'Mira is active.',
+    ]);
+    const result = await recallQuestion(
+      { store, llm },
+      'Is Mira active?',
+      ['default'],
+      { trustMode: 'include_tentative' }
+    );
+    expect(result).toMatchObject({
+      status: 'answered',
+      rowTrust: ['accepted'],
+      answer: 'Mira is active.',
+    });
+    expect(llm.calls[1].at(-1)?.content).toContain(
+      'Trust by result row: ["accepted"]'
+    );
+  });
+
+  it('never lets model output assign its own trust metadata', async () => {
+    const llm = new ScriptedLlm([
+      "rembero_tentative('project(atlas).').",
+      "rembero_tentative('project(beacon).').",
+    ]);
+    await expect(
+      rememberText({ store, llm }, 'Maybe Atlas is active')
+    ).rejects.toThrow(/may not assign trust metadata/i);
     expect(store.load('default')).toEqual([]);
   });
 

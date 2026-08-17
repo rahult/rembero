@@ -40,6 +40,11 @@ Rules, constraints, identity declarations, source provenance, valid-time archive
 graph explanations all use the selected snapshot. Writes and integrity enforcement always
 operate on the current state and never accept a historical sequence.
 
+Version 0.21 includes tentative declarations and their accept/reject transitions in the
+same replay. The default view excludes a claim at its tentative sequence; an explicit
+`include_tentative` view returns it with trust provenance. Later acceptance cannot rewrite
+that earlier result.
+
 ## Temporal boundary
 
 Recorded-time snapshots and `_until` archives are distinct axes:

@@ -592,6 +592,9 @@ describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
       expect(() =>
         database.datalogQuery('rembero_entity_position(edge, 2, 0).')
       ).toThrow(/entity identity.*portable Datalog engine, not the SQLite extension/i);
+      expect(() =>
+        database.datalogQuery("rembero_tentative('edge(a, b).').")
+      ).toThrow(/tentative trust declarations.*not SQLite predicates/i);
       expect(() => database.datalogQuery(':- edge(X, Y), X = Y.')).toThrow(
         /integrity constraints.*personal knowledge store/i
       );

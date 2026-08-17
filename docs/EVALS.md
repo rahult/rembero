@@ -32,7 +32,8 @@ Version 0.19 adds four confusable non-empty cases where the wrong related predic
 returns plausible rows: owner versus implementation language and home versus workplace.
 These cases exercise the bounded query-review path as well as final evidence scoring.
 Version 0.20 adds a reusable aggregate-predicate case, bringing the deterministic corpus
-to 25 cases.
+to 25 cases. Version 0.21 adds one explicitly tentative recall case, bringing it to 26;
+that case runs with `include_tentative` while every other case retains the accepted view.
 
 ## Metrics
 
@@ -58,8 +59,8 @@ facts are held out from the sample facts included in the model-visible schema su
 
 Measured on 2026-08-17 AEST (2026-08-16 UTC) with `openai/gpt-5.6-luna`. The pre-v0.19
 grounded prompt passed all 20 then-current labeled cases among 100 distractor predicates
-without schema-budget exhaustion. This checkpoint predates the five cases added in 0.19
-and 0.20:
+without schema-budget exhaustion. This checkpoint predates the six cases added in 0.19
+through 0.21:
 
 | Corpus | Prompt | Accuracy | Precision | Recall | F1 | Answerability | Budget exhausted |
 |---|---|---:|---:|---:|---:|---:|---:|

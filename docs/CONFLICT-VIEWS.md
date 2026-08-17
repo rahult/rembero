@@ -74,6 +74,8 @@ snapshot before checking and grouping conflicts. The response includes the same
 
 Current conflict views observe only current base predicates unless a constraint explicitly
 names `_until` history. This is the same temporal boundary as `check_integrity`.
+Tentative claims are likewise excluded by default; `include_tentative` produces an
+explicitly labeled pre-promotion conflict view.
 
 ## Completeness and exits
 

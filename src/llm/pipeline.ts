@@ -26,7 +26,11 @@ import type {
   ValidTimeMode,
 } from '../store/store.js';
 import type { ChatMessage, LlmClient } from './client.js';
-import { explainKnowledge, type ExplainKnowledgeResult } from '../knowledge/graph.js';
+import {
+  explainKnowledge,
+  type ExplainKnowledgeResult,
+  type SourcedQueryProof,
+} from '../knowledge/graph.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   canonicalizeKnowledge,
@@ -36,6 +40,13 @@ import {
   type EntityIdentityMode,
 } from '../knowledge/identity.js';
 import type { ExplanationGraphSelector } from '../knowledge/graph-navigation.js';
+import { assertTentativeFacts } from '../knowledge/trust-store.js';
+import {
+  isTentativeDeclaration,
+  isTrustMetadataPredicate,
+  type KnowledgeTrust,
+  type TrustViewMode,
+} from '../knowledge/trust.js';
 import { assertSafeForExternalLlm } from '../safety.js';
 import {
   NOTHING_SENTINEL,
@@ -76,6 +87,8 @@ export interface PipelineDeps {
   integrityEnforcement?: IntegrityEnforcementOptions | false;
   /** Optional default explicit entity projection for recall and schema reads. */
   entityIdentity?: EntityIdentityMode | false;
+  /** Optional default trust projection; tentative claims remain excluded by default. */
+  trustMode?: TrustViewMode | false;
 }
 
 export interface RememberResult {
@@ -84,6 +97,7 @@ export interface RememberResult {
   retracted: number;
   archived?: string[];
   opId?: string;
+  trust?: Extract<KnowledgeTrust, 'tentative'>;
 }
 
 export interface RememberOptions {
@@ -92,6 +106,8 @@ export interface RememberOptions {
   integrityEnforcement?: IntegrityEnforcementOptions | false;
   /** Opt-in canonical read view for the extraction schema; stored writes stay literal. */
   entityIdentity?: EntityIdentityMode | false;
+  /** Explicit caller authority; tentative facts remain outside accepted reasoning. */
+  trust?: KnowledgeTrust;
   /** Controlled clock injection for library tests and deterministic integrations. */
   at?: Date;
 }
@@ -107,9 +123,11 @@ export interface RecallResult {
   query: string | null;
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
+  rowTrust?: KnowledgeTrust[];
   queryReviews?: RecallQueryReview[];
   pruning?: RecallPruningReport;
   recordedSnapshot?: RecordedSnapshotMetadata;
+  trustMode?: TrustViewMode;
 }
 
 export interface RetrievalResult {
@@ -117,9 +135,11 @@ export interface RetrievalResult {
   query: string | null;
   bindings: Record<string, string>[];
   explanation?: ExplainKnowledgeResult;
+  rowTrust?: KnowledgeTrust[];
   queryReviews?: RecallQueryReview[];
   pruning?: RecallPruningReport;
   recordedSnapshot?: RecordedSnapshotMetadata;
+  trustMode?: TrustViewMode;
 }
 
 export type RecallQueryReviewReason =
@@ -164,6 +184,7 @@ export interface RecallOptions {
   schemaPredicateLimit?: number;
   schemaByteLimit?: number;
   entityIdentity?: EntityIdentityMode | false;
+  trustMode?: TrustViewMode;
   graphSelector?: ExplanationGraphSelector;
   /** Read from the deterministic global journal position instead of current files. */
   recordedSequence?: number;
@@ -222,6 +243,10 @@ export async function rememberText(
   options: RememberOptions = {}
 ): Promise<RememberResult> {
   const validTimeMode = options.validTimeMode ?? deps.validTimeMode ?? 'delete';
+  const trust = options.trust ?? 'accepted';
+  if (trust !== 'accepted' && trust !== 'tentative') {
+    throw new Error("knowledge trust must be 'accepted' or 'tentative'");
+  }
   if (validTimeMode !== 'delete' && validTimeMode !== 'archive_until') {
     throw new Error("valid-time mode must be 'delete' or 'archive_until'");
   }
@@ -271,6 +296,21 @@ export async function rememberText(
             goal !== undefined &&
             !isComparison(goal) &&
             !isNegation(goal) &&
+            isTrustMetadataPredicate(goal.predicate)
+          );
+        })
+      ) {
+        throw new Error(
+          'natural-language memory extraction may not retract trust metadata'
+        );
+      }
+      if (
+        retractions.some((goals) => {
+          const goal = goals[0];
+          return (
+            goal !== undefined &&
+            !isComparison(goal) &&
+            !isNegation(goal) &&
             isEntityMetadataPredicate(goal.predicate)
           );
         })
@@ -285,6 +325,11 @@ export async function rememberText(
           'natural-language memory extraction may not create integrity constraints'
         );
       }
+      if (clauses.some(isTentativeDeclaration)) {
+        throw new Error(
+          'natural-language memory extraction may not assign trust metadata; the caller must request tentative storage'
+        );
+      }
       if (clauses.some(isEntityMetadataDeclaration)) {
         throw new Error(
           'natural-language memory extraction may not create entity identity metadata'
@@ -294,6 +339,9 @@ export async function rememberText(
     }
   );
   if (extraction === null) return { added: [], duplicates: 0, retracted: 0 };
+  if (trust === 'tentative' && extraction.retractions.length > 0) {
+    throw new Error('tentative memory is additive; it cannot retract accepted facts');
+  }
 
   const opId = deps.store.createOperationId();
   const configuredIntegrity =
@@ -325,6 +373,21 @@ export async function rememberText(
   }
   if (extraction.clauses.length === 0) {
     return { added: [], duplicates: 0, retracted: 0 };
+  }
+  if (trust === 'tentative') {
+    const result = assertTentativeFacts(
+      deps.store,
+      namespace,
+      extraction.clauses,
+      context
+    );
+    return {
+      added: result.added,
+      duplicates: result.duplicates,
+      retracted: 0,
+      opId: result.opId,
+      trust: 'tentative',
+    };
   }
   if (integrity === undefined) {
     deps.store.note(namespace, 'remember', { opId, text }, options.at);
@@ -367,6 +430,9 @@ export async function rememberTranscriptText(
         throw new Error('auto-capture accepts additive ground facts only; retractions are forbidden');
       }
       const parsed = parseProgram(response);
+      if (parsed.some(isTentativeDeclaration)) {
+        throw new Error('auto-capture may not create trust metadata');
+      }
       if (parsed.some(isEntityMetadataDeclaration)) {
         throw new Error('auto-capture may not create entity identity metadata');
       }
@@ -752,6 +818,22 @@ function answeredQueryAmbiguity(
   };
 }
 
+function proofTrust(proof: SourcedQueryProof): KnowledgeTrust {
+  return 'trust' in proof && proof.trust === 'tentative'
+    ? 'tentative'
+    : 'accepted';
+}
+
+function explanationRowTrust(
+  explanation: ExplainKnowledgeResult
+): KnowledgeTrust[] {
+  return explanation.rows.map((row) =>
+    row.proofs.some((proof) => proofTrust(proof) === 'tentative')
+      ? 'tentative'
+      : 'accepted'
+  );
+}
+
 export async function retrieveQuestion(
   deps: PipelineDeps,
   question: string,
@@ -774,10 +856,16 @@ export async function retrieveQuestion(
       };
   const configuredIdentity = options.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const configuredTrust = options.trustMode ?? deps.trustMode;
+  const trustMode =
+    configuredTrust === false || configuredTrust === undefined
+      ? 'accepted'
+      : configuredTrust;
   const view = entityIdentity === 'canonical'
-    ? canonicalizeKnowledge(literalClauses, literalSources)
-    : literalKnowledge(literalClauses, literalSources);
+    ? canonicalizeKnowledge(literalClauses, literalSources, trustMode)
+    : literalKnowledge(literalClauses, literalSources, trustMode);
   const clauses = view.clauses;
+  const trustResult = trustMode === 'accepted' ? {} : { trustMode };
   const aggregatePredicates = new Map<
     string,
     Array<{ op: AggregateOperator; outputPosition: number }>
@@ -796,6 +884,7 @@ export async function retrieveQuestion(
       status: 'unanswerable',
       query: null,
       bindings: [],
+      ...trustResult,
       ...(recordedSnapshot === undefined ? {} : { recordedSnapshot }),
     };
   }
@@ -823,6 +912,7 @@ export async function retrieveQuestion(
           status: 'schema_budget_exhausted',
           query: null,
           bindings: [],
+          ...trustResult,
           ...(recordedSnapshot === undefined ? {} : { recordedSnapshot }),
         };
       }
@@ -835,6 +925,7 @@ export async function retrieveQuestion(
     query: string | null;
     bindings: Record<string, string>[];
     explanation?: ExplainKnowledgeResult;
+    rowTrust?: KnowledgeTrust[];
     queryReview?: RecallQueryReview;
   }
 
@@ -861,7 +952,7 @@ export async function retrieveQuestion(
         : parsed;
     };
     const evaluate = (query: QuerySpec, queryText: string): PassResult => {
-      if (options.explain) {
+      if (options.explain || trustMode === 'include_tentative') {
         const explanation = explainKnowledge(
           literalClauses,
           queryText,
@@ -871,6 +962,7 @@ export async function retrieveQuestion(
               ? {}
               : { maxProofsPerRow: options.proofLimit }),
             ...(entityIdentity === undefined ? {} : { entityIdentity }),
+            ...(trustMode === 'accepted' ? {} : { trustMode }),
             ...(options.graphSelector === undefined
               ? {}
               : { graphSelector: options.graphSelector }),
@@ -881,7 +973,10 @@ export async function retrieveQuestion(
           outcome: bindings.length > 0 ? 'answered' : 'empty',
           query: queryText,
           bindings,
-          explanation,
+          ...(trustMode === 'include_tentative'
+            ? { rowTrust: explanationRowTrust(explanation) }
+            : {}),
+          ...(options.explain ? { explanation } : {}),
         };
       }
       const bindings = evaluateQuerySpec(clauses, query).map((binding: Bindings) =>
@@ -1029,6 +1124,7 @@ export async function retrieveQuestion(
       ...retrieval,
       ...reviewResult,
       ...pruning,
+      ...trustResult,
       ...snapshotResult,
     };
   }
@@ -1038,6 +1134,7 @@ export async function retrieveQuestion(
       ...retrieval,
       ...reviewResult,
       ...pruning,
+      ...trustResult,
       ...snapshotResult,
     };
   }
@@ -1046,6 +1143,7 @@ export async function retrieveQuestion(
     ...retrieval,
     ...reviewResult,
     ...pruning,
+    ...trustResult,
     ...snapshotResult,
   };
 }
@@ -1074,7 +1172,13 @@ export async function recallQuestion(
     };
   }
 
-  const phrasing = phrasingUserPrompt(question, retrieval.query, retrieval.bindings);
+  const phrasing = phrasingUserPrompt(
+    question,
+    retrieval.query,
+    retrieval.bindings,
+    retrieval.trustMode,
+    retrieval.rowTrust
+  );
   assertSafeForExternalLlm(phrasing, 'recall evidence');
   const answer = await deps.llm.complete([
     { role: 'system', content: PHRASING_SYSTEM_PROMPT },

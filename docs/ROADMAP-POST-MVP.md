@@ -240,6 +240,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    graph nodes, canonical identity, recall, integrity enforcement, package APIs, and the
    SQLite portable bridge share the same semantics and fail-closed proof limits.
 
+## Phase 24 — Reviewable knowledge trust  *(v0.21)*
+
+1. **Complete — portable trust authority**: tentative ground facts are stored as bounded
+   reserved declarations in the same `.dl` and append-only journal, while accepted facts
+   keep their ordinary representation. No confidence score or trust sidecar is added.
+2. **Complete — default-safe reads and evidence**: query, recall, explanation, integrity,
+   conflict, list, canonical identity, graph, and recorded snapshots exclude tentative
+   claims by default; explicit inclusion labels the view, proof, source, and claim node.
+3. **Complete — atomic review lifecycle**: library, CLI, and MCP can assert, list, accept,
+   or reject exact tentative facts with batch atomicity, retry-safe operation IDs,
+   integrity-gated promotion, journaled trust actions, and bounded review output.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

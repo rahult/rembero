@@ -26,6 +26,7 @@ import {
   type EntityRewrite,
   type EntityResolver,
 } from './identity.js';
+import type { TrustViewMode } from './trust.js';
 import {
   selectExplanationGraph,
   type ExplanationGraphSelection,
@@ -39,9 +40,10 @@ export interface SourcedDerivationProof
   sources?: MemorySource[];
   /** Additional active namespace witnesses, emitted only during alternative-proof inspection. */
   sourceAlternatives?: MemorySource[];
-  /** Present when this claim exists only through the opt-in canonical projection. */
+  /** Present when this claim exists only through an opt-in identity or trust projection. */
   projectedFrom?: string;
   identityRewrites?: EntityRewrite[];
+  trust?: 'tentative';
 }
 
 export type SourcedAbsenceProof = AbsenceProof;
@@ -52,6 +54,7 @@ export interface SourcedAggregateProof extends Omit<AggregateProof, 'contributor
     bindings: Record<string, string>;
     proofs: SourcedProofStep[];
   }>;
+  trust?: 'tentative';
 }
 
 export type SourcedQueryProof = SourcedProofStep | SourcedAggregateProof;
@@ -87,6 +90,7 @@ export interface ClaimGraphNode {
   sourceAlternatives?: MemorySource[];
   projectedFrom?: string;
   identityRewrites?: EntityRewrite[];
+  trust?: 'tentative';
 }
 
 export interface EntityGraphNode {
@@ -114,6 +118,7 @@ export interface AggregateGraphNode {
   as: string;
   value: string | number;
   contributorCount: number;
+  trust?: 'tentative';
 }
 
 export interface ProofGraphNode {
@@ -126,6 +131,7 @@ export interface ProofGraphNode {
   sourceAlternatives?: MemorySource[];
   projectedFrom?: string;
   identityRewrites?: EntityRewrite[];
+  trust?: 'tentative';
 }
 
 export interface ConflictGraphNode {
@@ -165,10 +171,12 @@ export interface ExplainKnowledgeResult {
   rules: ExplanationRule[];
   graph: ExplanationGraph;
   graphSelection?: ExplanationGraphSelection;
+  trustMode?: TrustViewMode;
 }
 
 export interface ExplainKnowledgeOptions extends EvaluateOptions {
   entityIdentity?: EntityIdentityMode;
+  trustMode?: TrustViewMode;
   graphSelector?: ExplanationGraphSelector;
 }
 
@@ -198,28 +206,42 @@ function addAggregateSources(
   projectionIndex: ReadonlyMap<string, EntityProjection[]>,
   includeOtherSources: boolean
 ): SourcedAggregateProof {
+  const contributors = proof.contributors.map((contributor) => ({
+    bindings: bindingStrings(contributor.bindings),
+    proofs: contributor.proofs.map((child) =>
+      addSources(
+        child,
+        sourceIndex,
+        exactClaims,
+        projectionIndex,
+        includeOtherSources
+      )
+    ),
+  }));
+  const tentative = contributors.some((contributor) =>
+    contributor.proofs.some(sourcedProofUsesTentative)
+  );
   return {
     aggregated: true,
     op: proof.op,
     input: proof.input,
     as: proof.as,
     value: proof.value,
-    contributors: proof.contributors.map((contributor) => ({
-      bindings: bindingStrings(contributor.bindings),
-      proofs: contributor.proofs.map((child) =>
-        addSources(
-          child,
-          sourceIndex,
-          exactClaims,
-          projectionIndex,
-          includeOtherSources
-        )
-      ),
-    })),
+    contributors,
     ...(proof.witnessPositions === undefined
       ? {}
       : { witnessPositions: [...proof.witnessPositions] }),
+    ...(tentative ? { trust: 'tentative' as const } : {}),
   };
+}
+
+function sourcedProofUsesTentative(proof: SourcedProofStep): boolean {
+  if (isAbsenceProof(proof)) return false;
+  return (
+    proof.trust === 'tentative' ||
+    (proof.because ?? []).some(sourcedProofUsesTentative) ||
+    proof.aggregate?.trust === 'tentative'
+  );
 }
 
 function addSources(
@@ -241,40 +263,46 @@ function addSources(
         : sources?.slice(0, 1);
   const sourceProjection = witnessSources?.[0]?.projectedFrom === undefined
     ? undefined
-    : {
+      : {
         projectedFrom: witnessSources[0].projectedFrom,
         identityRewrites: witnessSources[0].identityRewrites ?? [],
+        ...(witnessSources[0].trust === undefined
+          ? {}
+          : { trust: witnessSources[0].trust }),
       };
   const projection = sourceProjection ?? (!exactClaims.has(key) ? projectionIndex.get(key)?.[0] : undefined);
   const alternativeSources = witnessSources === undefined
     ? sources
     : sources?.slice(1);
+  const because = proof.because?.map((child) =>
+    addSources(child, sourceIndex, exactClaims, projectionIndex, includeOtherSources)
+  );
+  const aggregate = proof.aggregate === undefined
+    ? undefined
+    : addAggregateSources(
+        proof.aggregate,
+        sourceIndex,
+        exactClaims,
+        projectionIndex,
+        includeOtherSources
+      );
+  const trust =
+    projection?.trust === 'tentative' ||
+    (because ?? []).some(sourcedProofUsesTentative) ||
+    aggregate?.trust === 'tentative'
+      ? 'tentative' as const
+      : undefined;
   return {
     predicate: proof.predicate,
     values: proof.values,
     ...(proof.rule === undefined ? {} : { rule: proof.rule }),
-    ...(proof.because === undefined
-      ? {}
-      : {
-          because: proof.because.map((child) =>
-            addSources(child, sourceIndex, exactClaims, projectionIndex, includeOtherSources)
-          ),
-        }),
-    ...(proof.aggregate === undefined
-      ? {}
-      : {
-          aggregate: addAggregateSources(
-            proof.aggregate,
-            sourceIndex,
-            exactClaims,
-            projectionIndex,
-            includeOtherSources
-          ),
-        }),
+    ...(because === undefined ? {} : { because }),
+    ...(aggregate === undefined ? {} : { aggregate }),
     ...(witnessSources === undefined || witnessSources.length === 0
       ? {}
       : { sources: witnessSources }),
     ...(projection === undefined ? {} : projection),
+    ...(trust === undefined ? {} : { trust }),
     ...(!includeOtherSources || alternativeSources === undefined || alternativeSources.length === 0
       ? {}
       : { sourceAlternatives: alternativeSources }),
@@ -362,6 +390,7 @@ function aggregateStructure(proof: SourcedAggregateProof): unknown {
       contributor.proofs.map(proofStructure),
     ]),
     proof.witnessPositions ?? null,
+    proof.trust ?? null,
   ];
 }
 
@@ -376,6 +405,7 @@ function proofStructure(proof: SourcedProofStep): unknown {
     proof.rule ?? null,
     (proof.because ?? []).map(proofStructure),
     proof.aggregate === undefined ? null : aggregateStructure(proof.aggregate),
+    proof.trust ?? null,
   ];
 }
 
@@ -487,6 +517,7 @@ export function buildExplanationGraph(
       ...(proof.identityRewrites === undefined
         ? {}
         : { identityRewrites: proof.identityRewrites }),
+      ...(proof.trust === undefined ? {} : { trust: proof.trust }),
     });
     for (const [position, value] of proof.values.entries()) {
       const target = addEntity(value, proof.predicate, proof.values.length, position);
@@ -528,6 +559,7 @@ export function buildExplanationGraph(
         ...(proof.identityRewrites === undefined
           ? {}
           : { identityRewrites: proof.identityRewrites }),
+        ...(proof.trust === undefined ? {} : { trust: proof.trust }),
       });
       for (const [position, value] of proof.values.entries()) {
         const target = addEntity(value, proof.predicate, proof.values.length, position);
@@ -550,6 +582,7 @@ export function buildExplanationGraph(
       ...(proof.identityRewrites === undefined
         ? {}
         : { identityRewrites: proof.identityRewrites }),
+      ...(proof.trust === undefined ? {} : { trust: proof.trust }),
     });
     addEdge(edge('proves', id, claim));
     for (const [position, child] of (proof.because ?? []).entries()) {
@@ -578,6 +611,7 @@ export function buildExplanationGraph(
       as: proof.as,
       value: proof.value,
       contributorCount: proof.contributors.length,
+      ...(proof.trust === undefined ? {} : { trust: proof.trust }),
     });
     const witnesses = new Set(proof.witnessPositions ?? []);
     for (const [position, contributor] of proof.contributors.entries()) {
@@ -645,10 +679,10 @@ export function explainKnowledge(
   sourceIndex: Map<string, MemorySource[]> = new Map(),
   options: ExplainKnowledgeOptions = {}
 ): ExplainKnowledgeResult {
-  const { entityIdentity, graphSelector, ...evaluateOptions } = options;
+  const { entityIdentity, trustMode, graphSelector, ...evaluateOptions } = options;
   const view = entityIdentity === 'canonical'
-    ? canonicalizeKnowledge(clauses, sourceIndex)
-    : literalKnowledge(clauses, sourceIndex);
+    ? canonicalizeKnowledge(clauses, sourceIndex, trustMode)
+    : literalKnowledge(clauses, sourceIndex, trustMode);
   const parsedQuery = parseQuerySpec(query);
   const querySpec = entityIdentity === 'canonical'
     ? view.resolver.canonicalizeQuery(parsedQuery).query
@@ -696,6 +730,7 @@ export function explainKnowledge(
       rows,
       entityIdentity === 'canonical' ? view.resolver : undefined
     ),
+    ...(trustMode === undefined || trustMode === 'accepted' ? {} : { trustMode }),
   };
   return graphSelector === undefined
     ? result

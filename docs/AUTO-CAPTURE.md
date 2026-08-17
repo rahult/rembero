@@ -115,3 +115,9 @@ capture identities. The retraction and review action receive their own operation
 journal records. For automation, add `--json`; change the window with `--days N`.
 
 No raw Datalog query, review, or prune operation calls an LLM.
+
+Version 0.21 does not silently reclassify existing ambient capture. Auto-capture still
+accepts only high-confidence facts explicitly grounded in user text and retains this
+capture-specific review/prune flow. Use manual `remember --trust tentative`, CLI
+`assert --trust tentative`, or MCP `assert_tentative` when the caller intends a tentative
+claim lifecycle.

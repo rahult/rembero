@@ -9,12 +9,15 @@ import { MAX_INPUT_BYTES, MAX_NAMESPACE_COUNT } from '../src/safety.js';
 import { serializeClause } from '../src/engine/index.js';
 import {
   assertFactsTool,
+  assertTentativeTool,
   checkIntegrityTool,
   conflictViewsTool,
   explainQueryTool,
   forgetTool,
   listMemoriesTool,
   queryTool,
+  resolveTentativeTool,
+  reviewTentativeTool,
   recallExplainTool,
   rememberTool,
   recallTool,
@@ -96,6 +99,186 @@ describe('MCP tool handlers', () => {
       forgetTool({ store }, { pattern: 'f( _ )', opId: 'tool-forget' })
     ).toEqual(forgotten);
     expect(forgotten).toEqual({ removed: 2, opId: 'tool-forget' });
+  });
+
+  it('reviews and resolves tentative facts without mixing them into accepted reads', () => {
+    expect(() =>
+      assertFactsTool(
+        { store },
+        { clauses: "rembero_tentative('status(mira, active).')." }
+      )
+    ).toThrow(/use assert_tentative/i);
+    expect(
+      assertTentativeTool(
+        { store },
+        {
+          namespace: 'personal',
+          clauses: 'status(mira, active).',
+          opId: 'tentative-status',
+        }
+      )
+    ).toEqual({
+      added: ['status(mira, active).'],
+      duplicates: 0,
+      opId: 'tentative-status',
+    });
+    expect(
+      queryTool(
+        { store },
+        { namespaces: ['personal'], query: 'status(mira, State)' }
+      ).bindings
+    ).toEqual([]);
+    expect(
+      explainQueryTool(
+        { store },
+        {
+          namespaces: ['personal'],
+          query: 'status(mira, State)',
+          trustMode: 'include_tentative',
+        }
+      )
+    ).toMatchObject({
+      trustMode: 'include_tentative',
+      rows: [
+        {
+          bindings: { State: 'active' },
+          proofs: [{ trust: 'tentative' }],
+        },
+      ],
+    });
+    expect(reviewTentativeTool({ store }, { namespaces: ['personal'] })).toMatchObject({
+      count: 1,
+      claims: [
+        {
+          namespace: 'personal',
+          clause: 'status(mira, active).',
+          sources: [{ opId: 'tentative-status' }],
+        },
+      ],
+    });
+    const declarationPattern = "rembero_tentative('status(mira, active).')";
+    expect(() =>
+      forgetTool(
+        { store },
+        { namespace: 'personal', pattern: declarationPattern }
+      )
+    ).toThrow(/use resolveTentative/i);
+    expect(() =>
+      supersedeFactsTool(
+        { store },
+        {
+          namespace: 'personal',
+          patterns: [declarationPattern],
+          replacements: 'status(mira, paused).',
+        }
+      )
+    ).toThrow(/use resolveTentative/i);
+    expect(
+      resolveTentativeTool(
+        { store },
+        {
+          namespace: 'personal',
+          clauses: 'status(mira, active).',
+          action: 'accept',
+          opId: 'accept-status',
+        }
+      )
+    ).toEqual({
+      action: 'accept',
+      resolved: 1,
+      added: ['status(mira, active).'],
+      duplicates: 0,
+      opId: 'accept-status',
+    });
+    expect(
+      queryTool(
+        { store },
+        { namespaces: ['personal'], query: 'status(mira, State)' }
+      ).bindings
+    ).toEqual([{ State: 'active' }]);
+    expect(reviewTentativeTool({ store }, { namespaces: ['personal'] })).toEqual({
+      claims: [],
+      count: 0,
+    });
+    expect(
+      queryTool(
+        { store },
+        {
+          namespaces: ['personal'],
+          query: 'status(mira, State)',
+          trustMode: 'include_tentative',
+          recordedSequence: 1,
+        }
+      )
+    ).toMatchObject({
+      bindings: [{ State: 'active' }],
+      trustMode: 'include_tentative',
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+    });
+  });
+
+  it('keeps tentative claims outside policy unless an audit explicitly includes them', () => {
+    store.assert(
+      'personal',
+      'active(mira). :- active(Person), suspended(Person).'
+    );
+    store.assertTentative('personal', 'suspended(mira).');
+
+    expect(
+      checkIntegrityTool({ store }, { namespaces: ['personal'] }).status
+    ).toBe('consistent');
+    expect(
+      checkIntegrityTool(
+        { store },
+        { namespaces: ['personal'], trustMode: 'include_tentative' }
+      )
+    ).toMatchObject({
+      status: 'violations',
+      trustMode: 'include_tentative',
+      checks: [
+        {
+          rows: [
+            {
+              proofs: [
+                expect.objectContaining({ predicate: 'active' }),
+                expect.objectContaining({ predicate: 'suspended', trust: 'tentative' }),
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      conflictViewsTool(
+        { store },
+        {
+          namespaces: ['personal'],
+          focus: 'mira',
+          trustMode: 'include_tentative',
+        }
+      )
+    ).toMatchObject({
+      trustMode: 'include_tentative',
+      matchingViolationCount: 1,
+      clusters: [{ focus: 'mira' }],
+    });
+    expect(
+      listMemoriesTool(
+        { store },
+        { namespaces: ['personal'] }
+      ).predicates.map((group) => group.predicate)
+    ).not.toContain('suspended/1');
+    expect(
+      listMemoriesTool(
+        { store },
+        { namespaces: ['personal'], trustMode: 'include_tentative' }
+      )
+    ).toMatchObject({
+      trustMode: 'include_tentative',
+      predicates: expect.arrayContaining([
+        expect.objectContaining({ predicate: 'suspended/1' }),
+      ]),
+    });
   });
 
   it('supersedes explicit facts atomically with exact archives and retry safety', () => {

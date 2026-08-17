@@ -63,6 +63,11 @@ describe('recall eval corpus', () => {
     expect(
       RECALL_EVAL_CASES.filter((test) => test.tags.includes('aggregate-rule'))
     ).toHaveLength(1);
+    expect(
+      RECALL_EVAL_CASES.filter((test) => test.tags.includes('tentative'))
+    ).toEqual([
+      expect.objectContaining({ trustMode: 'include_tentative' }),
+    ]);
     expect(selection.pruned).toBe(true);
     expect(selection.selectedPredicates).toContain('works_at/2');
     for (const heldOut of [
