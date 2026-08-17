@@ -667,6 +667,22 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    MCP fields, package installs, current/recorded tests, kind/result limits, and fail-closed
    search/output bounds share one contract.
 
+## Phase 56 — Real-use-case local web console  *(v0.53)*
+
+1. **Complete — evidence-first personal workflow**: one sourced Atlas briefing exercises
+   structured capture, exact guided recall, rule-derived answers, honest non-answers,
+   related discovery, lexical search, health, and explicit graph browse against the real
+   engine.
+2. **Complete — modern responsive product surface**: React/Vite desktop and mobile layouts
+   share a deliberate evidence-desk design system, accessible navigation, proof/source
+   hierarchy, capture drawer, graph/list parity, loading/error states, and reduced motion.
+3. **Complete — bounded local service**: one loopback HTTP origin wraps existing tool
+   contracts, preserves input/output limits and source redaction, rejects cross-origin
+   mutation, hides model credentials, and refuses all non-loopback binding.
+4. **Complete — distributable verification**: public service/server APIs, prebuilt packaged
+   client, loopback integration tests, browser interaction and responsive QA, package smoke,
+   and existing core/SQLite gates share one release.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

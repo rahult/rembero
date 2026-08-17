@@ -3,4 +3,5 @@ dist/
 build/
 .env
 .remember/
+.rembero-web/
 .claude/

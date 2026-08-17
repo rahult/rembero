@@ -8,6 +8,19 @@ questions by **logical inference** —
 an LLM (GPT-5.6 Luna via OpenRouter) translates natural language in and out, and a
 built-in, zero-dependency Datalog engine does the reasoning deterministically.
 
+## Try the real web console
+
+```bash
+npm install
+npm run web:dev
+```
+
+Open `http://127.0.0.1:4318` for a sourced Personal workspace that exercises structured
+capture, deterministic guided recall, rule proofs, honest non-answers with related
+knowledge, local search, health, and the explicit knowledge graph. It uses a dedicated
+`.rembero-web/` sandbox and does not touch existing memory. See
+[the web-console contract](docs/WEB-CONSOLE.md).
+
 ```
 "Rahul works at Acme. Mira also works at Acme.          works_at(rahul, acme).
  People who work at the same company are colleagues."   works_at(mira, acme).

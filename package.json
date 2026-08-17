@@ -1,10 +1,11 @@
 {
   "name": "rembero",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "description": "Logic-based memory for LLM chats and agents: deterministic Datalog rules, explicit entity identity, integrity, provenance, graphs, and MCP",
   "type": "module",
   "bin": {
-    "rembero": "dist/cli.js"
+    "rembero": "dist/cli.js",
+    "rembero-web": "dist/web/server.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -37,6 +38,7 @@
     "docs/DETERMINISTIC-ANSWER-MODE.md",
     "docs/EVIDENCE-ANSWER-MODE.md",
     "docs/RELATED-KNOWLEDGE-RECALL.md",
+    "docs/WEB-CONSOLE.md",
     "docs/LOCAL-KNOWLEDGE-SEARCH.md",
     "docs/EXPLICIT-GRAPH-BROWSE.md",
     "docs/KNOWLEDGE-PATHS.md",
@@ -116,12 +118,18 @@
     "docs/MIGRATING-0.50.md",
     "docs/MIGRATING-0.51.md",
     "docs/MIGRATING-0.52.md",
+    "docs/MIGRATING-0.53.md",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build:core && npm run build:web",
+    "build:core": "tsc -p tsconfig.json",
+    "build:web": "vite build --config web/vite.config.ts",
     "build:sqlite": "sh native/build.sh",
+    "web:dev": "tsx src/web/server.ts --dev",
+    "web:start": "node dist/web/server.js",
+    "web": "npm run build && npm run web:start",
     "pretest": "npm run build",
     "pretest:sqlite": "npm run build",
     "test": "vitest run",
@@ -162,8 +170,14 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^5.2.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
+    "vite": "^7.3.6",
     "vitest": "^4.1.10"
   }
 }
