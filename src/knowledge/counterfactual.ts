@@ -13,7 +13,11 @@ import {
   serializeClause,
   serializeGoal,
 } from '../engine/index.js';
-import type { MemorySource, MemoryStore } from '../store/store.js';
+import type {
+  CurrentKnowledgeSnapshot,
+  MemorySource,
+  MemoryStore,
+} from '../store/store.js';
 import { assertBoundedInput, assertNamespaceCount } from '../safety.js';
 import {
   explainKnowledge,
@@ -44,6 +48,28 @@ export interface CounterfactualKnowledgeOptions
   without?: string[];
   /** Complete integrity-row cap applied independently to each view. */
   maxViolations?: number;
+}
+
+export interface CounterfactualViewOptions {
+  namespace?: string;
+  namespaces?: string[] | '*';
+  assume?: string;
+  without?: string[];
+}
+
+export interface CounterfactualBaseline {
+  namespace: string;
+  namespaces: string[];
+  clauses: Clause[];
+  clausesByNamespace: Map<string, Clause[]>;
+  sources: Map<string, MemorySource[]>;
+}
+
+export interface CounterfactualKnowledgeView {
+  baseline: CounterfactualBaseline;
+  candidateClauses: Clause[];
+  candidateSources: Map<string, MemorySource[]>;
+  application: CounterfactualApplication;
 }
 
 export interface CounterfactualApplication {
@@ -269,32 +295,54 @@ function integrityDelta(
   };
 }
 
-/**
- * Evaluate a fact-only hypothetical change against the complete selected knowledge view.
- * The operation never calls a writer or creates a journal/source artifact.
- */
-export function simulateKnowledge(
-  store: MemoryStore,
-  query: string,
-  options: CounterfactualKnowledgeOptions = {}
-): CounterfactualKnowledgeResult {
-  assertBoundedInput(query, 'counterfactual query');
-  const {
-    namespace = 'default',
-    namespaces: requestedNamespaces,
-    assume,
-    without,
-    maxViolations,
-    ...explainOptions
-  } = options;
-  const names = selectedNamespaces(store, namespace, requestedNamespaces);
-  const namespaceOrder = new Map(names.map((name, index) => [name, index]));
-  const assumptions = assumptionFacts(assume);
-  const patterns = retractionPatterns(without);
-  const snapshot = store.knowledgeSnapshot(names);
-  const baselineByNamespace = snapshot.clausesByNamespace;
-  const targetBaseline = baselineByNamespace.get(namespace)!;
+function baselineFromSnapshot(
+  snapshot: CurrentKnowledgeSnapshot,
+  namespace: string
+): CounterfactualBaseline {
+  return {
+    namespace,
+    namespaces: [...snapshot.namespaces],
+    clauses: structuredClone(snapshot.clauses),
+    clausesByNamespace: new Map(
+      [...snapshot.clausesByNamespace].map(([name, clauses]) => [
+        name,
+        structuredClone(clauses),
+      ])
+    ),
+    sources: new Map(
+      [...snapshot.sources].map(([key, sources]) => [
+        key,
+        sources.map((source) => structuredClone(source)),
+      ])
+    ),
+  };
+}
 
+/** Capture one coherent current view for one or more hypothetical applications. */
+export function captureCounterfactualBaseline(
+  store: MemoryStore,
+  options: Pick<CounterfactualViewOptions, 'namespace' | 'namespaces'> = {}
+): CounterfactualBaseline {
+  const namespace = options.namespace ?? 'default';
+  const names = selectedNamespaces(store, namespace, options.namespaces);
+  return baselineFromSnapshot(store.knowledgeSnapshot(names), namespace);
+}
+
+/** Apply validated fact-only changes to an already captured in-memory baseline. */
+export function applyCounterfactualChanges(
+  baseline: CounterfactualBaseline,
+  options: Pick<CounterfactualViewOptions, 'assume' | 'without'> = {}
+): CounterfactualKnowledgeView {
+  const namespace = baseline.namespace;
+  if (!baseline.namespaces.includes(namespace)) {
+    throw new Error(`counterfactual namespaces must include target '${namespace}'`);
+  }
+  const namespaceOrder = new Map(
+    baseline.namespaces.map((name, index) => [name, index])
+  );
+  const assumptions = assumptionFacts(options.assume);
+  const patterns = retractionPatterns(options.without);
+  const targetBaseline = baseline.clausesByNamespace.get(namespace) ?? [];
   const matchingPatterns = patterns.map(({ literal }) =>
     targetBaseline.some(
       (clause) => clause.body.length === 0 && literalMatches(literal, clause.head)
@@ -321,29 +369,59 @@ export function simulateKnowledge(
     }
   }
   const candidateTarget = [...targetAfterRetractions, ...assumed];
-  const baselineClauses = snapshot.clauses;
-  const candidateClauses = names.flatMap((name) =>
-    name === namespace ? candidateTarget : baselineByNamespace.get(name) ?? []
+  const candidateClauses = baseline.namespaces.flatMap((name) =>
+    name === namespace
+      ? candidateTarget
+      : baseline.clausesByNamespace.get(name) ?? []
   );
-  const baselineSources = snapshot.sources;
-  const simulatedSources = candidateSources(
-    baselineSources,
-    namespace,
-    candidateTarget,
-    assumed,
-    namespaceOrder
-  );
+  return {
+    baseline,
+    candidateClauses,
+    candidateSources: candidateSources(
+      baseline.sources,
+      namespace,
+      candidateTarget,
+      assumed,
+      namespaceOrder
+    ),
+    application: {
+      namespace,
+      namespaces: [...baseline.namespaces],
+      assumed: assumed.map(serializeClause),
+      duplicateAssumptions: duplicates.map(serializeClause),
+      retracted: retracted.map(serializeClause),
+      unmatchedRetractions: patterns
+        .filter((_pattern, index) => !matchingPatterns[index])
+        .map(({ serialized }) => serialized),
+    },
+  };
+}
 
-  const baseline = explainKnowledge(
-    baselineClauses,
+export function buildCounterfactualKnowledgeView(
+  store: MemoryStore,
+  options: CounterfactualViewOptions = {}
+): CounterfactualKnowledgeView {
+  const baseline = captureCounterfactualBaseline(store, options);
+  return applyCounterfactualChanges(baseline, options);
+}
+
+export function evaluateCounterfactualKnowledgeView(
+  view: CounterfactualKnowledgeView,
+  query: string,
+  options: Omit<CounterfactualKnowledgeOptions, 'namespace' | 'namespaces' | 'assume' | 'without'> = {}
+): CounterfactualKnowledgeResult {
+  assertBoundedInput(query, 'counterfactual query');
+  const { maxViolations, ...explainOptions } = options;
+  const baselineExplanation = explainKnowledge(
+    view.baseline.clauses,
     query,
-    baselineSources,
+    view.baseline.sources,
     explainOptions
   );
   const candidate = explainKnowledge(
-    candidateClauses,
+    view.candidateClauses,
     query,
-    simulatedSources,
+    view.candidateSources,
     explainOptions
   );
   const {
@@ -357,30 +435,48 @@ export function simulateKnowledge(
     ...(maxViolations === undefined ? {} : { maxViolations }),
   };
   const baselineIntegrity = checkIntegrity(
-    baselineClauses,
-    baselineSources,
+    view.baseline.clauses,
+    view.baseline.sources,
     integrityOptions
   );
   const candidateIntegrity = checkIntegrity(
-    candidateClauses,
-    simulatedSources,
+    view.candidateClauses,
+    view.candidateSources,
     integrityOptions
   );
   return {
-    changed: assumed.length > 0 || retracted.length > 0,
-    application: {
-      namespace,
-      namespaces: names,
-      assumed: assumed.map(serializeClause),
-      duplicateAssumptions: duplicates.map(serializeClause),
-      retracted: retracted.map(serializeClause),
-      unmatchedRetractions: patterns
-        .filter((_pattern, index) => !matchingPatterns[index])
-        .map(({ serialized }) => serialized),
-    },
-    baseline,
+    changed:
+      view.application.assumed.length > 0 ||
+      view.application.retracted.length > 0,
+    application: structuredClone(view.application),
+    baseline: baselineExplanation,
     candidate,
-    resultDelta: resultDelta(baseline, candidate),
+    resultDelta: resultDelta(baselineExplanation, candidate),
     integrityDelta: integrityDelta(baselineIntegrity, candidateIntegrity),
   };
+}
+
+/**
+ * Evaluate a fact-only hypothetical change against the complete selected knowledge view.
+ * The operation never calls a writer or creates a journal/source artifact.
+ */
+export function simulateKnowledge(
+  store: MemoryStore,
+  query: string,
+  options: CounterfactualKnowledgeOptions = {}
+): CounterfactualKnowledgeResult {
+  const {
+    namespace,
+    namespaces,
+    assume,
+    without,
+    ...explainOptions
+  } = options;
+  const view = buildCounterfactualKnowledgeView(store, {
+    namespace,
+    namespaces,
+    assume,
+    without,
+  });
+  return evaluateCounterfactualKnowledgeView(view, query, explainOptions);
 }

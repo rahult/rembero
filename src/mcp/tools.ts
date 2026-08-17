@@ -52,6 +52,10 @@ import {
   diffRecordedKnowledge,
   type RecordedKnowledgeDiffResult,
 } from '../knowledge/recorded-diff.js';
+import {
+  planKnowledgeRepair,
+  type RepairPlanResult,
+} from '../knowledge/repair.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -663,6 +667,44 @@ export function recordedDiffTool(
       : { maxViolations: args.maxViolations }),
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
     ...(trustMode === 'accepted' ? {} : { trustMode }),
+  });
+}
+
+export function repairPlanTool(
+  deps: StoreToolDeps,
+  args: {
+    query: string;
+    namespace?: string;
+    namespaces?: string[] | '*';
+    proofLimit?: number;
+    maxViolations?: number;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    maxPlans?: number;
+    maxSteps?: number;
+    maxSearchStates?: number;
+  }
+): RepairPlanResult {
+  assertBoundedInput(args.query, 'repair query');
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  return planKnowledgeRepair(deps.store, args.query, {
+    ...(args.namespace === undefined ? {} : { namespace: args.namespace }),
+    ...(args.namespaces === undefined ? {} : { namespaces: args.namespaces }),
+    ...(args.proofLimit === undefined
+      ? {}
+      : { maxProofsPerRow: args.proofLimit }),
+    ...(args.maxViolations === undefined
+      ? {}
+      : { maxViolations: args.maxViolations }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
+    ...(args.maxPlans === undefined ? {} : { maxPlans: args.maxPlans }),
+    ...(args.maxSteps === undefined ? {} : { maxSteps: args.maxSteps }),
+    ...(args.maxSearchStates === undefined
+      ? {}
+      : { maxSearchStates: args.maxSearchStates }),
   });
 }
 

@@ -30,6 +30,11 @@ import {
 } from './knowledge/why-not.js';
 import type { TopologyDirection } from './knowledge/topology.js';
 import {
+  MAX_REPAIR_PLANS,
+  MAX_REPAIR_SEARCH_STATES,
+  MAX_REPAIR_STEPS,
+} from './knowledge/repair.js';
+import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
 } from './knowledge/enforcement.js';
@@ -64,6 +69,7 @@ import {
   whyNotTool,
   topologyTool,
   recordedDiffTool,
+  repairPlanTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -104,6 +110,7 @@ Usage:
   rembero why-not <query>                Explain deterministic blockers for a query
   rembero topology [predicate]           Map rules, policies, strata, and influence
   rembero diff <from> <to>               Compare two exact recorded knowledge states
+  rembero repair <query>                 Propose minimal verified fact-only query repairs
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -139,6 +146,9 @@ Options:
       --evidence-limit <n> Sourced nearby facts overall (default: 16; max: ${MAX_WHY_NOT_EVIDENCE})
       --direction <mode>  Topology focus: upstream, downstream, or both (default: both)
       --query <datalog>   Optional query whose proof/result impact is included in diff
+      --plan-limit <n>    Repair plans (default: 8; max: ${MAX_REPAIR_PLANS})
+      --repair-steps <n>  Iterative repair depth (default: 4; max: ${MAX_REPAIR_STEPS})
+      --search-states <n> Repair search states (default: 128; max: ${MAX_REPAIR_SEARCH_STATES})
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -196,6 +206,9 @@ interface ParsedArgs {
   evidenceLimit?: string;
   direction?: string;
   queryText?: string;
+  planLimit?: string;
+  repairSteps?: string;
+  searchStates?: string;
   at?: string;
 }
 
@@ -295,6 +308,15 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--query') {
       parsed.queryText = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--plan-limit') {
+      parsed.planLimit = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--repair-steps') {
+      parsed.repairSteps = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--search-states') {
+      parsed.searchStates = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
@@ -605,6 +627,7 @@ async function main(): Promise<void> {
       'why-not',
       'topology',
       'diff',
+      'repair',
       'list',
     ].includes(command ?? '')
   ) {
@@ -635,6 +658,14 @@ async function main(): Promise<void> {
   }
   if (args.queryText !== undefined && command !== 'diff') {
     throw new Error('--query is available only for diff');
+  }
+  if (
+    [args.planLimit, args.repairSteps, args.searchStates].some(
+      (value) => value !== undefined
+    ) &&
+    command !== 'repair'
+  ) {
+    throw new Error('repair search limits are available only for repair');
   }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
@@ -985,6 +1016,53 @@ async function main(): Promise<void> {
           query: args.queryText,
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(maxViolations === undefined ? {} : { maxViolations }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'repair': {
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const maxViolations = maxViolationsOption(args.maxViolations);
+      const result = repairPlanTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          query: text,
+          namespace: args.namespace,
+          namespaces,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(maxViolations === undefined ? {} : { maxViolations }),
+          ...(args.planLimit === undefined
+            ? {}
+            : {
+                maxPlans: integerOption(
+                  args.planLimit,
+                  0,
+                  'repair plan limit'
+                ),
+              }),
+          ...(args.repairSteps === undefined
+            ? {}
+            : {
+                maxSteps: integerOption(
+                  args.repairSteps,
+                  0,
+                  'repair step limit'
+                ),
+              }),
+          ...(args.searchStates === undefined
+            ? {}
+            : {
+                maxSearchStates: integerOption(
+                  args.searchStates,
+                  0,
+                  'repair search state limit'
+                ),
+              }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

@@ -33,6 +33,7 @@ import {
   whyNotTool,
   topologyTool,
   recordedDiffTool,
+  repairPlanTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -52,6 +53,11 @@ import {
   MAX_WHY_NOT_FAILURES,
 } from '../knowledge/why-not.js';
 import { MAX_TOPOLOGY_FOCUS_BYTES } from '../knowledge/topology.js';
+import {
+  MAX_REPAIR_PLANS,
+  MAX_REPAIR_SEARCH_STATES,
+  MAX_REPAIR_STEPS,
+} from '../knowledge/repair.js';
 import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
@@ -137,6 +143,27 @@ const topologyDirectionField = z
   .enum(['upstream', 'downstream', 'both'])
   .optional()
   .describe('Focused dependency direction (default: both; requires focus)');
+const repairPlanLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_REPAIR_PLANS)
+  .optional()
+  .describe('Maximum complete minimal repair plans (default: 8)');
+const repairStepLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_REPAIR_STEPS)
+  .optional()
+  .describe('Maximum iterative blocker-repair depth (default: 4)');
+const repairSearchStateLimitField = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_REPAIR_SEARCH_STATES)
+  .optional()
+  .describe('Maximum candidate edit states inspected (default: 128)');
 const conflictFocusField = z
   .string()
   .min(1)
@@ -305,7 +332,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.26.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.27.0' });
 
   server.registerTool(
     'remember',
@@ -816,6 +843,58 @@ export function createServer(deps: PipelineDeps): McpServer {
             maxDiagnosticDepth,
             maxCandidatesPerFailure,
             maxEvidenceFacts,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'plan_query_repair',
+    {
+      title: 'Plan verified query repairs',
+      description:
+        'Search bounded why-not blockers for subset-minimal ground fact assumptions or retractions, then counterfactually verify every returned plan against the query and integrity policies on one captured baseline. Plans are proposals only; no fact, source, or journal entry is written.',
+      inputSchema: {
+        query: boundedText(),
+        namespace: namespaceField,
+        namespaces: namespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        maxPlans: repairPlanLimitField,
+        maxSteps: repairStepLimitField,
+        maxSearchStates: repairSearchStateLimitField,
+      },
+    },
+    async ({
+      query,
+      namespace,
+      namespaces,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      trustMode,
+      maxPlans,
+      maxSteps,
+      maxSearchStates,
+    }) => {
+      try {
+        return asContent(
+          repairPlanTool(resolvedDeps, {
+            query,
+            namespace,
+            namespaces,
+            proofLimit,
+            maxViolations,
+            entityIdentity,
+            trustMode,
+            maxPlans,
+            maxSteps,
+            maxSearchStates,
           })
         );
       } catch (e) {

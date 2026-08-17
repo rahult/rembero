@@ -312,6 +312,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    identity, tentative trust, proof/violation limits, audit-only steps, immutable journal
    segments, packaged installs, and a fail-closed 10,000-clause change boundary.
 
+## Phase 30 — Verified deterministic repair planning  *(v0.27)*
+
+1. **Complete — bounded grounded abduction**: why-not leaves produce ordinary ground-fact
+   assumptions or exact base-fact retractions; iterative search discovers sequential
+   missing premises and alternative rule plans without inventing rules or metadata.
+2. **Complete — minimal counterfactual verification**: every returned plan satisfies the
+   query with proof/graph evidence, redundant edits are removed, and strict plus
+   no-new-violations policy safety is explicit against one digest-bound baseline.
+3. **Complete — proposal-only interface parity**: library, CLI, MCP, identity projection,
+   trust views, namespaces, hypothetical provenance, packaged installs, and fail-closed
+   plan/depth/state/output bounds share one non-mutating contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

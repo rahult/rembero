@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, canonicalizeKnowledge, checkIntegrity, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, selectExplanationGraph, selectRecallSchema, simulateKnowledge, sqliteDatalogExecutionMode } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "if (materialize(parseProgram('base(a). derived(X) :- base(X).')).filter((fact) => fact.derived).length !== 1) throw new Error('public proof-free materialization API failed'); " +
@@ -58,6 +58,9 @@ try {
         "if (whyNot.status !== 'blocked' || whyNot.failures[0]?.rules[0]?.failures[0]?.reason !== 'missing_fact') throw new Error('public why-not API failed'); " +
         "const topology = analyzeKnowledgeTopology(parseProgram('employee(alice). eligible(X) :- employee(X), badge(X).')); " +
         "if (topology.ruleCount !== 1 || topology.openInputs[0] !== 'badge/1' || !topology.graph.edges.some((edge) => edge.kind === 'defines')) throw new Error('public topology API failed'); " +
+        "const repairStore = new MemoryStore('./repair-memory'); repairStore.assert('default', 'employee(bob). eligible(X) :- employee(X), badge(X).'); " +
+        "const repair = planKnowledgeRepair(repairStore, 'eligible(bob)'); " +
+        "if (repair.plans[0]?.assume[0] !== 'badge(bob).' || repairStore.clausesFor(['default']).length !== 2) throw new Error('public repair planning API failed'); " +
         "const aggregateRules = parseProgram('member(red, alice). member(red, bob). team_size(Team, Count) :- count(*) as Count where member(Team, Person).'); " +
         "const aggregateRuleRows = evaluate(aggregateRules, parseQuery('team_size(Team, Count)')); " +
         "if (!isAggregateRule(aggregateRules[2]) || aggregateRuleRows[0]?.Count?.value !== 2) throw new Error('public aggregate rule API failed'); " +
@@ -281,6 +284,31 @@ try {
   );
   if (checkpointOutput.sequence !== 2 || checkpointList.count !== 1) {
     throw new Error('packaged journal checkpoint failed');
+  }
+  const repairHome = join(directory, 'repair-home');
+  const repairEnv = { ...process.env, REMBERO_HOME: repairHome };
+  run(
+    process.execPath,
+    [
+      installedCli,
+      'assert',
+      'employee(bob). eligible(X) :- employee(X), badge(X).',
+      '--op-id',
+      'package-repair-baseline',
+    ],
+    { cwd: directory, env: repairEnv }
+  );
+  const repairOutput = JSON.parse(
+    run(process.execPath, [installedCli, 'repair', 'eligible(bob)'], {
+      cwd: directory,
+      env: repairEnv,
+    })
+  );
+  if (
+    repairOutput.status !== 'repairable' ||
+    repairOutput.plans?.[0]?.assume?.[0] !== 'badge(bob).'
+  ) {
+    throw new Error('packaged verified repair planning failed');
   }
   const extensionPath = run(process.execPath, [installedCli, 'sqlite-build'], {
     cwd: directory,
@@ -588,7 +616,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });

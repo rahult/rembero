@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.26.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.27.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -61,6 +61,7 @@ describe('MCP explanation surfaces', () => {
           'why_not',
           'knowledge_topology',
           'diff_recorded_knowledge',
+          'plan_query_repair',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -153,6 +154,27 @@ describe('MCP explanation surfaces', () => {
           added: [{ bindings: { Name: 'luna' } }],
         },
       });
+
+      const repairs = await client.callTool({
+        name: 'plan_query_repair',
+        arguments: {
+          query: 'answer(c)',
+          maxPlans: 4,
+          maxSteps: 2,
+        },
+      });
+      const repairsText = repairs.content.find((item) => item.type === 'text');
+      const repairsPayload = JSON.parse(
+        repairsText?.type === 'text' ? repairsText.text : ''
+      );
+      expect(repairsPayload).toMatchObject({
+        status: 'repairable',
+        plans: expect.arrayContaining([
+          expect.objectContaining({ assume: ['left(c).'] }),
+          expect.objectContaining({ assume: ['right(c).'] }),
+        ]),
+      });
+      expect(repairsPayload.plans).toHaveLength(2);
 
       const asserted = await client.callTool({
         name: 'assert_facts',

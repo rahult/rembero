@@ -45,7 +45,8 @@ Configuration is via environment variables (a `.env` file in the working directo
 The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `query`,
 `check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
 `supersede_facts`, `what-if`, `what_if`, `why-not`, `why_not`, `topology`,
-`knowledge_topology`, `diff`, `diff_recorded_knowledge`, `forget`, `list_memories`)
+`knowledge_topology`, `diff`, `diff_recorded_knowledge`, `repair`,
+`plan_query_repair`, `forget`, `list_memories`)
 work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
 
@@ -72,7 +73,7 @@ Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
-`checkpoint_journal`, `list_checkpoints`, and `list_memories`.
+`plan_query_repair`, `checkpoint_journal`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -151,6 +152,7 @@ node dist/cli.js what-if  'colleague(mira, Who)' \
 node dist/cli.js why-not  'colleague(mira, rahul)' # missing premises + nearby evidence
 node dist/cli.js topology 'colleague' --direction upstream # rule dependency closure
 node dist/cli.js diff 17 23 --query 'status(mira, State)' # semantic + consequence diff
+node dist/cli.js repair 'eligible(bob)' # minimal verified assumptions/retractions
 node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete support
 node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
@@ -250,6 +252,13 @@ topology node/edge impact, introduced or resolved integrity violations, and opti
 before/after query proofs. This distinguishes an audit-only journal step from an actual
 knowledge change and never orders history by timestamp. See
 [the recorded-knowledge-diff contract](docs/RECORDED-KNOWLEDGE-DIFF.md).
+
+Version 0.27 turns grounded why-not blockers into verified proposal-only repair plans.
+`repair` iteratively adds missing ground facts or retracts facts blocking negation, proves
+the query against each candidate, removes redundant edits, and reports both strict and
+no-new-violations policy safety. It never writes a proposed fact and returns a digest of
+the exact baseline used for verification. See
+[the repair-planning contract](docs/REPAIR-PLANNING.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

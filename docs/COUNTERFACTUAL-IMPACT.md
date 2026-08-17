@@ -45,6 +45,10 @@ durable witnesses stay attached, including source alternatives when the requeste
 limit asks for them. A preview is evidence for a decision; it is not authorization to
 commit and does not reserve the snapshot against a later writer.
 
+Version 0.27 exposes capture, apply, and evaluate phases separately so repair search can
+reuse one coherent baseline across multiple candidates. `simulateKnowledge(...)` remains
+the unchanged one-call surface.
+
 ## Namespace semantics
 
 `namespace` is the one namespace hypothetically changed. `namespaces` is the complete

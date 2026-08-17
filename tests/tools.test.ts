@@ -28,6 +28,7 @@ import {
   whyNotTool,
   topologyTool,
   recordedDiffTool,
+  repairPlanTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -582,6 +583,31 @@ describe('MCP tool handlers', () => {
         unchangedCount: 1,
       },
     });
+  });
+
+  it('returns verified proposal-only repairs through the tool boundary', () => {
+    store.assert(
+      'default',
+      'employee(bob). eligible(X) :- employee(X), badge(X).',
+      { opId: 'repair-baseline' }
+    );
+
+    expect(
+      repairPlanTool(
+        { store },
+        { query: 'eligible(bob)', maxPlans: 4, maxSteps: 3 }
+      )
+    ).toMatchObject({
+      status: 'repairable',
+      plans: [
+        {
+          assume: ['badge(bob).'],
+          candidate: { rows: [{ bindings: {} }] },
+          noNewViolationsSafe: true,
+        },
+      ],
+    });
+    expect(store.clausesFor(['default'])).toHaveLength(2);
   });
 
   it('query and explain read deterministic recorded snapshots with past sources', () => {

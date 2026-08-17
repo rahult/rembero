@@ -161,9 +161,16 @@ export {
 } from './knowledge/conflicts.js';
 export {
   simulateKnowledge,
+  captureCounterfactualBaseline,
+  applyCounterfactualChanges,
+  buildCounterfactualKnowledgeView,
+  evaluateCounterfactualKnowledgeView,
   MAX_COUNTERFACTUAL_ASSUMPTIONS,
   MAX_COUNTERFACTUAL_RETRACTIONS,
   type CounterfactualKnowledgeOptions,
+  type CounterfactualViewOptions,
+  type CounterfactualBaseline,
+  type CounterfactualKnowledgeView,
   type CounterfactualKnowledgeResult,
   type CounterfactualApplication,
   type CounterfactualResultDelta,
@@ -226,6 +233,19 @@ export {
   type RecordedKnowledgeDiffOptions,
   type RecordedKnowledgeDiffResult,
 } from './knowledge/recorded-diff.js';
+export {
+  planKnowledgeRepair,
+  DEFAULT_MAX_REPAIR_PLANS,
+  MAX_REPAIR_PLANS,
+  DEFAULT_MAX_REPAIR_STEPS,
+  MAX_REPAIR_STEPS,
+  DEFAULT_MAX_REPAIR_SEARCH_STATES,
+  MAX_REPAIR_SEARCH_STATES,
+  type RepairPlanStatus,
+  type RepairPlanOptions,
+  type VerifiedRepairPlan,
+  type RepairPlanResult,
+} from './knowledge/repair.js';
 export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,

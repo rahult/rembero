@@ -525,6 +525,49 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('prints minimal verified repair proposals without mutating knowledge', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-repair-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      'employee(bob). ready(X) :- employee(X), badge(X), trained(X).',
+      { opId: 'baseline' }
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'repair',
+        'ready(bob)',
+        '--plan-limit',
+        '4',
+        '--repair-steps',
+        '3',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'repairable',
+      plans: [
+        {
+          assume: ['badge(bob).', 'trained(bob).'],
+          candidate: { rows: [{ bindings: {} }] },
+        },
+      ],
+    });
+    expect(store.load('default').map(serializeClause)).toEqual([
+      'employee(bob).',
+      'ready(X) :- employee(X), badge(X), trained(X).',
+    ]);
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

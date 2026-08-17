@@ -66,4 +66,5 @@ or the depth boundary.
 
 Why-not evidence explains the selected closed-world Datalog program. It does not claim
 that a missing real-world fact is false, infer a repair, or authorize a mutation. Combine
-it with v0.23 `what-if` when evaluating a proposed factual correction.
+it with v0.23 `what-if` when evaluating a proposed factual correction, or v0.27 `repair`
+to search grounded blockers for minimal verified proposals.
