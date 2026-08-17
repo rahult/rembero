@@ -26,11 +26,16 @@ Use `history <pattern> --json` to discover relevant journal sequences, then pass
 rembero history 'status(mira, _)' --json
 rembero query 'status(mira, State)' --as-of-sequence 17
 rembero explain 'colleague(mira, Who)' --as-of-sequence 17
+rembero diff 17 23 --query 'colleague(mira, Who)'
 ```
 
 Historical results include `recordedSnapshot` metadata with the selected sequence,
 current journal length, and namespaces. Ordinary current reads retain their existing
 response shape.
+
+Version 0.26 can compare two positions directly. The diff includes semantic clauses,
+sources, topology, integrity, and optional query-proof consequences; both endpoints are
+captured under one journal boundary.
 
 ## Completeness and failure behavior
 

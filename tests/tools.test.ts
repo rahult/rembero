@@ -27,6 +27,7 @@ import {
   whatIfTool,
   whyNotTool,
   topologyTool,
+  recordedDiffTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -550,6 +551,36 @@ describe('MCP tool handlers', () => {
       ruleCount: 1,
       recordedSnapshot: { sequence: 1, journalEntries: 2 },
       rules: [{ sources: [{ opId: 'topology-before' }] }],
+    });
+  });
+
+  it('diffs recorded clauses and optional query proofs through the tool boundary', () => {
+    store.assert('default', 'item(a).', { opId: 'diff-before' });
+    store.assert('default', 'item(b).', { opId: 'diff-after' });
+
+    expect(
+      recordedDiffTool(
+        { store },
+        { fromSequence: 1, toSequence: 2, query: 'item(Value)' }
+      )
+    ).toMatchObject({
+      changed: true,
+      clauses: {
+        added: [{ clause: 'item(b).', sources: [{ opId: 'diff-after' }] }],
+        removed: [],
+      },
+      topology: {
+        changedNodes: [
+          {
+            before: { key: 'item/1', factCount: 1 },
+            after: { key: 'item/1', factCount: 2 },
+          },
+        ],
+      },
+      queryImpact: {
+        added: [{ bindings: { Value: 'b' } }],
+        unchangedCount: 1,
+      },
     });
   });
 

@@ -25,6 +25,7 @@ export {
   MAX_JOURNAL_SEGMENTS,
   MAX_TOTAL_JOURNAL_ENTRIES,
   MAX_CHECKPOINT_BYTES,
+  MAX_RECORDED_SNAPSHOT_BATCH,
   MAX_SUPERSEDE_PATTERNS,
   OperationConflictError,
   IncompleteHistoryError,
@@ -210,6 +211,21 @@ export {
   type AnalyzeKnowledgeTopologyOptions,
   type KnowledgeTopologyResult,
 } from './knowledge/topology.js';
+export {
+  diffRecordedKnowledge,
+  MAX_RECORDED_DIFF_CHANGES,
+  type RecordedClauseKind,
+  type RecordedClauseState,
+  type RecordedClauseSourceChange,
+  type RecordedClauseDelta,
+  type RecordedTopologyNodeChange,
+  type RecordedTopologyDelta,
+  type RecordedIntegrityViolationChange,
+  type RecordedIntegrityDelta,
+  type RecordedQueryImpact,
+  type RecordedKnowledgeDiffOptions,
+  type RecordedKnowledgeDiffResult,
+} from './knowledge/recorded-diff.js';
 export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,

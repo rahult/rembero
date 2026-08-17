@@ -49,7 +49,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.25.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.26.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -60,6 +60,7 @@ describe('MCP explanation surfaces', () => {
           'what_if',
           'why_not',
           'knowledge_topology',
+          'diff_recorded_knowledge',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -132,6 +133,25 @@ describe('MCP explanation surfaces', () => {
         ruleCount: 2,
         predicates: [{ key: 'answer/1' }, { key: 'left/1' }, { key: 'right/1' }],
         selection: { focus: 'answer/1', direction: 'upstream' },
+      });
+
+      const diff = await client.callTool({
+        name: 'diff_recorded_knowledge',
+        arguments: {
+          fromSequence: 0,
+          toSequence: 1,
+          query: 'pet(rahul, Name)',
+        },
+      });
+      const diffText = diff.content.find((item) => item.type === 'text');
+      expect(JSON.parse(diffText?.type === 'text' ? diffText.text : '')).toMatchObject({
+        changed: true,
+        clauses: {
+          added: [{ kind: 'fact', clause: 'pet(rahul, luna).' }],
+        },
+        queryImpact: {
+          added: [{ bindings: { Name: 'luna' } }],
+        },
       });
 
       const asserted = await client.callTool({

@@ -48,6 +48,10 @@ import {
   type KnowledgeTopologyResult,
   type TopologyDirection,
 } from '../knowledge/topology.js';
+import {
+  diffRecordedKnowledge,
+  type RecordedKnowledgeDiffResult,
+} from '../knowledge/recorded-diff.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -628,6 +632,38 @@ export function topologyTool(
       ? {}
       : { recordedSnapshot: recorded.recordedSnapshot }),
   };
+}
+
+export function recordedDiffTool(
+  deps: StoreToolDeps,
+  args: {
+    fromSequence: number;
+    toSequence: number;
+    namespaces?: string[] | '*';
+    query?: string;
+    proofLimit?: number;
+    maxViolations?: number;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+  }
+): RecordedKnowledgeDiffResult {
+  if (args.query !== undefined) assertBoundedInput(args.query, 'recorded diff query');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  return diffRecordedKnowledge(deps.store, args.fromSequence, args.toSequence, {
+    namespaces,
+    ...(args.query === undefined ? {} : { query: args.query }),
+    ...(args.proofLimit === undefined
+      ? {}
+      : { maxProofsPerRow: args.proofLimit }),
+    ...(args.maxViolations === undefined
+      ? {}
+      : { maxViolations: args.maxViolations }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
+  });
 }
 
 export function forgetTool(

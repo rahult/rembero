@@ -45,7 +45,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `query`,
 `check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
 `supersede_facts`, `what-if`, `what_if`, `why-not`, `why_not`, `topology`,
-`knowledge_topology`, `forget`, `list_memories`)
+`knowledge_topology`, `diff`, `diff_recorded_knowledge`, `forget`, `list_memories`)
 work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
 
@@ -71,8 +71,8 @@ To make agents use memory *proactively*, add a snippet like this to your `CLAUDE
 Tools exposed: `remember`, `recall`, `recall_explain`, `assert_facts`,
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
-`what_if`, `why_not`, `knowledge_topology`, `checkpoint_journal`, `list_checkpoints`,
-and `list_memories`.
+`what_if`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
+`checkpoint_journal`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct
 and LLM-free.
 
@@ -150,6 +150,7 @@ node dist/cli.js what-if  'colleague(mira, Who)' \
   --without 'works_at(rahul, _)' --assume 'works_at(rahul, acme).'
 node dist/cli.js why-not  'colleague(mira, rahul)' # missing premises + nearby evidence
 node dist/cli.js topology 'colleague' --direction upstream # rule dependency closure
+node dist/cli.js diff 17 23 --query 'status(mira, State)' # semantic + consequence diff
 node dist/cli.js explain  'path(a, X)' --graph-result 2 # one result's complete support
 node dist/cli.js explain  'path(a, X)' --graph-neighbors 'entity:["a"]' --graph-depth 2
 node dist/cli.js query    'works_at(mira, X)' --entity-identity canonical
@@ -242,6 +243,13 @@ strata, recursive components, provenance, and undefined inputs. A predicate focu
 select its complete upstream requirements, downstream influence, or both while retaining
 whole rule and policy nodes. See
 [the knowledge-topology contract](docs/KNOWLEDGE-TOPOLOGY.md).
+
+Version 0.26 compares two exact recorded states as one coherent read transaction.
+`diff` reports semantic fact/rule/policy additions and removals, provenance transitions,
+topology node/edge impact, introduced or resolved integrity violations, and optional
+before/after query proofs. This distinguishes an audit-only journal step from an actual
+knowledge change and never orders history by timestamp. See
+[the recorded-knowledge-diff contract](docs/RECORDED-KNOWLEDGE-DIFF.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

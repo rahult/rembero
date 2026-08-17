@@ -300,6 +300,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    or combined predicate closures retain whole rules and relevant policies across current
    and recorded library, CLI, MCP, identity, trust, namespace, and packaged-install paths.
 
+## Phase 29 — Exact recorded knowledge diff  *(v0.26)*
+
+1. **Complete — coherent semantic endpoints**: two global journal positions are captured
+   under one mutation/journal boundary and compared by canonical fact, rule, constraint,
+   and provenance identity rather than line text or descriptive timestamps.
+2. **Complete — deterministic consequence delta**: topology nodes/edges, open inputs,
+   recursion, complete integrity checks, introduced/resolved violations, and optional
+   query rows/proofs expose both direct and derived impact.
+3. **Complete — historical interface parity**: library, CLI, and MCP support namespaces,
+   identity, tentative trust, proof/violation limits, audit-only steps, immutable journal
+   segments, packaged installs, and a fail-closed 10,000-clause change boundary.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

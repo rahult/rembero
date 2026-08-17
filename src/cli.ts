@@ -63,6 +63,7 @@ import {
   whatIfTool,
   whyNotTool,
   topologyTool,
+  recordedDiffTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -102,6 +103,7 @@ Usage:
   rembero what-if <query>                Preview fact changes with proofs and integrity impact
   rembero why-not <query>                Explain deterministic blockers for a query
   rembero topology [predicate]           Map rules, policies, strata, and influence
+  rembero diff <from> <to>               Compare two exact recorded knowledge states
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -119,7 +121,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -136,6 +138,7 @@ Options:
       --candidate-limit <n> Nearby facts per blocker (default: 4; max: ${MAX_WHY_NOT_CANDIDATES})
       --evidence-limit <n> Sourced nearby facts overall (default: 16; max: ${MAX_WHY_NOT_EVIDENCE})
       --direction <mode>  Topology focus: upstream, downstream, or both (default: both)
+      --query <datalog>   Optional query whose proof/result impact is included in diff
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -192,6 +195,7 @@ interface ParsedArgs {
   candidateLimit?: string;
   evidenceLimit?: string;
   direction?: string;
+  queryText?: string;
   at?: string;
 }
 
@@ -288,6 +292,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--direction') {
       parsed.direction = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--query') {
+      parsed.queryText = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
@@ -597,6 +604,7 @@ async function main(): Promise<void> {
       'what-if',
       'why-not',
       'topology',
+      'diff',
       'list',
     ].includes(command ?? '')
   ) {
@@ -624,6 +632,9 @@ async function main(): Promise<void> {
   }
   if (args.direction !== undefined && command !== 'topology') {
     throw new Error('--direction is available only for topology');
+  }
+  if (args.queryText !== undefined && command !== 'diff') {
+    throw new Error('--query is available only for diff');
   }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
@@ -942,6 +953,38 @@ async function main(): Promise<void> {
             ? {}
             : { direction: topologyDirectionOption(args.direction) }),
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'diff': {
+      if (args.positional.length !== 2) {
+        throw new Error('diff requires exactly <from-sequence> <to-sequence>');
+      }
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const maxViolations = maxViolationsOption(args.maxViolations);
+      const result = recordedDiffTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          fromSequence: integerOption(
+            args.positional[0],
+            0,
+            'recorded diff from sequence'
+          ),
+          toSequence: integerOption(
+            args.positional[1],
+            0,
+            'recorded diff to sequence'
+          ),
+          namespaces,
+          query: args.queryText,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(maxViolations === undefined ? {} : { maxViolations }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

@@ -32,6 +32,7 @@ import {
   whatIfTool,
   whyNotTool,
   topologyTool,
+  recordedDiffTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -196,6 +197,11 @@ const recordedSequenceField = z
   .min(0)
   .optional()
   .describe('Read the deterministic knowledge snapshot after global journal entry n; 0 is empty');
+const recordedDiffSequenceField = z
+  .number()
+  .int()
+  .min(0)
+  .describe('Exact global journal sequence (0 is the empty initial state)');
 const validTimeInstantField = z
   .string()
   .max(64)
@@ -299,7 +305,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.25.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.26.0' });
 
   server.registerTool(
     'remember',
@@ -850,6 +856,52 @@ export function createServer(deps: PipelineDeps): McpServer {
             entityIdentity,
             trustMode,
             recordedSequence,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'diff_recorded_knowledge',
+    {
+      title: 'Diff recorded knowledge',
+      description:
+        'Compare two exact global journal positions as one coherent read. Returns semantic fact/rule/policy and provenance changes, topology node/edge impact, introduced/resolved integrity violations, and optional before/after query proofs. Timestamps never order the diff and no memory is changed.',
+      inputSchema: {
+        fromSequence: recordedDiffSequenceField,
+        toSequence: recordedDiffSequenceField,
+        namespaces: namespacesField,
+        query: boundedText('Optional Datalog query whose result/proof impact is compared').optional(),
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+      },
+    },
+    async ({
+      fromSequence,
+      toSequence,
+      namespaces,
+      query,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      trustMode,
+    }) => {
+      try {
+        return asContent(
+          recordedDiffTool(resolvedDeps, {
+            fromSequence,
+            toSequence,
+            namespaces,
+            query,
+            proofLimit,
+            maxViolations,
+            entityIdentity,
+            trustMode,
           })
         );
       } catch (e) {

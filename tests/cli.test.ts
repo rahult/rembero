@@ -490,6 +490,41 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('diffs exact recorded states with optional query impact', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-diff-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert('default', 'item(a).', { opId: 'before' });
+    store.assert('default', 'item(b).', { opId: 'after' });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'diff',
+        '1',
+        '2',
+        '--query',
+        'item(Value)',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      from: { sequence: 1, journalEntries: 2 },
+      to: { sequence: 2, journalEntries: 2 },
+      clauses: { added: [{ clause: 'item(b).' }] },
+      queryImpact: {
+        added: [{ bindings: { Value: 'b' } }],
+        unchangedCount: 1,
+      },
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

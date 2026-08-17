@@ -53,6 +53,7 @@ const MAX_JOURNAL_ENTRIES = 100_000;
 export const MAX_JOURNAL_SEGMENTS = 64;
 export const MAX_TOTAL_JOURNAL_ENTRIES = 1_000_000;
 export const MAX_CHECKPOINT_BYTES = 32 * 1024 * 1024;
+export const MAX_RECORDED_SNAPSHOT_BATCH = 64;
 const JOURNAL_SEGMENT_RE = /^journal-(\d{12})-(\d{12})-([a-f0-9]{64})\.jsonl$/;
 const JOURNAL_CHECKPOINT_RE = /^checkpoint-(\d{12})-([a-f0-9]{64})\.json$/;
 const MAX_PENDING_MUTATION_BYTES = 256 * 1024;
@@ -3404,6 +3405,23 @@ export class MemoryStore {
         sources,
       };
     });
+  }
+
+  /** Capture several exact recorded positions under one coherent journal/file boundary. */
+  recordedSnapshots(
+    namespaces: string[] | '*',
+    sequences: number[]
+  ): RecordedKnowledgeSnapshot[] {
+    if (sequences.length > MAX_RECORDED_SNAPSHOT_BATCH) {
+      throw new Error(
+        `recorded snapshot batch exceeds ${MAX_RECORDED_SNAPSHOT_BATCH} positions`
+      );
+    }
+    return this.withMutationLock(() =>
+      this.withLock('journal', () =>
+        sequences.map((sequence) => this.recordedSnapshot(namespaces, sequence))
+      )
+    );
   }
 
   listNamespaces(): string[] {
