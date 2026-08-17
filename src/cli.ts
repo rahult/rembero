@@ -28,6 +28,7 @@ import {
   MAX_WHY_NOT_EVIDENCE,
   MAX_WHY_NOT_FAILURES,
 } from './knowledge/why-not.js';
+import type { TopologyDirection } from './knowledge/topology.js';
 import {
   IntegrityViolationError,
   type IntegrityEnforcementOptions,
@@ -61,6 +62,7 @@ import {
   reviewTentativeTool,
   whatIfTool,
   whyNotTool,
+  topologyTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -99,6 +101,7 @@ Usage:
   rembero conflicts [focus]              Group conflicts by authored focus with evidence
   rembero what-if <query>                Preview fact changes with proofs and integrity impact
   rembero why-not <query>                Explain deterministic blockers for a query
+  rembero topology [predicate]           Map rules, policies, strata, and influence
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -132,6 +135,7 @@ Options:
       --diagnostic-depth <n> Why-not rule depth (default: 8; max: ${MAX_WHY_NOT_DEPTH})
       --candidate-limit <n> Nearby facts per blocker (default: 4; max: ${MAX_WHY_NOT_CANDIDATES})
       --evidence-limit <n> Sourced nearby facts overall (default: 16; max: ${MAX_WHY_NOT_EVIDENCE})
+      --direction <mode>  Topology focus: upstream, downstream, or both (default: both)
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -187,6 +191,7 @@ interface ParsedArgs {
   diagnosticDepth?: string;
   candidateLimit?: string;
   evidenceLimit?: string;
+  direction?: string;
   at?: string;
 }
 
@@ -281,6 +286,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === '--evidence-limit') {
       parsed.evidenceLimit = valueAfter(i, arg);
       i += 1;
+    } else if (arg === '--direction') {
+      parsed.direction = valueAfter(i, arg);
+      i += 1;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
       i += 1;
@@ -364,6 +372,16 @@ function maxViolationsOption(value: string | undefined): number | undefined {
     );
   }
   return parsed;
+}
+
+function topologyDirectionOption(
+  value: string | undefined
+): TopologyDirection | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'upstream' || value === 'downstream' || value === 'both') {
+    return value;
+  }
+  throw new Error("topology direction must be 'upstream', 'downstream', or 'both'");
 }
 
 function entityIdentityOption(
@@ -578,6 +596,7 @@ async function main(): Promise<void> {
       'conflicts',
       'what-if',
       'why-not',
+      'topology',
       'list',
     ].includes(command ?? '')
   ) {
@@ -603,6 +622,9 @@ async function main(): Promise<void> {
   ) {
     throw new Error('why-not diagnostic limits are available only for why-not');
   }
+  if (args.direction !== undefined && command !== 'topology') {
+    throw new Error('--direction is available only for topology');
+  }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
   }
@@ -616,10 +638,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -901,6 +923,25 @@ async function main(): Promise<void> {
                   'why-not evidence limit'
                 ),
               }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'topology': {
+      const result = topologyTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          namespaces,
+          ...(text.length === 0 ? {} : { focus: text }),
+          ...(args.direction === undefined
+            ? {}
+            : { direction: topologyDirectionOption(args.direction) }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

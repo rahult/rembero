@@ -191,6 +191,26 @@ export {
   type ExplainWhyNotResult,
 } from './knowledge/why-not.js';
 export {
+  analyzeKnowledgeTopology,
+  MAX_TOPOLOGY_FACTS,
+  MAX_TOPOLOGY_PREDICATES,
+  MAX_TOPOLOGY_RULES,
+  MAX_TOPOLOGY_CONSTRAINTS,
+  MAX_TOPOLOGY_EDGES,
+  MAX_TOPOLOGY_FOCUS_BYTES,
+  type TopologyDirection,
+  type PredicateTopologyNode,
+  type RuleTopologyNode,
+  type ConstraintTopologyNode,
+  type KnowledgeTopologyNode,
+  type KnowledgeTopologyEdge,
+  type KnowledgeTopologyGraph,
+  type RecursivePredicateComponent,
+  type KnowledgeTopologySelection,
+  type AnalyzeKnowledgeTopologyOptions,
+  type KnowledgeTopologyResult,
+} from './knowledge/topology.js';
+export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,
   MAX_TENTATIVE_CLAUSE_BYTES,

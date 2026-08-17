@@ -31,6 +31,7 @@ import {
   supersedeFactsTool,
   whatIfTool,
   whyNotTool,
+  topologyTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -49,6 +50,7 @@ import {
   MAX_WHY_NOT_EVIDENCE,
   MAX_WHY_NOT_FAILURES,
 } from '../knowledge/why-not.js';
+import { MAX_TOPOLOGY_FOCUS_BYTES } from '../knowledge/topology.js';
 import { TrustMetadataError } from '../knowledge/trust.js';
 import {
   IntegrityViolationError,
@@ -124,6 +126,16 @@ const whyNotEvidenceLimitField = z
   .max(MAX_WHY_NOT_EVIDENCE)
   .optional()
   .describe('Maximum distinct nearby facts carrying proof evidence (default: 16)');
+const topologyFocusField = z
+  .string()
+  .min(1)
+  .max(MAX_TOPOLOGY_FOCUS_BYTES)
+  .optional()
+  .describe("Optional 'predicate' or 'predicate/arity' focus");
+const topologyDirectionField = z
+  .enum(['upstream', 'downstream', 'both'])
+  .optional()
+  .describe('Focused dependency direction (default: both; requires focus)');
 const conflictFocusField = z
   .string()
   .min(1)
@@ -287,7 +299,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.24.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.25.0' });
 
   server.registerTool(
     'remember',
@@ -798,6 +810,46 @@ export function createServer(deps: PipelineDeps): McpServer {
             maxDiagnosticDepth,
             maxCandidatesPerFailure,
             maxEvidenceFacts,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'knowledge_topology',
+    {
+      title: 'Map knowledge topology',
+      description:
+        'Build a deterministic semantic graph of predicates, alpha-equivalent rule groups, integrity policies, positive/negative/aggregate dependencies, strata, recursive components, provenance, and open inputs. Optional focus selects complete upstream/downstream influence without an LLM or persistent graph.',
+      inputSchema: {
+        namespaces: namespacesField,
+        focus: topologyFocusField,
+        direction: topologyDirectionField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({
+      namespaces,
+      focus,
+      direction,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+    }) => {
+      try {
+        return asContent(
+          topologyTool(resolvedDeps, {
+            namespaces,
+            focus,
+            direction,
+            entityIdentity,
+            trustMode,
+            recordedSequence,
           })
         );
       } catch (e) {

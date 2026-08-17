@@ -288,6 +288,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    canonical identity, tentative trust, recursive, aggregate, and empty recall-explain
    paths share fail-closed depth, frontier, evidence, proof, and output limits.
 
+## Phase 28 — Deterministic knowledge topology  *(v0.25)*
+
+1. **Complete — semantic rule and policy map**: unique facts, alpha-equivalent rule
+   groups, authored rule numbers, constraints, comparisons, sources, strata, and
+   positive/negative/aggregate dependencies form one deterministic non-persistent graph.
+2. **Complete — recursion and open-input inspection**: strongly connected predicate
+   components, derived-only relations, undefined inputs, and especially undefined
+   closed-world negations are explicit and bounded rather than hidden in source text.
+3. **Complete — focused influence and interface parity**: complete upstream, downstream,
+   or combined predicate closures retain whole rules and relevant policies across current
+   and recorded library, CLI, MCP, identity, trust, namespace, and packaged-install paths.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

@@ -43,6 +43,11 @@ import {
   explainWhyNot,
   type ExplainWhyNotResult,
 } from '../knowledge/why-not.js';
+import {
+  analyzeKnowledgeTopology,
+  type KnowledgeTopologyResult,
+  type TopologyDirection,
+} from '../knowledge/topology.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -586,6 +591,37 @@ export function whyNotTool(
         : { maxEvidenceFacts: args.maxEvidenceFacts }),
     }
   );
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
+}
+
+export function topologyTool(
+  deps: StoreToolDeps,
+  args: {
+    namespaces?: string[] | '*';
+    focus?: string;
+    direction?: TopologyDirection;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+  }
+): KnowledgeTopologyResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  if (args.focus !== undefined) assertBoundedInput(args.focus, 'topology focus');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = analyzeKnowledgeTopology(recorded.clauses, recorded.sources, {
+    ...(args.focus === undefined ? {} : { focus: args.focus }),
+    ...(args.direction === undefined ? {} : { direction: args.direction }),
+    ...(entityIdentity === undefined ? {} : { entityIdentity }),
+    ...(trustMode === 'accepted' ? {} : { trustMode }),
+  });
   return {
     ...result,
     ...(recorded.recordedSnapshot === undefined

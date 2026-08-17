@@ -448,6 +448,48 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('exports a focused rule and policy topology without an LLM', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-topology-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      `employee(alice).
+       eligible(X) :- employee(X), \\+ suspended(X).
+       :- eligible(X), blocked(X).`,
+      { opId: 'topology-source' }
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'topology',
+        'eligible',
+        '--direction',
+        'both',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: home },
+      }
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      predicates: [
+        { key: 'blocked/1', openInput: true },
+        { key: 'eligible/1', stratum: 1 },
+        { key: 'employee/1' },
+        { key: 'suspended/1', openInput: true },
+      ],
+      rules: [{ sources: [{ opId: 'topology-source' }] }],
+      constraints: [{ sources: [{ opId: 'topology-source' }] }],
+      selection: { focus: 'eligible/1', direction: 'both' },
+      openNegatedInputs: ['suspended/1'],
+    });
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

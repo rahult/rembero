@@ -26,6 +26,7 @@ import {
   supersedeFactsTool,
   whatIfTool,
   whyNotTool,
+  topologyTool,
 } from '../src/mcp/tools.js';
 
 class ScriptedLlm implements LlmClient {
@@ -518,6 +519,37 @@ describe('MCP tool handlers', () => {
       status: 'satisfied',
       recordedSnapshot: { sequence: 1, journalEntries: 2 },
       explanation: { rows: [{ proofs: [{ sources: [{ opId: 'before' }] }] }] },
+    });
+  });
+
+  it('maps focused current topology and exact recorded rule history', () => {
+    store.assert(
+      'default',
+      'base(a). middle(X) :- base(X).',
+      { opId: 'topology-before' }
+    );
+    store.assert('default', 'output(X) :- middle(X).', {
+      opId: 'topology-after',
+    });
+
+    expect(
+      topologyTool(
+        { store },
+        { focus: 'output', direction: 'upstream' }
+      )
+    ).toMatchObject({
+      predicateCount: 3,
+      ruleCount: 2,
+      predicates: [{ key: 'base/1' }, { key: 'middle/1' }, { key: 'output/1' }],
+      selection: { focus: 'output/1', direction: 'upstream' },
+    });
+    expect(
+      topologyTool({ store }, { recordedSequence: 1 })
+    ).toMatchObject({
+      predicateCount: 2,
+      ruleCount: 1,
+      recordedSnapshot: { sequence: 1, journalEntries: 2 },
+      rules: [{ sources: [{ opId: 'topology-before' }] }],
     });
   });
 
