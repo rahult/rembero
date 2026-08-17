@@ -82,6 +82,7 @@ export {
   type RecallStatus,
   type RecallAnswerMode,
   type RememberResult,
+  type RememberExtraction,
   type RememberOptions,
   type RememberTranscriptOptions,
   type RetrievalResult,
@@ -89,8 +90,17 @@ export {
   deterministicRecallAnswer,
   rememberTranscriptText,
   rememberText,
+  extractRememberText,
   retrieveQuestion,
 } from './llm/pipeline.js';
+export {
+  proposeRememberText,
+  computeMemoryProposalDigest,
+  MEMORY_PROPOSAL_VERSION,
+  type ProposeRememberOptions,
+  type MemoryChangeProposal,
+  type ProposeRememberResult,
+} from './knowledge/memory-proposal.js';
 export {
   type QueryPromptVariant,
   transcriptExtractionSystemPrompt,

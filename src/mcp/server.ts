@@ -32,6 +32,7 @@ import {
   recallExplainTool,
   recallTool,
   rememberTool,
+  proposeMemoryTool,
   resolveTentativeTool,
   reviewTentativeTool,
   supersedeFactsTool,
@@ -442,7 +443,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.44.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.45.0' });
 
   server.registerTool(
     'remember',
@@ -489,6 +490,65 @@ export function createServer(deps: PipelineDeps): McpServer {
             ),
             entityIdentity,
             trust,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'propose_memory',
+    {
+      title: 'Propose accepted personal memory changes for review',
+      description:
+        'Use the identical natural-language extraction and validation path as remember, but never mutate. Returns exact additions/removals, candidate integrity and rule-audit impact, and a content-addressed accepted-memory proposal bound to the current baseline. Secrets fail before the LLM. Use this when human review should precede accepted memory authority.',
+      inputSchema: {
+        text: boundedText('What may be remembered, in plain language'),
+        namespace: namespaceField,
+        namespaces: namespacesField,
+        validTimeMode: z.enum(['delete', 'archive_until']).optional(),
+        at: validTimeInstantField,
+        integrityMode: integrityModeField,
+        integrityNamespaces: integrityNamespacesField,
+        proofLimit: proofLimitField,
+        maxViolations: maxViolationsField,
+        entityIdentity: entityIdentityField,
+        graphSelector: graphSelectorField,
+      },
+    },
+    async ({
+      text,
+      namespace,
+      namespaces,
+      validTimeMode,
+      at,
+      integrityMode,
+      integrityNamespaces,
+      proofLimit,
+      maxViolations,
+      entityIdentity,
+      graphSelector,
+    }) => {
+      try {
+        return asContent(
+          await proposeMemoryTool(resolvedDeps, {
+            text,
+            namespace,
+            namespaces,
+            validTimeMode,
+            at,
+            integrityEnforcement: requestedIntegrity(
+              resolvedDeps.integrityEnforcement,
+              integrityMode,
+              integrityNamespaces,
+              proofLimit,
+              maxViolations,
+              entityIdentity,
+              graphSelector
+            ),
+            entityIdentity,
           })
         );
       } catch (e) {

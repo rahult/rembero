@@ -98,6 +98,31 @@ describe('CLI ingress limits', () => {
     expect(result.stdout).toContain('status: unanswerable');
   });
 
+  it('routes proposal-first memory through local secret rejection without writing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-memory-proposal-'));
+    const home = join(root, 'home');
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'propose-memory',
+        'My token is ghp_supersecretvalue.',
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          REMBERO_HOME: home,
+          LLM_API_KEY: 'unused-test-key',
+        },
+      }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/refusing to send sensitive memory text/i);
+    expect(existsSync(join(home, 'memory', 'default.dl'))).toBe(false);
+  });
+
   it('rejects an invalid proof limit before evaluating an explanation', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-proof-limit-'));
     const result = spawnSync(

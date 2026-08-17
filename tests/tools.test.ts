@@ -22,6 +22,7 @@ import {
   reviewTentativeTool,
   recallExplainTool,
   rememberTool,
+  proposeMemoryTool,
   recallTool,
   supersedeFactsTool,
   whatIfTool,
@@ -485,6 +486,33 @@ describe('MCP tool handlers', () => {
     store.assert('default', 'f(a). f(b). g(X) :- f(X), X != a.');
     const result = queryTool({ store }, { query: 'g(X)' });
     expect(result.bindings).toEqual([{ X: 'b' }]);
+  });
+
+  it('proposes accepted natural-language memory without invoking a writer', async () => {
+    store.assert('default', 'works_at(mira, acme).', { opId: 'proposal-base' });
+    const result = await proposeMemoryTool(
+      {
+        store,
+        llm: new ScriptedLlm([
+          'retract works_at(mira, _).\nworks_at(mira, initech).',
+        ]),
+      },
+      {
+        text: 'Mira now works at Initech.',
+        namespace: 'default',
+      }
+    );
+
+    expect(result).toMatchObject({
+      changed: true,
+      proposal: {
+        removeClauses: ['works_at(mira, acme).'],
+        addClauses: ['works_at(mira, initech).'],
+      },
+    });
+    expect(store.load('default').map(serializeClause)).toEqual([
+      'works_at(mira, acme).',
+    ]);
   });
 
   it('simulates query and integrity impact without invoking a writer', () => {

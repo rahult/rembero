@@ -93,6 +93,10 @@ import {
   applyRuleChangeProposal,
   type ApplyRuleChangeProposalResult,
 } from '../knowledge/rule-change.js';
+import {
+  proposeRememberText,
+  type ProposeRememberResult,
+} from '../knowledge/memory-proposal.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -192,6 +196,46 @@ export function rememberTool(
       : { entityIdentity: args.entityIdentity }),
     ...(args.trust === undefined ? {} : { trust: args.trust }),
   });
+}
+
+export function proposeMemoryTool(
+  deps: LlmToolDeps,
+  args: {
+    text: string;
+    namespace?: string;
+    namespaces?: string[] | '*';
+    validTimeMode?: 'delete' | 'archive_until';
+    at?: string;
+    integrityEnforcement?: IntegrityEnforcementOptions;
+    entityIdentity?: EntityIdentityMode;
+  }
+): Promise<ProposeRememberResult> {
+  assertBoundedInput(args.text, 'memory text');
+  let at: Date | undefined;
+  if (args.at !== undefined) {
+    at = new Date(args.at);
+    if (Number.isNaN(at.getTime()) || at.toISOString() !== args.at) {
+      throw new Error('memory proposal timestamp must be canonical UTC ISO');
+    }
+  }
+  return proposeRememberText(
+    deps,
+    args.text,
+    args.namespace ?? 'default',
+    {
+      ...(args.namespaces === undefined ? {} : { namespaces: args.namespaces }),
+      ...(args.validTimeMode === undefined
+        ? {}
+        : { validTimeMode: args.validTimeMode }),
+      ...(at === undefined ? {} : { at }),
+      ...(args.integrityEnforcement === undefined
+        ? {}
+        : { integrityEnforcement: args.integrityEnforcement }),
+      ...(args.entityIdentity === undefined
+        ? {}
+        : { entityIdentity: args.entityIdentity }),
+    }
+  );
 }
 
 export function recallTool(

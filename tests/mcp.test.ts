@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { createServer } from '../src/mcp/server.js';
+import { serializeClause } from '../src/engine/index.js';
 import { MemoryStore } from '../src/store/store.js';
 
 class ScriptedLlm implements LlmClient {
@@ -57,7 +58,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.44.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.45.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -85,6 +86,7 @@ describe('MCP explanation surfaces', () => {
           'checkpoint_journal',
           'list_checkpoints',
           'history',
+          'propose_memory',
           'supersede_facts',
         ])
       );
@@ -1361,6 +1363,41 @@ describe('MCP explanation surfaces', () => {
       await server.close();
       if (previousMode === undefined) delete process.env.REMBERO_VALID_TIME_MODE;
       else process.env.REMBERO_VALID_TIME_MODE = previousMode;
+    }
+  });
+
+  it('proposes accepted memory changes over MCP without mutating', async () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-proposal-')));
+    store.assert('default', 'works_at(mira, acme).', { opId: 'proposal-before' });
+    const server = createServer({
+      store,
+      llm: new ScriptedLlm([
+        'retract works_at(mira, _).\nworks_at(mira, initech).',
+      ]),
+    });
+    const client = new Client({ name: 'rembero-proposal-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const proposed = await client.callTool({
+        name: 'propose_memory',
+        arguments: { text: 'Mira now works at Initech.' },
+      });
+      const text = proposed.content.find((item) => item.type === 'text');
+      expect(JSON.parse(text?.type === 'text' ? text.text : '')).toMatchObject({
+        changed: true,
+        proposal: {
+          removeClauses: ['works_at(mira, acme).'],
+          addClauses: ['works_at(mira, initech).'],
+        },
+      });
+      expect(store.load('default').map(serializeClause)).toEqual([
+        'works_at(mira, acme).',
+      ]);
+    } finally {
+      await client.close();
+      await server.close();
     }
   });
 });

@@ -304,19 +304,21 @@ async function completeWithRetry<T>(
   }
 }
 
-export async function rememberText(
+export interface RememberExtraction {
+  clauses: Clause[];
+  retractions: Goal[][];
+}
+
+/** Extract and validate natural-language memory changes without mutating the store. */
+export async function extractRememberText(
   deps: PipelineDeps,
   text: string,
   namespace = 'default',
   options: RememberOptions = {}
-): Promise<RememberResult> {
-  const validTimeMode = options.validTimeMode ?? deps.validTimeMode ?? 'delete';
+): Promise<RememberExtraction | null> {
   const trust = options.trust ?? 'accepted';
   if (trust !== 'accepted' && trust !== 'tentative') {
     throw new Error("knowledge trust must be 'accepted' or 'tentative'");
-  }
-  if (validTimeMode !== 'delete' && validTimeMode !== 'archive_until') {
-    throw new Error("valid-time mode must be 'delete' or 'archive_until'");
   }
   assertLlmNamespacesAllowed(deps, [namespace]);
   assertSafeForExternalLlm(text, 'memory text');
@@ -335,10 +337,10 @@ export async function rememberText(
     { role: 'system', content: extractionSystemPrompt(schema, trust) },
     { role: 'user', content: text },
   ];
-  const extraction = await completeWithRetry(
+  return completeWithRetry(
     deps.llm,
     messages,
-    (response): { clauses: Clause[]; retractions: Goal[][] } | null => {
+    (response): RememberExtraction | null => {
       if (response === NOTHING_SENTINEL) return null;
       const retractionLines: string[] = [];
       const clauseLines: string[] = [];
@@ -406,6 +408,20 @@ export async function rememberText(
       return { clauses, retractions };
     }
   );
+}
+
+export async function rememberText(
+  deps: PipelineDeps,
+  text: string,
+  namespace = 'default',
+  options: RememberOptions = {}
+): Promise<RememberResult> {
+  const validTimeMode = options.validTimeMode ?? deps.validTimeMode ?? 'delete';
+  const trust = options.trust ?? 'accepted';
+  if (validTimeMode !== 'delete' && validTimeMode !== 'archive_until') {
+    throw new Error("valid-time mode must be 'delete' or 'archive_until'");
+  }
+  const extraction = await extractRememberText(deps, text, namespace, options);
   if (extraction === null) return { added: [], duplicates: 0, retracted: 0 };
   if (trust === 'tentative' && extraction.retractions.length > 0) {
     throw new Error('tentative memory is additive; it cannot retract accepted facts');

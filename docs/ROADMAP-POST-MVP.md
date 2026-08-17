@@ -549,6 +549,21 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    `apply_rule_change`, package installs, structured stale/check/integrity errors, tamper,
    concurrency, recorded-only rejection, and 16 MiB evidence bounds share one contract.
 
+## Phase 48 — Proposal-first accepted personal memory  *(v0.45)*
+
+1. **Complete — one extraction authority path**: direct remember and non-mutating proposal
+   share identical prompts, retry, parsing, secret, rule, identity, trust, and retraction
+   validation; no second model interpretation is introduced.
+2. **Complete — exact candidate evidence**: extraction is expanded over one post-LLM
+   coherent baseline into exact additions/removals, temporal archives, integrity deltas,
+   and optional rule audit/topology impact without calling a writer.
+3. **Complete — content-addressed review artifact**: versioned SHA-256 proposals bind
+   ordered governed program state, source text, exact clauses, time policy/instant, and
+   identity view; duplicates and non-factual input produce no artifact.
+4. **Complete — operational and trust boundary**: library, CLI `propose-memory`, MCP
+   `propose_memory`, namespaces, packages, secret zero-call behavior, and existing output
+   limits target reviewed accepted knowledge while tentative claims keep their own flow.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

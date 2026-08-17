@@ -92,6 +92,7 @@ import {
   queryTool,
   resolveTentativeTool,
   reviewTentativeTool,
+  proposeMemoryTool,
   whatIfTool,
   whyNotTool,
   topologyTool,
@@ -130,6 +131,7 @@ const USAGE = `rembero — logic-based memory for chats and agents
 Usage:
   rembero serve                          Start the MCP server on stdio
   rembero remember <text>                Extract facts from text and store them
+  rembero propose-memory <text>         Extract and preview accepted memory without writing
   rembero remember --batch               Auto-capture from Claude Stop-hook JSON on stdin
   rembero recall <question>              Answer a question from memory
   rembero recall-explain <question>      Recall with proofs, sources, and a graph
@@ -174,7 +176,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/profile/what-if/why-not/topology/diff/audit-rules/search/browse/connect/test-knowledge/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for propose-memory/recall/query/profile/what-if/why-not/topology/diff/audit-rules/search/browse/connect/test-knowledge/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -879,8 +881,13 @@ async function main(): Promise<void> {
   if (args.compareScan && command !== 'profile') {
     throw new Error('--compare-scan is available only for profile');
   }
-  if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
-    throw new Error('--at is available only for supersede or checkpoint');
+  if (
+    args.at !== undefined &&
+    command !== 'supersede' &&
+    command !== 'checkpoint' &&
+    command !== 'propose-memory'
+  ) {
+    throw new Error('--at is available only for supersede, checkpoint, or propose-memory');
   }
   if (args.dryRun && command !== 'checkpoint') {
     throw new Error('--dry-run is available only for checkpoint');
@@ -982,6 +989,28 @@ async function main(): Promise<void> {
           integrityEnforcement: integritySetting,
           entityIdentity: entityIdentitySetting,
           trust: knowledgeTrustOption(args.trust),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'propose-memory': {
+      const result = await proposeMemoryTool(
+        {
+          store,
+          llm: clientFromEnv(),
+          llmAllowedNamespaces,
+          integrityEnforcement: integritySetting,
+          entityIdentity: entityIdentitySetting,
+        },
+        {
+          text,
+          namespace: args.namespace,
+          namespaces,
+          validTimeMode: validTimeModeOption(args.validTimeMode),
+          at: args.at,
+          integrityEnforcement,
+          entityIdentity,
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));
