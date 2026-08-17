@@ -39,6 +39,9 @@ Answered recall is unchanged and still uses the existing grounded LLM phrasing s
 Structurally unanswerable and schema-budget-exhausted results retain their established
 deterministic messages.
 
+Version 0.30 can opt successful answers into local deterministic rendering as well.
+Negative answers remain deterministic regardless of answer mode.
+
 ## Diagnostic limits
 
 Why-not is additional evidence, not a precondition for the already-proven empty row set.

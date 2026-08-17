@@ -63,6 +63,20 @@ describe('MCP tool handlers', () => {
     expect(result.bindings).toEqual([{ X: 'luna' }]);
   });
 
+  it('recall renders successful bindings locally in deterministic answer mode', async () => {
+    store.assert('default', 'pet(rahul, luna).');
+    const llm = new ScriptedLlm(['?- pet(rahul, Name).']);
+    const result = await recallTool(
+      { store, llm },
+      { question: 'What is my cat called?', answerMode: 'deterministic' }
+    );
+    expect(result).toMatchObject({
+      status: 'answered',
+      answerMode: 'deterministic',
+      answer: 'Result for pet(rahul, Name): Name = luna.',
+    });
+  });
+
   it('recall answers from an explicit recorded snapshot', async () => {
     store.assert('default', 'status(mira, active).', { opId: 'past' });
     store.replace('default', ['status(mira, _)'], 'status(mira, paused).', {

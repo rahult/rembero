@@ -15,11 +15,16 @@ import {
   entityIdentityFromEnv,
   integrityEnforcementFromEnv,
   loadEnv,
+  recallAnswerModeFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
 } from './env.js';
 import { clientFromEnv, lazyClientFromEnv } from './llm/client.js';
-import { rememberText, recallQuestion } from './llm/pipeline.js';
+import {
+  rememberText,
+  recallQuestion,
+  type RecallAnswerMode,
+} from './llm/pipeline.js';
 import { MAX_RECALL_SCHEMA_PREDICATES } from './llm/schema.js';
 import { MAX_INTEGRITY_VIOLATIONS } from './knowledge/integrity.js';
 import {
@@ -139,6 +144,7 @@ Options:
       --integrity-namespaces <a,b|*>  Knowledge view governed by write enforcement
       --entity-identity <mode>  Read projection: off (default) or canonical
       --trust <mode>        Writes: accepted/tentative; reads: accepted/include_tentative
+      --answer-mode <mode>  Recall phrasing: natural (default) or deterministic
       --pattern <datalog>  Fact pattern to end; repeat for supersede (maximum: ${MAX_SUPERSEDE_PATTERNS})
       --assume <facts>     Ground facts to add in a what-if simulation; repeatable
       --without <pattern> Ground fact pattern to remove in a what-if simulation; repeatable
@@ -192,6 +198,7 @@ interface ParsedArgs {
   integrityNamespaces?: string[] | '*';
   entityIdentity?: string;
   trust?: string;
+  answerMode?: string;
   opId?: string;
   graphResult?: string;
   graphSupport?: string;
@@ -280,6 +287,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--trust') {
       parsed.trust = valueAfter(i, arg);
+      i += 1;
+    } else if (arg === '--answer-mode') {
+      parsed.answerMode = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--op-id') {
       parsed.opId = valueAfter(i, arg);
@@ -434,6 +444,14 @@ function trustViewOption(value: string | undefined): TrustViewMode {
   if (value === undefined || value === 'accepted') return 'accepted';
   if (value === 'include_tentative') return value;
   throw new Error("read --trust must be 'accepted' or 'include_tentative'");
+}
+
+function recallAnswerModeOption(
+  value: string | undefined
+): RecallAnswerMode {
+  if (value === undefined) return recallAnswerModeFromEnv();
+  if (value === 'natural' || value === 'deterministic') return value;
+  throw new Error("--answer-mode must be 'natural' or 'deterministic'");
 }
 
 function graphNodeIdOption(value: string, label: string): string {
@@ -639,6 +657,12 @@ async function main(): Promise<void> {
   if (args.batch && args.trust !== undefined) {
     throw new Error('--trust does not apply to auto-capture batches');
   }
+  if (
+    args.answerMode !== undefined &&
+    !['serve', 'recall', 'recall-explain'].includes(command ?? '')
+  ) {
+    throw new Error('--answer-mode is available only for serve, recall, or recall-explain');
+  }
   if (args.patterns.length > 0 && command !== 'supersede') {
     throw new Error('--pattern is available only for supersede');
   }
@@ -724,6 +748,7 @@ async function main(): Promise<void> {
         recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
           args.schemaPredicateLimit
         ),
+        recallAnswerMode: recallAnswerModeOption(args.answerMode),
         integrityEnforcement: integritySetting,
         entityIdentity: entityIdentitySetting,
         trustMode: trustViewOption(args.trust),
@@ -790,6 +815,7 @@ async function main(): Promise<void> {
           recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
             args.schemaPredicateLimit
           ),
+          recallAnswerMode: recallAnswerModeOption(args.answerMode),
           entityIdentity: entityIdentitySetting,
           trustMode: trustViewOption(args.trust),
         },
@@ -817,6 +843,7 @@ async function main(): Promise<void> {
           recallSchemaPredicateLimit: recallSchemaPredicateLimitOption(
             args.schemaPredicateLimit
           ),
+          recallAnswerMode: recallAnswerModeOption(args.answerMode),
           entityIdentity: entityIdentitySetting,
           trustMode: trustViewOption(args.trust),
         },

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   entityIdentityFromEnv,
   integrityEnforcementFromEnv,
+  recallAnswerModeFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
 } from '../env.js';
@@ -191,6 +192,10 @@ const trustViewField = z
   .enum(['accepted', 'include_tentative'])
   .optional()
   .describe('Accepted knowledge only (default), or opt in to tentative claims');
+const recallAnswerModeField = z
+  .enum(['natural', 'deterministic'])
+  .optional()
+  .describe('LLM phrasing (natural default) or exact local binding rendering');
 const graphSelectorField = z
   .discriminatedUnion('kind', [
     z.object({
@@ -322,6 +327,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     validTimeMode: deps.validTimeMode ?? validTimeModeFromEnv(),
     recallSchemaPredicateLimit:
       deps.recallSchemaPredicateLimit ?? recallSchemaPredicateLimitFromEnv(),
+    recallAnswerMode: deps.recallAnswerMode ?? recallAnswerModeFromEnv(),
     integrityEnforcement:
       configuredIntegrity === undefined || configuredIntegrity === false
         ? configuredIntegrity
@@ -333,7 +339,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.29.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.30.0' });
 
   server.registerTool(
     'remember',
@@ -400,6 +406,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         schemaPredicateLimit: schemaPredicateLimitField,
         entityIdentity: entityIdentityField,
         trustMode: trustViewField,
+        answerMode: recallAnswerModeField,
         recordedSequence: recordedSequenceField,
       },
     },
@@ -409,6 +416,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       schemaPredicateLimit,
       entityIdentity,
       trustMode,
+      answerMode,
       recordedSequence,
     }) => {
       try {
@@ -419,6 +427,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             schemaPredicateLimit,
             entityIdentity,
             trustMode,
+            answerMode,
             recordedSequence,
           })
         );
@@ -441,6 +450,7 @@ export function createServer(deps: PipelineDeps): McpServer {
         proofLimit: proofLimitField,
         entityIdentity: entityIdentityField,
         trustMode: trustViewField,
+        answerMode: recallAnswerModeField,
         graphSelector: graphSelectorField,
         recordedSequence: recordedSequenceField,
       },
@@ -452,6 +462,7 @@ export function createServer(deps: PipelineDeps): McpServer {
       proofLimit,
       entityIdentity,
       trustMode,
+      answerMode,
       graphSelector,
       recordedSequence,
     }) => {
@@ -464,6 +475,7 @@ export function createServer(deps: PipelineDeps): McpServer {
             proofLimit,
             entityIdentity,
             trustMode,
+            answerMode,
             graphSelector,
             recordedSequence,
           })

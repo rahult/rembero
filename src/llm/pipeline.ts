@@ -52,7 +52,7 @@ import {
   type KnowledgeTrust,
   type TrustViewMode,
 } from '../knowledge/trust.js';
-import { assertSafeForExternalLlm } from '../safety.js';
+import { assertBoundedOutput, assertSafeForExternalLlm } from '../safety.js';
 import {
   NOTHING_SENTINEL,
   PHRASING_SYSTEM_PROMPT,
@@ -94,6 +94,8 @@ export interface PipelineDeps {
   entityIdentity?: EntityIdentityMode | false;
   /** Optional default trust projection; tentative claims remain excluded by default. */
   trustMode?: TrustViewMode | false;
+  /** Optional default final rendering mode for successful recall. */
+  recallAnswerMode?: RecallAnswerMode;
 }
 
 export interface RememberResult {
@@ -135,6 +137,7 @@ export interface RecallResult {
   pruning?: RecallPruningReport;
   recordedSnapshot?: RecordedSnapshotMetadata;
   trustMode?: TrustViewMode;
+  answerMode?: RecallAnswerMode;
 }
 
 export interface RetrievalResult {
@@ -190,6 +193,8 @@ export type RecallStatus =
   | 'unanswerable'
   | 'schema_budget_exhausted';
 
+export type RecallAnswerMode = 'natural' | 'deterministic';
+
 export interface RecallOptions {
   queryPromptVariant?: QueryPromptVariant;
   explain?: boolean;
@@ -202,6 +207,55 @@ export interface RecallOptions {
   graphSelector?: ExplanationGraphSelector;
   /** Read from the deterministic global journal position instead of current files. */
   recordedSequence?: number;
+  /** Natural LLM phrasing (default) or exact local binding rendering. */
+  answerMode?: RecallAnswerMode;
+}
+
+/** Render successful recall bindings locally without granting an LLM phrasing authority. */
+export function deterministicRecallAnswer(
+  query: string,
+  bindings: Record<string, string>[],
+  rowTrust?: KnowledgeTrust[]
+): string {
+  if (rowTrust !== undefined && rowTrust.length !== bindings.length) {
+    throw new Error('deterministic recall rowTrust must match binding row count');
+  }
+  if (bindings.length === 0) {
+    const answer = `No stored result matches ${query}.`;
+    assertBoundedOutput(answer, 'deterministic recall answer');
+    return answer;
+  }
+  const renderRow = (binding: Record<string, string>, index: number): string => {
+    const values = Object.entries(binding)
+      .map(([name, value]) => `${name} = ${value}`)
+      .join(', ');
+    const trust = rowTrust?.[index] === 'tentative' ? '[tentative] ' : '';
+    return `${trust}${values.length === 0 ? 'supported' : values}`;
+  };
+  let answer: string;
+  if (bindings.length === 1) {
+    const tentative = rowTrust?.[0] === 'tentative';
+    if (Object.keys(bindings[0]).length === 0) {
+      answer = `The query ${query} is ${tentative ? 'tentatively ' : ''}supported.`;
+    } else {
+      answer = `${tentative ? 'Tentative result' : 'Result'} for ${query}: ${renderRow(
+        bindings[0],
+        0
+      ).replace(/^\[tentative\] /, '')}.`;
+    }
+  } else {
+    answer = `Results for ${query}:\n${bindings
+      .map((binding, index) => `${index + 1}. ${renderRow(binding, index)}`)
+      .join('\n')}`;
+  }
+  assertBoundedOutput(answer, 'deterministic recall answer');
+  return answer;
+}
+
+function resolvedRecallAnswerMode(value: unknown): RecallAnswerMode {
+  if (value === undefined || value === 'natural') return 'natural';
+  if (value === 'deterministic') return value;
+  throw new Error("recall answer mode must be 'natural' or 'deterministic'");
 }
 
 function stripFences(text: string): string {
@@ -1202,6 +1256,11 @@ export async function recallQuestion(
   namespaces: string[] | '*' = ['default'],
   options: RecallOptions = {}
 ): Promise<RecallResult> {
+  const answerMode = resolvedRecallAnswerMode(
+    options.answerMode ?? deps.recallAnswerMode
+  );
+  const answerModeResult =
+    answerMode === 'deterministic' ? { answerMode } : {};
   const retrieval = await retrieveQuestion(deps, question, namespaces, options);
   if (retrieval.query === null) {
     return {
@@ -1209,6 +1268,7 @@ export async function recallQuestion(
         retrieval.status === 'schema_budget_exhausted'
           ? 'Recall reached its schema budget before it could rule out relevant memories.'
           : 'I have no relevant memories to answer that.',
+      ...answerModeResult,
       ...retrieval,
     };
   }
@@ -1216,6 +1276,7 @@ export async function recallQuestion(
   if (retrieval.status === 'schema_budget_exhausted') {
     return {
       answer: 'Recall reached its schema budget before it could rule out relevant memories.',
+      ...answerModeResult,
       ...retrieval,
     };
   }
@@ -1225,6 +1286,19 @@ export async function recallQuestion(
       answer:
         retrieval.whyNot?.summary ??
         `No stored result matches ${retrieval.query}.`,
+      ...answerModeResult,
+      ...retrieval,
+    };
+  }
+
+  if (answerMode === 'deterministic') {
+    return {
+      answer: deterministicRecallAnswer(
+        retrieval.query,
+        retrieval.bindings,
+        retrieval.rowTrust
+      ),
+      answerMode,
       ...retrieval,
     };
   }

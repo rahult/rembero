@@ -2,9 +2,25 @@ import { describe, expect, it } from 'vitest';
 import {
   entityIdentityFromEnv,
   integrityEnforcementFromEnv,
+  recallAnswerModeFromEnv,
   recallSchemaPredicateLimitFromEnv,
   validTimeModeFromEnv,
 } from '../src/env.js';
+
+describe('recallAnswerModeFromEnv', () => {
+  it('defaults to natural phrasing and accepts deterministic rendering', () => {
+    expect(recallAnswerModeFromEnv({})).toBe('natural');
+    expect(
+      recallAnswerModeFromEnv({ REMBERO_RECALL_ANSWER_MODE: 'deterministic' })
+    ).toBe('deterministic');
+  });
+
+  it('fails closed on an unknown answer mode', () => {
+    expect(() =>
+      recallAnswerModeFromEnv({ REMBERO_RECALL_ANSWER_MODE: 'creative' })
+    ).toThrow(/must be 'natural' or 'deterministic'/i);
+  });
+});
 import {
   DEFAULT_RECALL_SCHEMA_PREDICATES,
   MAX_RECALL_SCHEMA_PREDICATES,

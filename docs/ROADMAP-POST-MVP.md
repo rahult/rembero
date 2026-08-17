@@ -349,6 +349,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    empty result, emits typed `whyNotUnavailable` evidence, and uses a generic deterministic
    answer across library, CLI/MCP/package behavior without misrepresenting partial blockers.
 
+## Phase 33 — Deterministic positive answer mode  *(v0.30)*
+
+1. **Complete — exact local rendering**: boolean, single-row, multi-row, aggregate, and
+   tentative-labelled successful bindings render in stable authored variable/row order
+   with the existing output bound.
+2. **Complete — explicit compatibility boundary**: natural LLM phrasing remains default;
+   per-call, CLI, MCP, programmatic server, and environment configuration can opt into
+   deterministic mode without changing query generation, review, widening, or proofs.
+3. **Complete — reduced model authority and cost**: deterministic successful recall uses
+   one query-generation call (plus the existing fallback only when empty), while v0.29
+   negative recall stays deterministic in both modes.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

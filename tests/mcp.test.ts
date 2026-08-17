@@ -51,7 +51,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.29.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.30.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -1009,6 +1009,66 @@ describe('MCP explanation surfaces', () => {
     } finally {
       await client.close();
       await server.close();
+    }
+  });
+
+  it('renders positive recall locally when deterministic answer mode is requested', async () => {
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-answer-mode-')));
+    store.assert('default', 'works_at(maya, acme).', { opId: 'maya-source' });
+    const llm = new ScriptedLlm(['?- works_at(maya, Company).']);
+    const server = createServer({ store, llm });
+    const client = new Client({ name: 'rembero-answer-mode-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const recalled = await client.callTool({
+        name: 'recall',
+        arguments: {
+          question: 'Where does Maya work?',
+          answerMode: 'deterministic',
+        },
+      });
+      const text = recalled.content.find((item) => item.type === 'text');
+      expect(JSON.parse(text?.type === 'text' ? text.text : '')).toMatchObject({
+        status: 'answered',
+        answerMode: 'deterministic',
+        answer: 'Result for works_at(maya, Company): Company = acme.',
+      });
+      expect(llm.calls).toBe(1);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('applies REMBERO_RECALL_ANSWER_MODE as the MCP server default', async () => {
+    const previousMode = process.env.REMBERO_RECALL_ANSWER_MODE;
+    process.env.REMBERO_RECALL_ANSWER_MODE = 'deterministic';
+    const store = new MemoryStore(mkdtempSync(join(tmpdir(), 'rembero-mcp-answer-env-')));
+    store.assert('default', 'project(atlas).', { opId: 'project-source' });
+    const llm = new ScriptedLlm(['?- project(atlas).']);
+    const server = createServer({ store, llm });
+    const client = new Client({ name: 'rembero-answer-env-test', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const recalled = await client.callTool({
+        name: 'recall',
+        arguments: { question: 'Is Atlas a project?' },
+      });
+      const text = recalled.content.find((item) => item.type === 'text');
+      expect(JSON.parse(text?.type === 'text' ? text.text : '')).toMatchObject({
+        answerMode: 'deterministic',
+        answer: 'The query project(atlas) is supported.',
+      });
+      expect(llm.calls).toBe(1);
+    } finally {
+      await client.close();
+      await server.close();
+      if (previousMode === undefined) delete process.env.REMBERO_RECALL_ANSWER_MODE;
+      else process.env.REMBERO_RECALL_ANSWER_MODE = previousMode;
     }
   });
 

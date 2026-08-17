@@ -9,6 +9,7 @@ import {
 import type { ValidTimeMode } from './store/store.js';
 import type { IntegrityEnforcementOptions } from './knowledge/enforcement.js';
 import type { EntityIdentityMode } from './knowledge/identity.js';
+import type { RecallAnswerMode } from './llm/pipeline.js';
 
 /**
  * Load .env from the current directory and from the package root (so the CLI
@@ -49,6 +50,16 @@ export function recallSchemaPredicateLimitFromEnv(
     );
   }
   return parsed;
+}
+
+export function recallAnswerModeFromEnv(
+  env: NodeJS.ProcessEnv = process.env
+): RecallAnswerMode {
+  const configured = env.REMBERO_RECALL_ANSWER_MODE ?? 'natural';
+  if (configured === 'natural' || configured === 'deterministic') return configured;
+  throw new Error(
+    "REMBERO_RECALL_ANSWER_MODE must be 'natural' or 'deterministic'"
+  );
 }
 
 export function integrityEnforcementFromEnv(

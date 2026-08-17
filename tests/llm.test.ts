@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { MemoryStore } from '../src/store/store.js';
 import { parseProgram, serializeClause } from '../src/engine/index.js';
 import { buildSchemaSummary } from '../src/llm/prompts.js';
-import { rememberText, recallQuestion, retrieveQuestion } from '../src/llm/pipeline.js';
+import {
+  deterministicRecallAnswer,
+  rememberText,
+  recallQuestion,
+  retrieveQuestion,
+} from '../src/llm/pipeline.js';
 import type { ChatMessage, LlmClient } from '../src/llm/client.js';
 import { OpenRouterClient } from '../src/llm/client.js';
 import { wrapTentativeFacts } from '../src/knowledge/trust.js';
@@ -425,6 +430,95 @@ describe('recallQuestion', () => {
     // phrasing prompt received the bindings
     const phrasing = llm.calls[1];
     expect(phrasing[phrasing.length - 1].content).toContain('maya');
+  });
+
+  it('renders successful bindings locally in deterministic mode without phrasing', async () => {
+    const llm = new ScriptedLlm(['?- works_at(Person, acme).']);
+    const result = await recallQuestion(
+      { store, llm },
+      'Who works at Acme?',
+      ['default'],
+      { answerMode: 'deterministic' }
+    );
+
+    expect(result).toMatchObject({
+      status: 'answered',
+      answerMode: 'deterministic',
+      query: 'works_at(Person, acme)',
+      bindings: [{ Person: 'rahul' }, { Person: 'maya' }],
+      answer:
+        'Results for works_at(Person, acme):\n1. Person = rahul\n2. Person = maya',
+    });
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it('renders boolean and tentative rows without losing trust labels', async () => {
+    expect(deterministicRecallAnswer('project(atlas)', [{}])).toBe(
+      'The query project(atlas) is supported.'
+    );
+    expect(
+      deterministicRecallAnswer(
+        'status(mira, State)',
+        [{ State: 'paused' }],
+        ['tentative']
+      )
+    ).toBe('Tentative result for status(mira, State): State = paused.');
+    expect(
+      deterministicRecallAnswer(
+        'count(*) as Count where employee(Person)',
+        [{ Count: '2' }]
+      )
+    ).toBe(
+      'Result for count(*) as Count where employee(Person): Count = 2.'
+    );
+    expect(
+      deterministicRecallAnswer(
+        'status(Person, State)',
+        [
+          { Person: 'mira', State: 'active' },
+          { Person: 'zoe', State: 'paused' },
+        ],
+        ['accepted', 'tentative']
+      )
+    ).toBe(
+      'Results for status(Person, State):\n1. Person = mira, State = active\n2. [tentative] Person = zoe, State = paused'
+    );
+    expect(() =>
+      deterministicRecallAnswer('status(Person, State)', [{ State: 'active' }], [])
+    ).toThrow(/rowTrust must match binding row count/i);
+
+    const tentativeStore = new MemoryStore(
+      mkdtempSync(join(tmpdir(), 'rembero-deterministic-trust-'))
+    );
+    tentativeStore.importClauses(
+      'default',
+      wrapTentativeFacts('status(mira, paused).'),
+      { opId: 'tentative' }
+    );
+    const llm = new ScriptedLlm(['?- status(mira, State).']);
+    const result = await recallQuestion(
+      { store: tentativeStore, llm },
+      'What may Mira status be?',
+      ['default'],
+      { trustMode: 'include_tentative', answerMode: 'deterministic' }
+    );
+    expect(result).toMatchObject({
+      answerMode: 'deterministic',
+      rowTrust: ['tentative'],
+      answer: 'Tentative result for status(mira, State): State = paused.',
+    });
+    expect(llm.calls).toHaveLength(1);
+  });
+
+  it('fails closed on an unknown programmatic recall answer mode', async () => {
+    const llm = new ScriptedLlm([]);
+    await expect(
+      recallQuestion(
+        { store, llm, recallAnswerMode: 'creative' as never },
+        'Who works at Acme?'
+      )
+    ).rejects.toThrow(/must be 'natural' or 'deterministic'/i);
+    expect(llm.calls).toHaveLength(0);
   });
 
   it('projects an alias only at declared positions during opt-in recall', async () => {

@@ -38,6 +38,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_AUTO_CAPTURE_TAIL_BYTES` | no | `24576` bytes (maximum `49152`) |
 | `REMBERO_VALID_TIME_MODE` | no | `delete`; set `archive_until` to preserve superseded facts |
 | `REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT` | no | `32` detailed predicates on the first recall pass (range: 1–256) |
+| `REMBERO_RECALL_ANSWER_MODE` | no | `natural`; use `deterministic` for local binding rendering |
 | `REMBERO_INTEGRITY_MODE` | no | `off`; use `strict` or migration mode `no_new_violations` for atomic write rejection |
 | `REMBERO_INTEGRITY_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view when enforcement is active |
 | `REMBERO_ENTITY_IDENTITY` | no | `off`; use `canonical` for explicit position-scoped alias projection |
@@ -130,6 +131,7 @@ node dist/cli.js remember "Rahul's dentist is Dr Chen"
 node dist/cli.js recall   "Who is Rahul's dentist?"
 node dist/cli.js recall   "Who owns Atlas?" --schema-predicate-limit 48
 node dist/cli.js recall-explain "Who are Rahul's colleagues?"
+node dist/cli.js recall "Who works at Acme?" --answer-mode deterministic
 node dist/cli.js assert   ':- status(Person, active), status(Person, terminated).'
 node dist/cli.js check    --proof-limit 2 --max-violations 100
 node dist/cli.js conflicts mira # focused cross-policy conflict evidence
@@ -274,6 +276,12 @@ summary; Rembero no longer sends empty bindings to the LLM for phrasing. If diag
 limits are exceeded, recall returns an explicit `whyNotUnavailable` marker and an honest
 generic negative answer. See
 [the grounded-negative-recall contract](docs/GROUNDED-NEGATIVE-RECALL.md).
+
+Version 0.30 adds opt-in deterministic rendering for successful natural-language recall.
+`--answer-mode deterministic`, MCP `answerMode`, or
+`REMBERO_RECALL_ANSWER_MODE=deterministic` formats exact boolean or binding rows locally,
+labels tentative rows, and skips the final LLM phrasing call. Natural phrasing remains the
+default. See [the deterministic-answer-mode contract](docs/DETERMINISTIC-ANSWER-MODE.md).
 
 At 100+ predicates, recall ranks a deterministic local schema slice, preserves rule
 dependencies and temporal companions, and evaluates every accepted query against the

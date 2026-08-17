@@ -751,6 +751,26 @@ describe('CLI ingress limits', () => {
     );
   });
 
+  it('rejects recall answer mode on non-recall commands', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-answer-mode-'));
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'query',
+        'item(X)',
+        '--answer-mode',
+        'deterministic',
+      ],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, REMBERO_HOME: join(root, 'home') },
+      }
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/available only for serve, recall, or recall-explain/i);
+  });
+
   it('queries an exact recorded snapshot without changing current knowledge', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-recorded-'));
     const home = join(root, 'home');

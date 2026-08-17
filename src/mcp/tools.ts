@@ -11,6 +11,7 @@ import {
 } from '../engine/index.js';
 import {
   type RecallResult,
+  type RecallAnswerMode,
   type RememberResult,
   type PipelineDeps,
   recallQuestion,
@@ -170,6 +171,7 @@ export function recallTool(
     entityIdentity?: EntityIdentityMode;
     trustMode?: TrustViewMode;
     recordedSequence?: number;
+    answerMode?: RecallAnswerMode;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -184,6 +186,7 @@ export function recallTool(
     ...(args.recordedSequence === undefined
       ? {}
       : { recordedSequence: args.recordedSequence }),
+    ...(args.answerMode === undefined ? {} : { answerMode: args.answerMode }),
   });
 }
 
@@ -198,6 +201,7 @@ export function recallExplainTool(
     trustMode?: TrustViewMode;
     graphSelector?: ExplanationGraphSelector;
     recordedSequence?: number;
+    answerMode?: RecallAnswerMode;
   }
 ): Promise<RecallResult> {
   assertBoundedInput(args.question, 'recall question');
@@ -215,6 +219,7 @@ export function recallExplainTool(
     ...(args.recordedSequence === undefined
       ? {}
       : { recordedSequence: args.recordedSequence }),
+    ...(args.answerMode === undefined ? {} : { answerMode: args.answerMode }),
   });
 }
 
