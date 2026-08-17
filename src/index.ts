@@ -339,6 +339,12 @@ export {
   type KnowledgeRuleCoverage,
 } from './knowledge/checks.js';
 export {
+  profileKnowledge,
+  type ProfileKnowledgeOptions,
+  type KnowledgeWorkReduction,
+  type ProfileKnowledgeResult,
+} from './knowledge/profile.js';
+export {
   TENTATIVE_PREDICATE,
   MAX_TENTATIVE_FACTS,
   MAX_TENTATIVE_CLAUSE_BYTES,

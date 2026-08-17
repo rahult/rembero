@@ -74,6 +74,9 @@ const rows = evaluate(clauses, query, {
 Each public evaluation call resets and fills the supplied metrics object. These counters
 describe execution work, not stored knowledge, and do not affect limits or results.
 
+Version 0.38 exposes these counters through `profile` / `profile_query` and can rerun one
+query with indexes disabled, refusing output unless complete explanations are byte-identical.
+
 ## Deliberate boundary
 
 Version 0.17 indexes only the first argument. It does not add a cost-based optimizer,

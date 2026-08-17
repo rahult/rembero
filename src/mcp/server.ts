@@ -46,6 +46,7 @@ import {
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
   runKnowledgeChecksTool,
+  profileKnowledgeTool,
 } from './tools.js';
 import {
   IncompleteHistoryError,
@@ -406,7 +407,7 @@ export function createServer(deps: PipelineDeps): McpServer {
           },
     entityIdentity,
   };
-  const server = new McpServer({ name: 'rembero', version: '0.37.0' });
+  const server = new McpServer({ name: 'rembero', version: '0.38.0' });
 
   server.registerTool(
     'remember',
@@ -932,6 +933,52 @@ export function createServer(deps: PipelineDeps): McpServer {
             trustMode,
             recordedSequence,
             includePassingEvidence,
+          })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'profile_query',
+    {
+      title: 'Profile deterministic query work',
+      description:
+        'Run a Datalog query with exact proofs and graph while returning deterministic relation lookup, index-build, and candidate-fact counters. Optional full-scan comparison reruns with indexes disabled and returns only if explanations are byte-identical. No timing, LLM, or mutation is used.',
+      inputSchema: {
+        query: boundedText(),
+        namespaces: namespacesField,
+        proofLimit: proofLimitField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        graphSelector: graphSelectorField,
+        recordedSequence: recordedSequenceField,
+        compareFullScan: z.boolean().optional(),
+      },
+    },
+    async ({
+      query,
+      namespaces,
+      proofLimit,
+      entityIdentity,
+      trustMode,
+      graphSelector,
+      recordedSequence,
+      compareFullScan,
+    }) => {
+      try {
+        return asContent(
+          profileKnowledgeTool(resolvedDeps, {
+            query,
+            namespaces,
+            proofLimit,
+            entityIdentity,
+            trustMode,
+            graphSelector,
+            recordedSequence,
+            compareFullScan,
           })
         );
       } catch (e) {

@@ -94,6 +94,7 @@ import {
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
   runKnowledgeChecksTool,
+  profileKnowledgeTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
 import {
@@ -141,6 +142,7 @@ Usage:
   rembero bundle                         Export raw clauses and provenance with a digest
   rembero verify-bundle <file>           Verify a standalone knowledge bundle
   rembero test-knowledge <file>          Run a deterministic rule regression suite
+  rembero profile <query>                Profile deterministic relation work and proofs
   rembero forget <pattern>               Retract facts matching a pattern
   rembero history <pattern>              Show a fact's deterministic life story
   rembero checkpoint                     Rotate the active journal into a verified segment
@@ -159,7 +161,7 @@ Usage:
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
-      --namespaces <a,b|*> Namespaces to search for recall/query/why-not/topology/diff/audit-rules/search/browse/test-knowledge/check/conflicts/list/claims/history
+      --namespaces <a,b|*> Namespaces to search for recall/query/profile/why-not/topology/diff/audit-rules/search/browse/test-knowledge/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
       --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
@@ -188,6 +190,7 @@ Options:
       --claim-limit <n>   Explicit graph claims (default: 100; max: ${MAX_BROWSE_GRAPH_CLAIMS})
       --focus-number      Interpret browse entity focus as a numeric term
       --include-passing-evidence  Include proofs/graphs for passing knowledge checks
+      --compare-scan        Re-run profile with relation indexes disabled and prove equivalence
       --at <ISO>           Canonical UTC valid-until instant for supersede
       --dry-run            Preview checkpoint metadata without rotating journal.log
       --op-id <id>        Stable key for assert/accept/reject/supersede/forget/import/checkpoint
@@ -256,6 +259,7 @@ interface ParsedArgs {
   claimLimit?: string;
   focusNumber: boolean;
   includePassingEvidence: boolean;
+  compareScan: boolean;
   at?: string;
 }
 
@@ -272,6 +276,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     searchKinds: [],
     focusNumber: false,
     includePassingEvidence: false,
+    compareScan: false,
   };
   const valueAfter = (index: number, flag: string): string => {
     const value = argv[index + 1];
@@ -390,6 +395,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.focusNumber = true;
     } else if (arg === '--include-passing-evidence') {
       parsed.includePassingEvidence = true;
+    } else if (arg === '--compare-scan') {
+      parsed.compareScan = true;
     } else if (arg === '--at') {
       parsed.at = valueAfter(i, arg);
       i += 1;
@@ -692,10 +699,10 @@ async function main(): Promise<void> {
     'review',
     'checkpoint',
   ].includes(command ?? '');
-  const graphCommand = ['recall-explain', 'explain', 'check', 'conflicts'].includes(command ?? '');
+  const graphCommand = ['recall-explain', 'explain', 'profile', 'check', 'conflicts'].includes(command ?? '');
   if (graphSelector !== undefined && !writeCommand && !graphCommand) {
     throw new Error(
-      'graph selection is available for recall-explain, explain, check, conflicts, and integrity-guarded writes'
+      'graph selection is available for recall-explain, explain, profile, check, conflicts, and integrity-guarded writes'
     );
   }
   if (
@@ -725,6 +732,7 @@ async function main(): Promise<void> {
       'search',
       'browse',
       'test-knowledge',
+      'profile',
       'list',
     ].includes(command ?? '')
   ) {
@@ -792,6 +800,9 @@ async function main(): Promise<void> {
   if (args.includePassingEvidence && command !== 'test-knowledge') {
     throw new Error('--include-passing-evidence is available only for test-knowledge');
   }
+  if (args.compareScan && command !== 'profile') {
+    throw new Error('--compare-scan is available only for profile');
+  }
   if (args.at !== undefined && command !== 'supersede' && command !== 'checkpoint') {
     throw new Error('--at is available only for supersede or checkpoint');
   }
@@ -805,10 +816,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['recall', 'recall-explain', 'query', 'explain', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['recall', 'recall-explain', 'query', 'explain', 'profile', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for recall, recall-explain, query, explain, why-not, topology, audit-rules, search, browse, bundle, test-knowledge, check, conflicts, and list'
+      '--as-of-sequence is available for recall, recall-explain, query, explain, profile, why-not, topology, audit-rules, search, browse, bundle, test-knowledge, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1017,6 +1028,26 @@ async function main(): Promise<void> {
           ...(proofLimit === undefined ? {} : { proofLimit }),
           ...(graphSelector === undefined ? {} : { graphSelector }),
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'profile': {
+      const proofLimit = proofLimitOption(args.proofLimit);
+      const result = profileKnowledgeTool(
+        {
+          store,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          query: text,
+          namespaces,
+          ...(proofLimit === undefined ? {} : { proofLimit }),
+          ...(graphSelector === undefined ? {} : { graphSelector }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+          ...(args.compareScan ? { compareFullScan: true } : {}),
         }
       );
       console.log(stringifyBoundedResult(result, 'CLI result'));

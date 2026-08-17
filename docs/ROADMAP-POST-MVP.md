@@ -445,6 +445,18 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
    native/portable/temp/view/generated/missing/arity/no-row-scan tests, installed package,
    and Node 22+ SQLite gates share the execution schema used by portable loading.
 
+## Phase 41 — Deterministic query work profiling  *(v0.38)*
+
+1. **Complete — stable engine counters**: ordinary, recursive, aggregate, identity, trust,
+   current, and recorded queries return exact relation lookups, indexed lookups, index
+   facts processed, and candidate facts visited beside normal proofs and graphs.
+2. **Complete — indexed/scan equivalence gate**: optional comparison reruns with relation
+   indexes disabled, refuses mismatched explanation bytes, and reports candidate visits
+   avoided plus a deterministic ratio without timing measurements.
+3. **Complete — interface and evidence parity**: library, CLI `profile`, MCP
+   `profile_query`, graph/proof selection, package installs, selective scale controls,
+   runtime option validation, and 16 MiB result bounds share one read-only contract.
+
 ## Not planned
 
 - Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)

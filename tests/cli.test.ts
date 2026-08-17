@@ -847,6 +847,42 @@ describe('CLI ingress limits', () => {
     });
   });
 
+  it('profiles deterministic query work without timing fields', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rembero-cli-profile-'));
+    const home = join(root, 'home');
+    const store = new MemoryStore(join(home, 'memory'));
+    store.assert(
+      'default',
+      `${Array.from(
+        { length: 200 },
+        (_, index) => `related(person_${index}, topic_${index % 5}).`
+      ).join('\n')}
+       selected(person_199).
+       relevant(X, Y) :- selected(X), related(X, Y).`,
+      { opId: 'profile-program' }
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('dist/cli.js'),
+        'profile',
+        'relevant(X, Y)',
+        '--compare-scan',
+      ],
+      { encoding: 'utf8', env: { ...process.env, REMBERO_HOME: home } }
+    );
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload).toMatchObject({
+      equivalent: true,
+      explanation: {
+        rows: [{ bindings: { X: 'person_199', Y: 'topic_4' } }],
+      },
+      workReduction: { candidateFactsAvoided: expect.any(Number) },
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/duration|elapsed|millisecond/i);
+  });
+
   it('supersedes multiple fact patterns with exact valid-time archives and safe retries', () => {
     const root = mkdtempSync(join(tmpdir(), 'rembero-cli-supersede-'));
     const home = join(root, 'home');

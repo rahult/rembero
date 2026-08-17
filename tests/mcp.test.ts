@@ -51,7 +51,7 @@ describe('MCP explanation surfaces', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.37.0' });
+      expect(client.getServerVersion()).toEqual({ name: 'rembero', version: '0.38.0' });
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
@@ -70,6 +70,7 @@ describe('MCP explanation surfaces', () => {
           'export_knowledge_bundle',
           'verify_knowledge_bundle',
           'run_knowledge_checks',
+          'profile_query',
           'assert_tentative',
           'review_tentative',
           'resolve_tentative',
@@ -305,6 +306,20 @@ describe('MCP explanation surfaces', () => {
         checkCount: 2,
         passedCount: 2,
         recordedSnapshot: { sequence: 1 },
+      });
+
+      const profiled = await client.callTool({
+        name: 'profile_query',
+        arguments: { query: 'answer(a)', compareFullScan: true },
+      });
+      const profiledText = profiled.content.find((item) => item.type === 'text');
+      expect(
+        JSON.parse(profiledText?.type === 'text' ? profiledText.text : '')
+      ).toMatchObject({
+        equivalent: true,
+        explanation: { rows: [{ bindings: {} }] },
+        indexed: { candidateFactsVisited: expect.any(Number) },
+        fullScan: { candidateFactsVisited: expect.any(Number) },
       });
 
       const asserted = await client.callTool({

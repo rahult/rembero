@@ -35,6 +35,7 @@ import {
   exportKnowledgeBundleTool,
   verifyKnowledgeBundleTool,
   runKnowledgeChecksTool,
+  profileKnowledgeTool,
 } from '../src/mcp/tools.js';
 import { serializeKnowledgeBundle } from '../src/knowledge/bundle.js';
 
@@ -836,6 +837,34 @@ describe('MCP tool handlers', () => {
         minimumPercent: 100,
       },
     });
+  });
+
+  it('profiles current and recorded deterministic work through the tool boundary', () => {
+    store.assert(
+      'default',
+      `${Array.from(
+        { length: 200 },
+        (_, index) => `related(person_${index}, topic_${index % 5}).`
+      ).join('\n')}
+       selected(person_199).
+       relevant(X, Y) :- selected(X), related(X, Y).`,
+      { opId: 'profile-program' }
+    );
+    const result = profileKnowledgeTool(
+      { store },
+      { query: 'relevant(X, Y)', compareFullScan: true, recordedSequence: 1 }
+    );
+    expect(result).toMatchObject({
+      equivalent: true,
+      explanation: {
+        rows: [{ bindings: { X: 'person_199', Y: 'topic_4' } }],
+      },
+      indexed: { indexedRelationLookups: expect.any(Number) },
+      fullScan: { indexedRelationLookups: 0 },
+      workReduction: { candidateFactsAvoided: expect.any(Number) },
+      recordedSnapshot: { sequence: 1, journalEntries: 1 },
+    });
+    expect(result.workReduction!.candidateFactsAvoided).toBeGreaterThan(100);
   });
 
   it('query and explain read deterministic recorded snapshots with past sources', () => {

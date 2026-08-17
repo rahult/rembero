@@ -80,6 +80,10 @@ import {
   runKnowledgeChecks,
   type KnowledgeCheckSuiteResult,
 } from '../knowledge/checks.js';
+import {
+  profileKnowledge,
+  type ProfileKnowledgeResult,
+} from '../knowledge/profile.js';
 import type { IntegrityEnforcementOptions } from '../knowledge/enforcement.js';
 import {
   EntityIdentityError,
@@ -890,6 +894,51 @@ export function runKnowledgeChecksTool(
       ...(args.includePassingEvidence === undefined
         ? {}
         : { includePassingEvidence: args.includePassingEvidence }),
+    }
+  );
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
+}
+
+export function profileKnowledgeTool(
+  deps: StoreToolDeps,
+  args: {
+    query: string;
+    namespaces?: string[] | '*';
+    proofLimit?: number;
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    graphSelector?: ExplanationGraphSelector;
+    recordedSequence?: number;
+    compareFullScan?: boolean;
+  }
+): ProfileKnowledgeResult & { recordedSnapshot?: RecordedSnapshotMetadata } {
+  assertBoundedInput(args.query, 'profile query');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = profileKnowledge(
+    recorded.clauses,
+    args.query,
+    recorded.sources,
+    {
+      ...(args.proofLimit === undefined
+        ? {}
+        : { maxProofsPerRow: args.proofLimit }),
+      ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(trustMode === 'accepted' ? {} : { trustMode }),
+      ...(args.graphSelector === undefined
+        ? {}
+        : { graphSelector: args.graphSelector }),
+      ...(args.compareFullScan === undefined
+        ? {}
+        : { compareFullScan: args.compareFullScan }),
     }
   );
   return {

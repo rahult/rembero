@@ -36,7 +36,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, createKnowledgeBundle, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, runKnowledgeChecks, searchKnowledge, selectExplanationGraph, selectRecallSchema, serializeKnowledgeBundle, simulateKnowledge, sqliteDatalogExecutionMode, verifyKnowledgeBundle } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, analyzeKnowledgeTopology, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, createKnowledgeBundle, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, profileKnowledge, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, runKnowledgeChecks, searchKnowledge, selectExplanationGraph, selectRecallSchema, serializeKnowledgeBundle, simulateKnowledge, sqliteDatalogExecutionMode, verifyKnowledgeBundle } from 'rembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "if (materialize(parseProgram('base(a). derived(X) :- base(X).')).filter((fact) => fact.derived).length !== 1) throw new Error('public proof-free materialization API failed'); " +
@@ -76,6 +76,8 @@ try {
         "const coverageStore = new MemoryStore('./coverage-memory'); coverageStore.assert('default', 'base(a). derived(X) :- base(X).'); " +
         "const coverageResult = runKnowledgeChecks(coverageStore.clausesFor(['default']), coverageStore.sourcesFor(['default']), { version: 1, coverage: { minimumPercent: 100 }, checks: [{ name: 'derived proof', query: 'derived(a)', expect: { kind: 'nonempty' } }] }); " +
         "if (!coverageResult.coveragePassed || coverageResult.coverage.percent !== 100 || coverageResult.coverage.rules[0]?.checkNames[0] !== 'derived proof') throw new Error('public semantic rule coverage failed'); " +
+        "const profile = profileKnowledge(parseProgram('base(a). derived(X) :- base(X).'), 'derived(a)', new Map(), { compareFullScan: true }); " +
+        "if (!profile.equivalent || profile.explanation.rows.length !== 1 || profile.fullScan === undefined || profile.workReduction === undefined) throw new Error('public deterministic query profile failed'); " +
         "const aggregateRules = parseProgram('member(red, alice). member(red, bob). team_size(Team, Count) :- count(*) as Count where member(Team, Person).'); " +
         "const aggregateRuleRows = evaluate(aggregateRules, parseQuery('team_size(Team, Count)')); " +
         "if (!isAggregateRule(aggregateRules[2]) || aggregateRuleRows[0]?.Count?.value !== 2) throw new Error('public aggregate rule API failed'); " +
@@ -352,6 +354,20 @@ try {
     repairOutput.plans?.[0]?.assume?.[0] !== 'badge(bob).'
   ) {
     throw new Error('packaged verified repair planning failed');
+  }
+  const profileOutput = JSON.parse(
+    run(
+      process.execPath,
+      [installedCli, 'profile', 'eligible(bob)', '--compare-scan'],
+      { cwd: directory, env: repairEnv }
+    )
+  );
+  if (
+    profileOutput.equivalent !== true ||
+    profileOutput.fullScan === undefined ||
+    profileOutput.workReduction === undefined
+  ) {
+    throw new Error('packaged deterministic query profile failed');
   }
   const repairAudit = JSON.parse(
     run(process.execPath, [installedCli, 'audit-rules'], {
@@ -746,7 +762,7 @@ try {
     throw new Error(`unexpected packaged aggregate explanation: ${aggregateExplainOutput}`);
   }
   console.log(
-    'packed install, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
+    'packed install, indexed-versus-scan deterministic query profiling, transaction-safe schema-only SQLite Datalog planning, enforced semantic rule coverage, portable deterministic knowledge regression suites, bounded provenance-aware recall ranking, verified content-addressed portable knowledge bundle, bounded explicit personal knowledge graph browse, deterministic local knowledge search with evidence graph, deterministic positive answer mode, grounded negative recall without model phrasing, deterministic rule health audit, verified repair planning, exact recorded knowledge diff, deterministic knowledge topology, deterministic why-not explanations, deterministic counterfactual impact, immutable journal checkpoints, reviewable knowledge trust, reusable aggregate rules, non-empty recall disambiguation, focused conflict views, deterministic relation indexing, explicit temporal corrections, recorded-time snapshots, retry-safe writes, graph navigation, explicit entity identity, deterministic recall pruning, safe auto-capture hook lifecycle, temporal history, native recursion, personal proofs, atomic integrity enforcement, stratified negation, scalar aggregation, arithmetic filters, and explanation graph passed'
   );
 } finally {
   rmSync(directory, { recursive: true, force: true });
