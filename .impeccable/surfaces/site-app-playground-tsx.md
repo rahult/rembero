@@ -1,7 +1,7 @@
 # Guided Query Canvas
 
-- **Scope and mode:** Replace the small hosted proof card with a full specialized IDE;
-  Operate mode inside the existing public marketing surface.
+- **Scope and mode:** Keep the full specialized IDE as the `/playground` Operate surface,
+  linked from the separate public marketing homepage.
 - **Audience and job:** Database-literate developers who want to evaluate Rembero without
   first learning Datalog terminology. They insert data, inspect SQLite, run a prepared
   rule, then verify the result through proof and graph.

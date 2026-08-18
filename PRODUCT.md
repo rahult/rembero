@@ -45,8 +45,10 @@ database. Its sample workspace is fictional and resettable.
 - Every execution path is bounded, deterministic, browser-local, and explicit about
   unsupported syntax.
 - Data edits are session-only unless a future requirement explicitly adds device-local
-  persistence.
+persistence.
 - The site and playground are public; no private user knowledge is bundled or uploaded.
+- The product story lives at `/`; the specialized database IDE lives at `/playground` and
+  remains one deliberate navigation action away on the same domain.
 
 ## Brand Commitments
 
@@ -68,7 +70,7 @@ correctness, semantic/vector retrieval, or model-free arbitrary natural-language
 
 ## Product Principles
 
-1. Demonstrate the mechanism before describing it.
+1. Explain the product clearly, then make the full mechanism one deliberate action away.
 2. Proof, source, and execution boundary remain visible with every answer.
 3. Unknown and unsupported remain explicit states, never plausible filler.
 4. SQLite is the authority; graph and proof views are projections of the same run.

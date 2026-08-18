@@ -1,6 +1,6 @@
-# Rembero marketing playground
+# Rembero product site and playground
 
-The hosted product site and browser-contained proof playground for
+The hosted product site at `/` and browser-contained proof playground at `/playground` for
 [Rembero](https://github.com/rahult/remembero).
 
 The playground runs SQLite 3.53.4 as WebAssembly with Rembero's C extension linked into

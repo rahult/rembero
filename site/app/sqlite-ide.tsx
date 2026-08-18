@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
+import Link from "next/link";
 import {
   CONSTRAINT_EXAMPLE,
   DEFAULT_SQL,
@@ -451,9 +452,9 @@ export function SqliteIde() {
       data-mobile-pane={mobilePane}
     >
       <header className="ide-topbar">
-        <a className="ide-brand" href="#playground" aria-label="Rembero IDE home">
+        <Link className="ide-brand" href="/" aria-label="Rembero main site">
           rembero
-        </a>
+        </Link>
         <strong className="ide-product-name">SQLite + Datalog IDE</strong>
         <span className="ide-runtime-line" aria-live="polite">
           {runtime
@@ -463,6 +464,7 @@ export function SqliteIde() {
               : "Starting SQLite WebAssembly…"}
         </span>
         <nav className="ide-top-actions" aria-label="IDE actions">
+          <Link href="/">Home</Link>
           <a href={`${github}#readme`}>Docs</a>
           <a href={github}>GitHub</a>
           <button

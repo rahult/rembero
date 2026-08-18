@@ -1,67 +1,124 @@
-import { Playground } from "./playground";
+import Image from "next/image";
+import Link from "next/link";
 
 const github = "https://github.com/rahult/remembero";
+const playground = "/playground";
+
+function HeroProof() {
+  return (
+    <div className="hero-proof" aria-label="Example proof-carrying answer">
+      <div className="hero-proof-row"><span>Question</span><p>Who is collaborating on Atlas?</p></div>
+      <div className="hero-proof-row"><span>Query</span><code>collaborator(Person, atlas)</code></div>
+      <div className="hero-proof-row hero-answer"><span>Answer</span><p>Maya is collaborating on Atlas.</p></div>
+      <div className="hero-proof-row hero-because">
+        <span>Because</span>
+        <ol>
+          <li><b>1</b><code>project_owner(atlas, rahul)</code></li>
+          <li><b>2</b><code>project_contributor(atlas, maya)</code></li>
+        </ol>
+      </div>
+      <div className="hero-proof-source"><span>Atlas planning session · 17 Aug</span><Link href={playground}>Open in playground</Link></div>
+    </div>
+  );
+}
 
 export default function Home() {
   return (
-    <main>
-      <Playground />
-
-      <section className="ide-afterword" aria-labelledby="afterword-title">
-        <div>
-          <h1 id="afterword-title">The database is the demo.</h1>
-          <p>
-            Add a row, run a rule, and inspect every premise. Nothing leaves the
-            browser and no derived answer is written back as truth.
-          </p>
+    <main className="marketing-home">
+      <header className="site-header">
+        <a className="brand" href="#top" aria-label="Rembero home">rembero</a>
+        <nav className="desktop-nav" aria-label="Main navigation">
+          <a href="#product">Product</a><a href="#how-it-works">How it works</a><Link href={playground}>Playground</Link><a href={github}>GitHub</a>
+        </nav>
+        <div className="header-actions">
+          <Link className="button primary header-try" href={playground}>Try the playground</Link>
+          <a className="button secondary desktop-source" href={github}>View on GitHub</a>
+          <details className="mobile-menu">
+            <summary aria-label="Open menu"><i /><i /><i /></summary>
+            <nav aria-label="Mobile navigation"><a href="#product">Product</a><a href="#how-it-works">How it works</a><Link href={playground}>Playground</Link><a href={github}>GitHub</a></nav>
+          </details>
         </div>
-        <div className="afterword-ledger">
-          <article>
-            <strong>SQLite owns the rows.</strong>
-            <p>Ordinary tables remain storage and transaction authority.</p>
+      </header>
+
+      <section className="hero" id="top">
+        <div className="hero-copy">
+          <h1>Memory you<br />can reason with.</h1>
+          <p>Store facts and rules as readable knowledge. Ask useful questions. Get deterministic answers with the proof attached.</p>
+          <div className="hero-actions"><Link className="button primary" href={playground}>Try the playground</Link><a className="button secondary" href={github}>View on GitHub</a></div>
+          <span className="hero-boundary">Local-first by default. Logic owns the answer.</span>
+        </div>
+        <HeroProof />
+      </section>
+
+      <section className="difference section-dark" id="product">
+        <div className="section-shell">
+          <h2>Not another vector store.</h2>
+          <p className="section-lede">Similarity finds nearby text. Rembero proves what follows.</p>
+          <div className="difference-grid">
+            <article><h3>Readable memory</h3><p>Plain-text facts, rules, and constraints.</p><pre><code>{`project_owner(atlas, rahul).
+status(atlas, blocked).`}</code></pre></article>
+            <article><h3>Deterministic rules</h3><p>Same knowledge. Same query. Same answer.</p><pre><code>{`needs_follow_up(Person, Project) :-
+  promised_update(rahul, Person, Project),
+  status(Project, blocked).`}</code></pre></article>
+            <article><h3>Proof, not vibes</h3><p>Every derived answer carries its supporting claims.</p><pre><code>{`collaborator(maya, atlas)
+├─ project_owner(atlas, rahul)
+└─ project_contributor(atlas, maya)`}</code></pre></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="product-showcase section" aria-labelledby="showcase-title">
+        <div className="section-shell">
+          <div className="showcase-heading">
+            <div><h2 id="showcase-title">The database is the demo.</h2><p>Insert a SQLite row, run Datalog, then inspect the exact facts and rule behind the answer—all inside your browser.</p></div>
+            <Link className="button primary" href={playground}>Open the full playground</Link>
+          </div>
+          <Link className="showcase-frame" href={playground} aria-label="Open the Rembero SQLite and Datalog playground">
+            <Image src="/og.png" alt="Rembero SQLite and Datalog IDE showing tables, a query, proof, and graph" width={1731} height={909} unoptimized priority />
+          </Link>
+          <div className="showcase-ledger">
+            <span><strong>SQLite owns the rows.</strong> Ordinary tables remain the storage authority.</span>
+            <span><strong>Rules own the query.</strong> The C extension executes inside SQLite WebAssembly.</span>
+            <span><strong>Proof owns the answer.</strong> Every result can show its complete support chain.</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="how section" id="how-it-works">
+        <div className="section-shell">
+          <h2>An answer is only useful if you can inspect <em>why.</em></h2>
+          <div className="steps">
+            <article><div className="step-title"><b>1</b><h3>Store evidence</h3></div><p>Capture a fact with the statement it came from.</p><code>project_owner(atlas, rahul).</code></article>
+            <article><div className="step-title"><b>2</b><h3>Apply reviewed rules</h3></div><p>Derive useful knowledge without storing invented conclusions.</p><code>collaborator(Person, Project) :- …</code></article>
+            <article><div className="step-title"><b>3</b><h3>Return the support chain</h3></div><p>Inspect the exact claims and rules behind every answer.</p><code>answer → rule → sourced facts</code></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="boundary section-dark">
+        <div className="section-shell boundary-grid">
+          <article className="model-boundary">
+            <h2>Models translate.<br />Rules <em>decide.</em></h2>
+            <p>Natural language can translate a question into a query. Rembero evaluates the accepted query against explicit knowledge and returns the evidence locally.</p>
+            <ol className="boundary-flow"><li>Question <span>natural language</span></li><li>Translate <span>model</span></li><li>Query <span>accepted</span></li><li>Evaluate <span>rules + facts</span></li><li>Answer + evidence</li></ol>
           </article>
-          <article>
-            <strong>The extension owns the query.</strong>
-            <p>The existing Rembero C extension is compiled into SQLite WebAssembly.</p>
-          </article>
-          <article>
-            <strong>The proof owns the answer.</strong>
-            <p>Results, proof ladders, and graphs come from one exact execution.</p>
+          <article className="integrations">
+            <h2>One memory layer.<br />Three ways <em>in.</em></h2>
+            <div className="integration-list"><div><strong>MCP</strong><span>Connect agents and tools through Model Context Protocol servers.</span></div><div><strong>TypeScript</strong><span>Use the typed library API inside your applications.</span></div><div><strong>CLI</strong><code>npx -y rembero</code></div></div>
           </article>
         </div>
       </section>
 
-      <section className="ide-model-boundary" aria-labelledby="boundary-title">
-        <div>
-          <h2 id="boundary-title">Models translate. Rules decide.</h2>
-          <p>
-            This IDE deliberately starts after natural-language translation. SQL,
-            Datalog, results, proofs, and graphs run locally with no model or API key.
-          </p>
-        </div>
-        <ol>
-          <li><span>1</span>Insert SQLite data</li>
-          <li><span>2</span>Run a reviewed rule</li>
-          <li><span>3</span>Inspect the support chain</li>
-        </ol>
-      </section>
-
-      <section className="ide-final-cta">
-        <h2>Build agents that can show their work.</h2>
-        <div>
-          <a className="button primary" href={github}>View the source</a>
-          <a className="button secondary" href={`${github}#readme`}>Read the docs</a>
+      <section className="final-cta section">
+        <div className="section-shell final-cta-grid">
+          <div><h2>Build agents that can <em>show their work.</em></h2><p>Start with the product story, then open the IDE when you want to inspect the machinery.</p></div>
+          <div className="final-actions"><Link className="button primary" href={playground}>Open the playground</Link><a className="button link-button" href={github}>View the source <span aria-hidden="true">→</span></a></div>
         </div>
       </section>
 
       <footer className="site-footer">
         <strong>rembero</strong>
-        <nav aria-label="Footer navigation">
-          <a href={github}>GitHub</a>
-          <a href={`${github}#readme`}>Docs</a>
-          <a href="https://www.npmjs.com/package/rembero">npm</a>
-          <span>MIT licensed</span>
-        </nav>
+        <nav aria-label="Footer navigation"><Link href={playground}>Playground</Link><a href={github}>GitHub</a><a href={`${github}#readme`}>Docs</a><a href="https://www.npmjs.com/package/rembero">npm</a><span>MIT licensed</span></nav>
       </footer>
     </main>
   );

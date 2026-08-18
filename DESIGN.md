@@ -145,6 +145,14 @@ Marketing sections use a centered rail up to 1280px with 48px minimum outer gutt
 than repeated cards. Desktop may hold persistent data, editor, and inspector bands; mobile
 reduces them to one active pane with context retained in a sticky control row.
 
+### Site architecture
+
+The homepage is an editorial product surface: brand promise, proof-carrying example,
+positioning, product preview, operating model, and calls to action. The full IDE is a
+separate `/playground` route linked from the desktop navigation, mobile menu, hero,
+product preview, final action, and footer. Do not place the full-height IDE before the
+homepage story or duplicate it inline on the homepage.
+
 ### Shipped IDE topology
 
 Desktop keeps four simultaneous authorities visible: schema and guidance on the left,
