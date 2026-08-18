@@ -1,6 +1,6 @@
 # rembero
 
-[![CI](https://github.com/rahult/rembero/actions/workflows/ci.yml/badge.svg)](https://github.com/rahult/rembero/actions/workflows/ci.yml)
+[![CI](https://github.com/rahult/remembero/actions/workflows/ci.yml/badge.svg)](https://github.com/rahult/remembero/actions/workflows/ci.yml)
 
 Logic-based memory for LLM chats and agents. Instead of fuzzy vector recall, rembero stores
 memories as **Datalog facts, rules, and explicit integrity constraints** and answers

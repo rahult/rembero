@@ -1,7 +1,7 @@
 # Rembero marketing playground
 
 The hosted product site and browser-contained proof playground for
-[Rembero](https://github.com/rahult/rembero).
+[Rembero](https://github.com/rahult/remembero).
 
 The playground bundles only Rembero's pure TypeScript Datalog engine. It uses an immutable
 fictional Atlas fixture, performs no network or model calls, stores no browser data, and

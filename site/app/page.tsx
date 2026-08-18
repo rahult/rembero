@@ -1,6 +1,6 @@
 import { Playground } from "./playground";
 
-const github = "https://github.com/rahult/rembero";
+const github = "https://github.com/rahult/remembero";
 
 function HeroProof() {
   return (
