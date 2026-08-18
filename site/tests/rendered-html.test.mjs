@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render(path = "/") {
@@ -54,4 +54,16 @@ test("playground bundles the real engine and remains browser-contained", async (
   assert.doesNotMatch(page, /_sites-preview|SkeletonPreview|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.equal(og.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+});
+
+test("GitHub Pages export is self-contained when present", async () => {
+  const exported = new URL("../dist/pages/index.html", import.meta.url);
+  await access(exported);
+  const html = await readFile(exported, "utf8");
+  assert.match(html, /Memory you(?:<br\/>|\s)+can reason with\./);
+  assert.match(html, /href="\/_next\/static\/css\//);
+  assert.match(html, /src="\/_next\/static\/chunks\//);
+  assert.match(html, /https:\/\/remembero\.rahultrikha\.com\/og\.png/);
+  await access(new URL("../dist/pages/.nojekyll", import.meta.url));
+  await access(new URL("../dist/pages/og.png", import.meta.url));
 });
