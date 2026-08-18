@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-html-link-for-pages -- GitHub Pages needs document navigation, not RSC prefetch. */
+
 import {
   useEffect,
   useMemo,
@@ -8,7 +10,6 @@ import {
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
-import Link from "next/link";
 import {
   CONSTRAINT_EXAMPLE,
   DEFAULT_SQL,
@@ -452,9 +453,9 @@ export function SqliteIde() {
       data-mobile-pane={mobilePane}
     >
       <header className="ide-topbar">
-        <Link className="ide-brand" href="/" aria-label="Rembero main site">
+        <a className="ide-brand" href="/" aria-label="Rembero main site">
           rembero
-        </Link>
+        </a>
         <strong className="ide-product-name">SQLite + Datalog IDE</strong>
         <span className="ide-runtime-line" aria-live="polite">
           {runtime
@@ -464,7 +465,7 @@ export function SqliteIde() {
               : "Starting SQLite WebAssembly…"}
         </span>
         <nav className="ide-top-actions" aria-label="IDE actions">
-          <Link href="/">Home</Link>
+          <a href="/">Home</a>
           <a href={`${github}#readme`}>Docs</a>
           <a href={github}>GitHub</a>
           <button

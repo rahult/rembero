@@ -75,6 +75,7 @@ test("playground uses the statically linked SQLite extension and remains browser
   assert.match(demo, /reachable/);
   assert.match(page, /href=\{playground\}/);
   assert.match(playgroundPage, /<Playground \/>/);
+  assert.doesNotMatch(`${page}\n${playgroundPage}\n${ide}`, /from "next\/link"/);
   assert.doesNotMatch(page, /_sites-preview|SkeletonPreview|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.equal(og.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");

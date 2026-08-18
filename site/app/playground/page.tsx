@@ -1,5 +1,5 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- GitHub Pages needs document navigation, not RSC prefetch. */
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Playground } from "../playground";
 
 const github = "https://github.com/rahult/remembero";
@@ -21,7 +21,7 @@ export default function PlaygroundPage() {
           <article><strong>The proof owns the answer.</strong><p>Results, proof ladders, and graphs come from one exact execution.</p></article>
         </div>
       </section>
-      <section className="ide-final-cta"><h2>Build agents that can show their work.</h2><div><a className="button primary" href={github}>View the source</a><Link className="button secondary" href="/">Return to the main site</Link></div></section>
+      <section className="ide-final-cta"><h2>Build agents that can show their work.</h2><div><a className="button primary" href={github}>View the source</a><a className="button secondary" href="/">Return to the main site</a></div></section>
     </main>
   );
 }

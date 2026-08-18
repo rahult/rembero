@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 
 const github = "https://github.com/rahult/remembero";
 const playground = "/playground";
@@ -17,7 +16,7 @@ function HeroProof() {
           <li><b>2</b><code>project_contributor(atlas, maya)</code></li>
         </ol>
       </div>
-      <div className="hero-proof-source"><span>Atlas planning session · 17 Aug</span><Link href={playground}>Open in playground</Link></div>
+      <div className="hero-proof-source"><span>Atlas planning session · 17 Aug</span><a href={playground}>Open in playground</a></div>
     </div>
   );
 }
@@ -28,14 +27,14 @@ export default function Home() {
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Rembero home">rembero</a>
         <nav className="desktop-nav" aria-label="Main navigation">
-          <a href="#product">Product</a><a href="#how-it-works">How it works</a><Link href={playground}>Playground</Link><a href={github}>GitHub</a>
+          <a href="#product">Product</a><a href="#how-it-works">How it works</a><a href={playground}>Playground</a><a href={github}>GitHub</a>
         </nav>
         <div className="header-actions">
-          <Link className="button primary header-try" href={playground}>Try the playground</Link>
+          <a className="button primary header-try" href={playground}>Try the playground</a>
           <a className="button secondary desktop-source" href={github}>View on GitHub</a>
           <details className="mobile-menu">
             <summary aria-label="Open menu"><i /><i /><i /></summary>
-            <nav aria-label="Mobile navigation"><a href="#product">Product</a><a href="#how-it-works">How it works</a><Link href={playground}>Playground</Link><a href={github}>GitHub</a></nav>
+            <nav aria-label="Mobile navigation"><a href="#product">Product</a><a href="#how-it-works">How it works</a><a href={playground}>Playground</a><a href={github}>GitHub</a></nav>
           </details>
         </div>
       </header>
@@ -44,7 +43,7 @@ export default function Home() {
         <div className="hero-copy">
           <h1>Memory you<br />can reason with.</h1>
           <p>Store facts and rules as readable knowledge. Ask useful questions. Get deterministic answers with the proof attached.</p>
-          <div className="hero-actions"><Link className="button primary" href={playground}>Try the playground</Link><a className="button secondary" href={github}>View on GitHub</a></div>
+          <div className="hero-actions"><a className="button primary" href={playground}>Try the playground</a><a className="button secondary" href={github}>View on GitHub</a></div>
           <span className="hero-boundary">Local-first by default. Logic owns the answer.</span>
         </div>
         <HeroProof />
@@ -71,11 +70,11 @@ status(atlas, blocked).`}</code></pre></article>
         <div className="section-shell">
           <div className="showcase-heading">
             <div><h2 id="showcase-title">The database is the demo.</h2><p>Insert a SQLite row, run Datalog, then inspect the exact facts and rule behind the answer—all inside your browser.</p></div>
-            <Link className="button primary" href={playground}>Open the full playground</Link>
+            <a className="button primary" href={playground}>Open the full playground</a>
           </div>
-          <Link className="showcase-frame" href={playground} aria-label="Open the Rembero SQLite and Datalog playground">
+          <a className="showcase-frame" href={playground} aria-label="Open the Rembero SQLite and Datalog playground">
             <Image src="/og.png" alt="Rembero SQLite and Datalog IDE showing tables, a query, proof, and graph" width={1731} height={909} unoptimized priority />
-          </Link>
+          </a>
           <div className="showcase-ledger">
             <span><strong>SQLite owns the rows.</strong> Ordinary tables remain the storage authority.</span>
             <span><strong>Rules own the query.</strong> The C extension executes inside SQLite WebAssembly.</span>
@@ -112,13 +111,13 @@ status(atlas, blocked).`}</code></pre></article>
       <section className="final-cta section">
         <div className="section-shell final-cta-grid">
           <div><h2>Build agents that can <em>show their work.</em></h2><p>Start with the product story, then open the IDE when you want to inspect the machinery.</p></div>
-          <div className="final-actions"><Link className="button primary" href={playground}>Open the playground</Link><a className="button link-button" href={github}>View the source <span aria-hidden="true">→</span></a></div>
+          <div className="final-actions"><a className="button primary" href={playground}>Open the playground</a><a className="button link-button" href={github}>View the source <span aria-hidden="true">→</span></a></div>
         </div>
       </section>
 
       <footer className="site-footer">
         <strong>rembero</strong>
-        <nav aria-label="Footer navigation"><Link href={playground}>Playground</Link><a href={github}>GitHub</a><a href={`${github}#readme`}>Docs</a><a href="https://www.npmjs.com/package/rembero">npm</a><span>MIT licensed</span></nav>
+        <nav aria-label="Footer navigation"><a href={playground}>Playground</a><a href={github}>GitHub</a><a href={`${github}#readme`}>Docs</a><a href="https://www.npmjs.com/package/rembero">npm</a><span>MIT licensed</span></nav>
       </footer>
     </main>
   );
