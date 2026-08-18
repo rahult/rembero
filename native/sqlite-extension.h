@@ -10,7 +10,7 @@
  * Restore only the API surface used by this extension. On standard SQLite
  * development headers these definitions already exist and this block is inert.
  */
-#ifdef SQLITE_OMIT_LOAD_EXTENSION
+#if defined(SQLITE_OMIT_LOAD_EXTENSION) && !defined(SQLITE_CORE)
 #undef SQLITE_OMIT_LOAD_EXTENSION
 #undef SQLITE_EXTENSION_INIT1
 #undef SQLITE_EXTENSION_INIT2

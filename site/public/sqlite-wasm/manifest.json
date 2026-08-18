@@ -1,0 +1,48 @@
+{
+  "format": "rembero.sqlite-wasm.v1",
+  "generatedAt": "2026-08-18T02:27:34.855Z",
+  "sqlite": {
+    "version": "3.53.4",
+    "sourceUrl": "https://sqlite.org/2026/sqlite-src-3530400.zip",
+    "sourceSha3_256": "b834d474b9b393d85a9e3ee4cc11f1329e007e9376a424ee740796f5c4bda3a8"
+  },
+  "toolchain": {
+    "emsdkImage": "emscripten/emsdk:6.0.4"
+  },
+  "extension": {
+    "registration": "sqlite3_auto_extension(sqlite3_rembero_init)",
+    "dynamicallyLoaded": false,
+    "sources": {
+      "rembero.c": {
+        "sha256": "a32aba2a231a83ef9205c39d52e76004349555897a6abfd4ed022ea0af1f1e41"
+      },
+      "recursive.c": {
+        "sha256": "061d1f7cc14b619673a5e962c6f40bfc958216380254809cb9329e07dc2d1a2d"
+      },
+      "sqlite-extension.h": {
+        "sha256": "5f2928d98a10f4ac164d6cf54795289b61fa039515d92e011f1e02729cd2a2f8"
+      },
+      "sqlite3-wasm-extra-init.c": {
+        "sha256": "000a32318d46b991457323ca2254e1fc1133d57d6466266269a8ba9de739bd63"
+      }
+    }
+  },
+  "artifacts": {
+    "sqlite3.mjs": {
+      "bytes": 815493,
+      "sha256": "1fde979446d65315fbbfcf82432c262e11a659feab03ad733505d1caebef8b4b"
+    },
+    "sqlite3.wasm": {
+      "bytes": 901052,
+      "sha256": "d9efc5e562b8f5715a864db89e1a84a33e309604a0c3f6948f81d18d9cc2ef41"
+    },
+    "sqlite3-worker1.mjs": {
+      "bytes": 1499,
+      "sha256": "aeeb5f492b283a00fe275bd667711031c72b5acc45b06483b527d62f6f9cc28b"
+    },
+    "sqlite3-worker1-promiser.mjs": {
+      "bytes": 12675,
+      "sha256": "3e72060ed48c77495472ca8f331c289240ed694761377ed80142b97c94791aec"
+    }
+  }
+}

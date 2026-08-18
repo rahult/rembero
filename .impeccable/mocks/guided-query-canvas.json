@@ -1,0 +1,12 @@
+{
+  "name": "Guided Query Canvas",
+  "image": "guided-query-canvas.png",
+  "viewport": { "width": 1536, "height": 1024 },
+  "composition": "Query Canvas plus a continuous lineage rail, an optional four-action first-value path, prepared plain-language query, exact proof translations, and progressively disclosed advanced features.",
+  "approval": {
+    "approved": true,
+    "mode": "delegated",
+    "basis": "The user asked the expert designer to make adoption a no-brainer for database-literate users who may not know Datalog or constraints."
+  },
+  "promptEmbedded": true
+}

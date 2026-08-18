@@ -122,6 +122,7 @@
     "docs/MIGRATING-0.52.md",
     "docs/MIGRATING-0.53.md",
     "docs/MIGRATING-0.54.md",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
@@ -130,6 +131,7 @@
     "build:core": "tsc -p tsconfig.json",
     "build:web": "vite build --config web/vite.config.ts",
     "build:sqlite": "sh native/build.sh",
+    "build:sqlite:wasm": "sh native/build-wasm.sh",
     "web:dev": "tsx src/web/server.ts --dev",
     "web:start": "node dist/web/server.js",
     "web": "npm run build && npm run web:start",

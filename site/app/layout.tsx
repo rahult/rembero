@@ -13,9 +13,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const title = "Rembero — Memory you can reason with";
+const title = "Rembero — SQLite + Datalog IDE";
 const description =
-  "Proof-carrying memory for agents: readable facts, deterministic rules, sourced answers, and honest non-answers.";
+  "Run the Rembero SQLite extension in your browser: insert rows, execute Datalog, and inspect exact results, proofs, lineage, and graphs.";
+
+const designContract = `<!--
+THESIS: The database is the demo; this surface refuses a marketing hero that hides the mechanism.
+OWN-WORLD: True white evidence canvas, navy structural chrome, cobalt execution, amber provenance, compact sans controls, mono data, serif answers.
+STORY: A database-literate visitor inserts a row, inspects SQLite, runs a prepared rule, and verifies the answer through one proof and graph.
+FIRST VIEWPORT: Full-height IDE with optional guidance and schema left, data and query center, proof and graph right, lineage and native status always visible.
+FORM: Guided Query Canvas with Lineage Rail; surface seed 92872415; approved comp .impeccable/mocks/guided-query-canvas.png.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->`;
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -33,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
       url: origin,
       title,
       description,
-      images: [{ url: image, width: 1730, height: 909, alt: title }],
+      images: [{ url: image, width: 1731, height: 909, alt: title }],
     },
     twitter: {
       card: "summary_large_image",
@@ -54,6 +63,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <template
+          id="rembero-design-contract"
+          dangerouslySetInnerHTML={{ __html: designContract }}
+        />
         {children}
       </body>
     </html>

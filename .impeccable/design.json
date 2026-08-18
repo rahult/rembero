@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-18T00:00:00.000Z",
+  "title": "Design System: Rembero",
+  "extensions": {
+    "colorMeta": {
+      "ink": { "role": "neutral", "displayName": "Ledger Ink", "canonical": "#071525", "tonalRamp": ["#071525", "#10233d", "#28405b", "#53677e", "#8492a3", "#bac4cf", "#e2e7ed", "#f7f9fc"] },
+      "cobalt": { "role": "primary", "displayName": "Execution Cobalt", "canonical": "#145dff", "tonalRamp": ["#061b4d", "#0a338d", "#0c4ddd", "#145dff", "#4b82ff", "#85a9ff", "#bfd2ff", "#eef3ff"] },
+      "provenance-amber": { "role": "secondary", "displayName": "Provenance Amber", "canonical": "#e99812", "tonalRamp": ["#402400", "#704100", "#a96500", "#e99812", "#f5b74e", "#f9d48c", "#fce8bf", "#fff5df"] },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#ffffff", "tonalRamp": ["#071525", "#344154", "#677383", "#9ba4b0", "#c4cbd3", "#e2e7ed", "#f7f9fc", "#ffffff"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Product thesis and major section openings." },
+      "body": { "displayName": "Body", "purpose": "Readable product explanation and guidance." },
+      "code": { "displayName": "Code", "purpose": "SQL, Datalog, identifiers, values, and runtime output." },
+      "evidence": { "displayName": "Evidence", "purpose": "Human-readable answer voice only." }
+    },
+    "shadows": [
+      { "name": "focus-offset", "value": "0 0 0 3px rgba(20,93,255,0.18)", "purpose": "Keyboard focus and selected working context." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "160ms cubic-bezier(0.25, 1, 0.5, 1)", "purpose": "Hover, focus, tab, and row selection." },
+      { "name": "evidence-reveal", "value": "420ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "One coordinated proof and graph update." }
+    ],
+    "breakpoints": [
+      { "name": "compact", "value": "760px" },
+      { "name": "desktop", "value": "1080px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Runs the primary action or query.",
+      "html": "<button class=\"ds-btn-primary\">Run query</button>",
+      "css": ".ds-btn-primary{min-height:50px;padding:0 24px;border:0;border-radius:8px;background:#145dff;color:#fff;font:620 15px var(--font-geist-sans,Arial,sans-serif);transition:background 160ms cubic-bezier(.25,1,.5,1)}.ds-btn-primary:hover{background:#0c4ddd}.ds-btn-primary:focus-visible{outline:2px solid #145dff;outline-offset:3px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A reversible or lower-priority action.",
+      "html": "<button class=\"ds-btn-secondary\">Reset sample</button>",
+      "css": ".ds-btn-secondary{min-height:50px;padding:0 24px;border:1px solid #071525;border-radius:8px;background:#fff;color:#071525;font:620 15px var(--font-geist-sans,Arial,sans-serif)}.ds-btn-secondary:hover{border-color:#145dff;color:#145dff}.ds-btn-secondary:focus-visible{outline:2px solid #145dff;outline-offset:3px}"
+    },
+    {
+      "name": "Code Field",
+      "kind": "input",
+      "refersTo": "code-field",
+      "description": "Editable SQL or Datalog source.",
+      "html": "<textarea class=\"ds-code-field\">select * from project_owner;</textarea>",
+      "css": ".ds-code-field{width:100%;min-height:92px;padding:14px;border:1px solid #d7dee8;border-radius:8px;background:#fff;color:#071525;font:500 14px/1.6 var(--font-geist-mono,monospace);caret-color:#145dff}.ds-code-field:focus{border-color:#145dff;outline:2px solid rgba(20,93,255,.18);outline-offset:1px}"
+    },
+    {
+      "name": "Evidence Frame",
+      "kind": "card",
+      "refersTo": "evidence-panel",
+      "description": "An exact result and its ordered support.",
+      "html": "<article class=\"ds-evidence\"><small>SUPPORTED</small><strong>Project = atlas</strong><code>status(atlas, blocked)</code></article>",
+      "css": ".ds-evidence{display:grid;gap:12px;padding:20px 26px;border:1px solid #d7dee8;border-bottom:2px solid #e99812;border-radius:10px;background:#fff;color:#071525}.ds-evidence small{color:#5f6b7b;font:720 11px var(--font-geist-sans,Arial,sans-serif);letter-spacing:.08em}.ds-evidence strong{font:400 28px/1.15 Georgia,serif}.ds-evidence code{font:500 13px var(--font-geist-mono,monospace)}"
+    },
+    {
+      "name": "Active Navigation",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Current IDE pane or product section.",
+      "html": "<nav class=\"ds-nav\"><a>Data</a><a aria-current=\"page\">Query</a><a>Proof</a></nav>",
+      "css": ".ds-nav{display:flex;gap:24px;border-bottom:1px solid #d7dee8;font:570 14px var(--font-geist-sans,Arial,sans-serif)}.ds-nav a{padding:12px 0;border-bottom:2px solid transparent}.ds-nav a[aria-current=page]{border-color:#145dff;color:#145dff}.ds-nav a:focus-visible{outline:2px solid #145dff;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Proof Ledger",
+    "overview": "Rembero makes technical causality legible through white evidence surfaces, deep navy structure, cobalt execution, and amber provenance. Large declarative type introduces the idea while precise tables, code, proofs, and graphs demonstrate it.",
+    "keyCharacteristics": ["White evidence surfaces against navy structure", "Cobalt means execution", "Amber means provenance", "Graphs always have a readable list equivalent"],
+    "rules": [
+      { "name": "The Evidence Color Rule", "body": "Amber never decorates; it appears only where a user can trace an answer to a source, rule, or proof edge.", "section": "colors" }
+    ],
+    "dos": ["Do make storage, query, result, and proof visible together.", "Do keep code and data code-native and keyboard reachable."],
+    "donts": ["Don't use generic dashboard cards as the primary structure.", "Don't fabricate model calls, stored derivations, metrics, or customer proof."]
+  }
+}

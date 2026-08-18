@@ -31,8 +31,19 @@ if (!response.ok) {
   throw new Error(`static render failed with HTTP ${response.status}`);
 }
 
-const html = await response.text();
-if (!html.includes("Memory you") || !html.includes("playground-D")) {
+const directionComment = `<!--
+THESIS: The database is the demo; this surface refuses a marketing hero that hides the mechanism.
+OWN-WORLD: True white evidence canvas, navy structural chrome, cobalt execution, amber provenance, compact sans controls, mono data, serif answers.
+STORY: A database-literate visitor inserts a row, inspects SQLite, runs a prepared rule, and verifies the answer through one proof and graph.
+FIRST VIEWPORT: Full-height IDE with optional guidance and schema left, data and query center, proof and graph right, lineage and native status always visible.
+FORM: Guided Query Canvas with Lineage Rail; surface seed 92872415; approved comp .impeccable/mocks/guided-query-canvas.png.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->`;
+const html = (await response.text()).replace(
+  /(<body\b[^>]*>)/i,
+  `$1${directionComment}`,
+);
+if (!html.includes("SQLite + Datalog IDE") || !html.includes('id="playground"')) {
   throw new Error("static render is missing the product or playground bundle");
 }
 
