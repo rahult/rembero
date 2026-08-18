@@ -24,7 +24,7 @@ knowledge, local search, health, and the explicit knowledge graph. It uses a ded
 [the web-console contract](docs/WEB-CONSOLE.md).
 
 For an online product tour, open the private
-[Rembero marketing playground](https://rembero.rahultrikha.chatgpt.site). It runs the real
+[Rembero marketing playground](http://remembero.rahultrikha.com/). It runs the real
 deterministic engine over fictional sample knowledge entirely in the browser, including a
 supported rule proof, an honest non-answer, and a session-only sourced correction. See
 [the hosted-playground contract](docs/MARKETING-PLAYGROUND.md).
