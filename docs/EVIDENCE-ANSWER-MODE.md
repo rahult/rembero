@@ -7,8 +7,8 @@ authority.
 ## Use
 
 ```bash
-rembero recall "Who are Rahul's colleagues?" --answer-mode evidence
-rembero recall-explain "Who are Rahul's colleagues?" \
+remembero recall "Who are Rahul's colleagues?" --answer-mode evidence
+remembero recall-explain "Who are Rahul's colleagues?" \
   --answer-mode evidence --proof-limit 4
 ```
 

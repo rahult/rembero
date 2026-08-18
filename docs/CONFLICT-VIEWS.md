@@ -4,10 +4,10 @@ Version 0.18 turns explicit integrity findings into focused, inspectable persona
 knowledge views. It answers jobs such as:
 
 ```bash
-rembero conflicts
-rembero conflicts mira
-rembero conflicts "'Mira Patel'" --entity-identity canonical
-rembero conflicts mira --as-of-sequence 17
+remembero conflicts
+remembero conflicts mira
+remembero conflicts "'Mira Patel'" --entity-identity canonical
+remembero conflicts mira --as-of-sequence 17
 ```
 
 The MCP equivalent is `conflict_views`. No LLM is used.

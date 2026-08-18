@@ -7,9 +7,9 @@ no migration. Without `graphSelector` or a graph CLI flag, outputs remain unchan
 To reduce a large explanation payload, choose exactly one selector:
 
 ```bash
-rembero explain 'ancestor(alice, Descendant)' --graph-result 2
-rembero explain 'ancestor(alice, Descendant)' --graph-support '<node-id>'
-rembero explain 'ancestor(alice, Descendant)' --graph-neighbors '<node-id>' --graph-depth 2
+remembero explain 'ancestor(alice, Descendant)' --graph-result 2
+remembero explain 'ancestor(alice, Descendant)' --graph-support '<node-id>'
+remembero explain 'ancestor(alice, Descendant)' --graph-neighbors '<node-id>' --graph-depth 2
 ```
 
 MCP and library callers use `{ kind: 'result', row }`, `{ kind: 'support', nodeId }`, or

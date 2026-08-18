@@ -64,7 +64,7 @@ import {
   evaluateQuerySpecWithProof,
   parseProgram,
   parseQuerySpec,
-} from 'rembero';
+} from 'remembero';
 
 const clauses = parseProgram('score(alice, 3). score(bob, 5).');
 const query = parseQuerySpec('max(Points) as Highest where score(Person, Points)');

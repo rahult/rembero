@@ -12,15 +12,15 @@ written, reserved, or implicitly approved.
 ## Use
 
 ```bash
-rembero what-if 'colleague(mira, Who)' \
+remembero what-if 'colleague(mira, Who)' \
   --assume-rule 'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'
 
-rembero what-if 'eligible(Person)' \
+remembero what-if 'eligible(Person)' \
   --without-rule 'eligible(X) :- employee(X), badge(X).' \
   --assume-rule 'eligible(X) :- employee(X), badge(X), \\+ suspended(X).' \
   --check-suite checks.json
 
-rembero what-if 'derived(X)' \
+remembero what-if 'derived(X)' \
   --assume-rule 'derived(X) :- base(X).' \
   --as-of-sequence 17
 ```

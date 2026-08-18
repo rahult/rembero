@@ -5,8 +5,8 @@ path remains the default. When trust, debugging, or rule authoring requires more
 v0.8 can enumerate every branch-simple proof up to an explicit completeness limit:
 
 ```bash
-rembero explain 'reachable(a, X)' --proof-limit 4
-rembero recall-explain "Why is A reachable?" --proof-limit 4
+remembero explain 'reachable(a, X)' --proof-limit 4
+remembero recall-explain "Why is A reachable?" --proof-limit 4
 ```
 
 `proofLimit` is also available on the MCP `explain_query` and `recall_explain` tools and

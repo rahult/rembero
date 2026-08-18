@@ -28,7 +28,7 @@ predicate names and their extra timestamp argument.
 - `MemoryStore.supersede(...)`
 - `MemoryStore.history(...)`
 - `MemorySource.temporal?`
-- CLI command `rembero history <pattern>`
+- CLI command `remembero history <pattern>`
 - MCP tool `history`
 
 The MCP server reports version `0.6.0`.

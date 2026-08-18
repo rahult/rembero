@@ -8,9 +8,9 @@ derived the requested predicate.
 ## Use
 
 ```bash
-rembero why-not 'colleague(mira, rahul)'
-rembero why-not 'eligible(bob)' --proof-limit 2
-rembero why-not 'status(mira, active)' --as-of-sequence 17
+remembero why-not 'colleague(mira, rahul)'
+remembero why-not 'eligible(bob)' --proof-limit 2
+remembero why-not 'status(mira, active)' --as-of-sequence 17
 ```
 
 The library exposes `explainWhyNot(clauses, query, sources, options)`. MCP exposes

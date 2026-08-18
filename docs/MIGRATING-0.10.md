@@ -9,7 +9,7 @@ enables it.
 
 1. Upgrade every process that writes the same `REMBERO_HOME`. Version 0.10 writers share
    the new global mutation lock; older writers do not.
-2. Run `rembero check --namespaces '*'` and retain the evidence for each finding.
+2. Run `remembero check --namespaces '*'` and retain the evidence for each finding.
 3. If findings exist, start with `REMBERO_INTEGRITY_MODE=no_new_violations`. This permits
    unrelated writes and repairs but rejects a new violation identity.
 4. Repair the remaining rows explicitly.

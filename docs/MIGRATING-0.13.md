@@ -8,9 +8,9 @@ To make a retryable raw write, generate one stable operation ID before the first
 and reuse it only for that logical request:
 
 ```bash
-rembero assert 'decision(project, sqlite).' --op-id decision-123
-rembero forget 'decision(project, _)' --op-id decision-remove-123
-rembero import personal memories.dl --op-id import-2026-08-17
+remembero assert 'decision(project, sqlite).' --op-id decision-123
+remembero forget 'decision(project, _)' --op-id decision-remove-123
+remembero import personal memories.dl --op-id import-2026-08-17
 ```
 
 Matching retries return the original result. Do not generate a new ID for transport

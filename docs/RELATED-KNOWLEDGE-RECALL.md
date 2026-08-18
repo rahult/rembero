@@ -8,10 +8,10 @@ policies without another model call.
 ## Use
 
 ```bash
-rembero recall "Where does Zoe work?" --related
-rembero recall "What do we know about Atlas?" \
+remembero recall "Where does Zoe work?" --related
+remembero recall "What do we know about Atlas?" \
   --related --related-limit 5 --related-kind fact --related-kind rule
-rembero recall-explain "Why was this decided?" --related
+remembero recall-explain "Why was this decided?" --related
 ```
 
 MCP `recall` and `recall_explain` accept `relatedKnowledge`, `relatedLimit`, and

@@ -11,9 +11,9 @@ query/result regression expectations.
 ## Use
 
 ```bash
-rembero audit-rules
-rembero audit-rules eligible --direction upstream
-rembero audit-rules status --as-of-sequence 17
+remembero audit-rules
+remembero audit-rules eligible --direction upstream
+remembero audit-rules status --as-of-sequence 17
 ```
 
 The library exposes `auditKnowledgeRules(clauses, sources, options)`. MCP exposes

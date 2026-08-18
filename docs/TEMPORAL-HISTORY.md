@@ -5,7 +5,7 @@ natural-language update. The feature is opt-in: deletion remains the default.
 
 ```bash
 export REMBERO_VALID_TIME_MODE=archive_until
-rembero remember "Mira now works at Initech"
+remembero remember "Mira now works at Initech"
 ```
 
 The same mode can be selected for one natural-language CLI call with
@@ -49,8 +49,8 @@ the same parameters is idempotent. Reusing it for different parameters fails.
 History is local and LLM-free:
 
 ```bash
-rembero history 'works_at(mira, _)' --json
-rembero history 'works_at(mira, _)' --namespaces personal,work
+remembero history 'works_at(mira, _)' --json
+remembero history 'works_at(mira, _)' --namespaces personal,work
 ```
 
 The MCP tool is also named `history`. The library API is:
@@ -88,8 +88,8 @@ questions use the base predicate; explicit past, former, previous, or "before"
 questions use the archived predicate shown in the schema.
 
 ```bash
-rembero recall-explain "Where did Mira work before Initech?"
-rembero explain "works_at_until(mira, Company, Until)"
+remembero recall-explain "Where did Mira work before Initech?"
+remembero explain "works_at_until(mira, Company, Until)"
 ```
 
 Sources attached to an archived fact include additive temporal metadata:

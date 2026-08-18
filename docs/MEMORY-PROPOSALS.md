@@ -11,8 +11,8 @@ and agents that want model extraction to remain proposal rather than authority.
 ## Use
 
 ```bash
-rembero propose-memory 'Mira now works at Initech.'
-rembero propose-memory 'Mira now works at Initech.' \
+remembero propose-memory 'Mira now works at Initech.'
+remembero propose-memory 'Mira now works at Initech.' \
   --valid-time-mode archive_until --at '2026-08-17T07:30:00.000Z'
 ```
 

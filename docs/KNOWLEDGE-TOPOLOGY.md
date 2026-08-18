@@ -8,10 +8,10 @@ which rules recurse, and which referenced inputs have no definition.
 ## Use
 
 ```bash
-rembero topology
-rembero topology colleague --direction upstream
-rembero topology works_at/2 --direction downstream
-rembero topology status --as-of-sequence 17
+remembero topology
+remembero topology colleague --direction upstream
+remembero topology works_at/2 --direction downstream
+remembero topology status --as-of-sequence 17
 ```
 
 The library exposes `analyzeKnowledgeTopology(clauses, sources, options)`. MCP exposes

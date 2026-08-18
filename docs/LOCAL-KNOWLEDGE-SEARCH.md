@@ -8,10 +8,10 @@ logical proof.
 ## Use
 
 ```bash
-rembero search 'Doctor Chen'
-rembero search 'colleague work' --kind rule
-rembero search 'active terminated' --kind constraint
-rembero search 'Mira status' --as-of-sequence 17
+remembero search 'Doctor Chen'
+remembero search 'colleague work' --kind rule
+remembero search 'active terminated' --kind constraint
+remembero search 'Mira status' --as-of-sequence 17
 ```
 
 The library exposes `searchKnowledge(clauses, text, sources, options)`. MCP exposes

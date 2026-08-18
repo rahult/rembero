@@ -81,7 +81,7 @@ The first-pass detail count is configurable from 1 to 256:
 
 ```bash
 export REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT=48
-rembero recall "Who owns Atlas?" --schema-predicate-limit 48
+remembero recall "Who owns Atlas?" --schema-predicate-limit 48
 ```
 
 MCP `recall` and `recall_explain` accept an optional `schemaPredicateLimit`. Library

@@ -7,7 +7,7 @@ The portable `.dl` file remains the only fact authority.
 ## CLI
 
 ```bash
-rembero supersede 'works_at(mira, initech). title(mira, lead).' \
+remembero supersede 'works_at(mira, initech). title(mira, lead).' \
   --namespace personal \
   --pattern 'works_at(mira, _)' \
   --pattern 'title(mira, _)' \

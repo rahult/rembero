@@ -6,7 +6,7 @@ commands, and MCP clients require no migration.
 New read-only surfaces:
 
 - library `inspectConflicts(clauses, sources, options)`;
-- CLI `rembero conflicts [focus]`;
+- CLI `remembero conflicts [focus]`;
 - MCP `conflict_views`.
 
 The surfaces group complete integrity violations by each constraint's first alpha-stable

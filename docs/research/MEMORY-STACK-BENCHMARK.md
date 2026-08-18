@@ -69,7 +69,7 @@ oversized output fail the run.
 Run a bridge:
 
 ```bash
-npm run bench:memory -- --adapters rembero --external mem0=/absolute/path/to/mem0-bridge
+npm run bench:memory -- --adapters remembero --external mem0=/absolute/path/to/mem0-bridge
 ```
 
 The request is:

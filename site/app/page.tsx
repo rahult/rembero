@@ -103,7 +103,7 @@ status(atlas, blocked).`}</code></pre></article>
           </article>
           <article className="integrations">
             <h2>One memory layer.<br />Three ways <em>in.</em></h2>
-            <div className="integration-list"><div><strong>MCP</strong><span>Connect agents and tools through Model Context Protocol servers.</span></div><div><strong>TypeScript</strong><span>Use the typed library API inside your applications.</span></div><div><strong>CLI</strong><code>npx -y rembero</code></div></div>
+            <div className="integration-list"><div><strong>MCP</strong><span>Connect agents and tools through Model Context Protocol servers.</span></div><div><strong>TypeScript</strong><span>Use the typed library API inside your applications.</span></div><div><strong>CLI</strong><code>npx -y remembero</code></div></div>
           </article>
         </div>
       </section>
@@ -117,7 +117,7 @@ status(atlas, blocked).`}</code></pre></article>
 
       <footer className="site-footer">
         <strong>remembero</strong>
-        <nav aria-label="Footer navigation"><a href={playground}>Playground</a><a href={github}>GitHub</a><a href={`${github}#readme`}>Docs</a><a href="https://www.npmjs.com/package/rembero">npm</a><span>MIT licensed</span></nav>
+        <nav aria-label="Footer navigation"><a href={playground}>Playground</a><a href={github}>GitHub</a><a href={`${github}#readme`}>Docs</a><a href="https://www.npmjs.com/package/remembero">npm</a><span>MIT licensed</span></nav>
       </footer>
     </main>
   );

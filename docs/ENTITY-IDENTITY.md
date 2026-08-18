@@ -34,7 +34,7 @@ The default is `off`. Enable it for a CLI process:
 
 ```bash
 export REMBERO_ENTITY_IDENTITY=canonical
-rembero query 'works_at(mira, Company)'
+remembero query 'works_at(mira, Company)'
 ```
 
 Or enable a single CLI read with `--entity-identity canonical`. Library recall options

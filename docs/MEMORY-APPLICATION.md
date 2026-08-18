@@ -8,11 +8,11 @@ removals, and temporal archives as one crash-safe change or writes nothing.
 ## Workflow
 
 ```bash
-rembero propose-memory 'Mira now works at Initech.' \
+remembero propose-memory 'Mira now works at Initech.' \
   --valid-time-mode archive_until --at '2026-08-17T08:30:00.000Z' \
   > memory-review.json
 
-rembero apply-memory memory-review.json --op-id mira-employment-v2
+remembero apply-memory memory-review.json --op-id mira-employment-v2
 ```
 
 The file may be a standalone `proposal` object or the complete `propose-memory` output.

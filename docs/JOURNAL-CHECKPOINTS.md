@@ -11,9 +11,9 @@ Checkpoint files remain internal crash/audit boundaries and are not an interchan
 ## Use
 
 ```bash
-rembero checkpoint --dry-run --op-id checkpoint-2026-08-17
-rembero checkpoint --op-id checkpoint-2026-08-17
-rembero checkpoints
+remembero checkpoint --dry-run --op-id checkpoint-2026-08-17
+remembero checkpoint --op-id checkpoint-2026-08-17
+remembero checkpoints
 ```
 
 The library exposes `MemoryStore.compactJournal(...)` and

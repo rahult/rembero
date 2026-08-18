@@ -13,6 +13,20 @@ import { computeMemoryProposalDigest } from '../src/knowledge/memory-proposal.js
 import { serializeClause } from '../src/engine/index.js';
 
 describe('CLI ingress limits', () => {
+  it('exposes the remembero command name through successful help', () => {
+    const root = mkdtempSync(join(tmpdir(), 'remembero-cli-help-'));
+    const home = join(root, 'home');
+    const result = spawnSync(process.execPath, [resolve('dist/cli.js'), '--help'], {
+      encoding: 'utf8',
+      env: { ...process.env, REMBERO_HOME: home },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/^remembero — logic-based memory/);
+    expect(result.stderr).toBe('');
+    expect(existsSync(home)).toBe(false);
+  });
+
   it('fails closed before returning an oversized JSON result', () => {
     expect(() => stringifyBoundedResult({ value: 'oversized' }, 'test result', 8)).toThrow(
       /test result exceeds 8 bytes/i

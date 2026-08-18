@@ -10,7 +10,7 @@ authoritative by itself.
 Install Remembero globally, configure `LLM_API_KEY`, then opt in:
 
 ```bash
-rembero init-hooks --namespace personal
+remembero init-hooks --namespace personal
 ```
 
 By default this merges one managed Stop hook into `~/.claude/settings.json` (or the
@@ -21,14 +21,14 @@ preserved. The generated hook uses Claude Code's shell-free command/argument for
 Use a different settings scope explicitly when required:
 
 ```bash
-rembero init-hooks --settings .claude/settings.local.json --namespace project
+remembero init-hooks --settings .claude/settings.local.json --namespace project
 ```
 
 Remove only Remembero's managed entry with either command:
 
 ```bash
-rembero init-hooks --remove
-rembero remove-hooks
+remembero init-hooks --remove
+remembero remove-hooks
 ```
 
 Re-run `init-hooks` after moving or reinstalling the package because the safe exec-form
@@ -42,7 +42,7 @@ turns are the supported auto-capture path.
 
 ## What is allowed to become memory
 
-The hook passes JSON to `rembero remember --batch` on standard input. Remembero then:
+The hook passes JSON to `remembero remember --batch` on standard input. Remembero then:
 
 1. accepts only a Claude `Stop` event;
 2. resolves a regular `.jsonl` transcript beneath the configured Claude `projects/`
@@ -76,13 +76,13 @@ work remains visibly `started` rather than disappearing.
 
 If the primary journal is temporarily locked or unavailable, the worker records a
 bounded `capture-errors.log` entry under the same memory root using an independent lock.
-`rembero review` merges those fallback failures into its status view, so contention is
+`remembero review` merges those fallback failures into its status view, so contention is
 still inspectable after the primary journal becomes available.
 
 Configure the hook at installation time:
 
 ```bash
-rembero init-hooks \
+remembero init-hooks \
   --namespace personal \
   --daily-cap 6 \
   --tail-bytes 16384
@@ -98,7 +98,7 @@ local-only namespace cannot be exported by the hook.
 Review the last seven days:
 
 ```bash
-rembero review --namespace personal
+remembero review --namespace personal
 ```
 
 The output shows every capture status and numbers each captured fact. A fact is marked
@@ -107,7 +107,7 @@ source; a later manual remove/re-add is never pruned through the older capture. 
 selected facts explicitly in one command:
 
 ```bash
-rembero review --namespace personal --forget 2,5
+remembero review --namespace personal --forget 2,5
 ```
 
 Selection numbers are resolved and pruned in the same process against journal-backed

@@ -479,7 +479,7 @@ export function resolveSqliteExtensionPath(explicitPath?: string): string {
   if (!existsSync(candidate)) {
     throw new Error(
       `Remembero SQLite extension not found at ${candidate}. ` +
-        'Run "rembero sqlite-build" (or "npm run build:sqlite" in a checkout), ' +
+        'Run "remembero sqlite-build" (or "npm run build:sqlite" in a checkout), ' +
         'or set REMBERO_SQLITE_EXTENSION.'
     );
   }

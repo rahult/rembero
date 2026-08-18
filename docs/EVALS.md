@@ -20,7 +20,7 @@ than receiving misleading zero or perfect scores.
 External memory stacks can run through a bounded, one-process-per-case JSON protocol:
 
 ```bash
-npm run bench:memory -- --adapters rembero --external mem0=/absolute/path/to/bridge
+npm run bench:memory -- --adapters remembero --external mem0=/absolute/path/to/bridge
 ```
 
 See the [benchmark contract and current results](research/MEMORY-STACK-BENCHMARK.md), the

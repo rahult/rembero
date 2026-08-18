@@ -5,12 +5,12 @@ Version 0.5 is additive. Existing `.dl` memories, rules, queries, MCP clients, a
 
 ## New opt-in commands
 
-- `rembero init-hooks` installs one managed asynchronous Claude Code Stop hook.
-- `rembero remember --batch` accepts a Stop-hook JSON payload on stdin. It is intended
+- `remembero init-hooks` installs one managed asynchronous Claude Code Stop hook.
+- `remembero remember --batch` accepts a Stop-hook JSON payload on stdin. It is intended
   for the managed hook and is silent unless `--json` is supplied.
-- `rembero review` shows recent auto-capture attempts and facts.
-- `rembero review --forget <number,...>` explicitly prunes selected facts.
-- `rembero init-hooks --remove` and `rembero remove-hooks` remove the managed hook.
+- `remembero review` shows recent auto-capture attempts and facts.
+- `remembero review --forget <number,...>` explicitly prunes selected facts.
+- `remembero init-hooks --remove` and `remembero remove-hooks` remove the managed hook.
 
 Nothing is installed automatically during package installation or upgrade. Existing
 users must run `init-hooks` to opt in.

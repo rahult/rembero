@@ -9,8 +9,8 @@ facts. It reuses claim/entity/argument shapes but never materializes rule conclu
 query-scoped explanation remains the authority for derived claims.
 
 ```bash
-rembero explain 'colleague(rahul, Who)'
-rembero recall-explain "Who are Rahul's colleagues?"
+remembero explain 'colleague(rahul, Who)'
+remembero recall-explain "Who are Rahul's colleagues?"
 ```
 
 The equivalent MCP tools are `explain_query` and `recall_explain`.
@@ -18,9 +18,9 @@ The equivalent MCP tools are `explain_query` and `recall_explain`.
 Version 0.12 can select a deterministic subgraph for transport or focused inspection:
 
 ```bash
-rembero explain 'ancestor(alice, Descendant)' --graph-result 2
-rembero explain 'ancestor(alice, Descendant)' --graph-support '<node-id>'
-rembero explain 'ancestor(alice, Descendant)' --graph-neighbors '<node-id>' --graph-depth 2
+remembero explain 'ancestor(alice, Descendant)' --graph-result 2
+remembero explain 'ancestor(alice, Descendant)' --graph-support '<node-id>'
+remembero explain 'ancestor(alice, Descendant)' --graph-neighbors '<node-id>' --graph-depth 2
 ```
 
 Selection preserves the complete result, proof, and rule arrays. A result or support

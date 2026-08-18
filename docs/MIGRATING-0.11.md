@@ -9,7 +9,7 @@ To adopt it:
 1. Add raw `rembero_alias(Alias, Canonical).` facts.
 2. Add `rembero_entity_position(Predicate, Arity, ZeroBasedPosition).` only where atoms
    represent entity identifiers.
-3. Inspect declarations with `rembero list`.
+3. Inspect declarations with `remembero list`.
 4. Test reads with `--entity-identity canonical` before setting
    `REMBERO_ENTITY_IDENTITY=canonical` for a process.
 5. If policy should treat aliases as one subject, run `check --entity-identity canonical`

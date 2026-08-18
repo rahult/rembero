@@ -11,7 +11,7 @@ Claude Code in under 5 minutes:
 
 ```bash
 export LLM_API_KEY=sk-or-...
-claude mcp add rembero -- npx -y rembero serve
+claude mcp add remembero -- npx -y remembero serve
 # then in chat: "Remember that my dentist is Dr Chen" → "Who's my dentist?"
 ```
 
@@ -49,7 +49,7 @@ that recall will happily report.
 2. **`REMBERO_HOME`** env var for the memory directory (store already takes a root arg —
    wire it through; needed for testing, containers, and shared setups).
 3. **Cold-start check:** `npm pack`, install the tarball in a temp dir, verify
-   `npx rembero serve` + `claude mcp add` work with zero repo context.
+   `npx remembero serve` + `claude mcp add` work with zero repo context.
 4. **Docs pass:** README install section rewritten for npm; document all env vars;
    troubleshooting section (bad key, no model access, corrupt .dl file).
 
@@ -70,7 +70,7 @@ The tool descriptions ARE the product — they're what makes an agent actually u
 1. **Operation journal:** append-only `~/.rembero/journal.log` recording every
    remember/assert/forget with timestamp and source text — the answer to "why does it
    think that, and when did I tell it?"
-2. **`rembero export` / `rembero import`** (concat/load .dl files) for backup and moving
+2. **`remembero export` / `remembero import`** (concat/load .dl files) for backup and moving
    machines.
 3. **Error UX:** all tool errors phrased for end users, never stack traces.
 

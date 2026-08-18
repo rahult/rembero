@@ -27,15 +27,15 @@ The engine's expressiveness ceiling is the first thing power users will hit.
 
 Today the agent decides when to call `remember`. Auto-capture makes memory ambient:
 
-1. **Complete:** `rembero init-hooks` idempotently merges one safe exec-form asynchronous
+1. **Complete:** `remembero init-hooks` idempotently merges one safe exec-form asynchronous
    Claude Code Stop hook; removal touches only Remembero's managed entry. The hook sends
-   Stop JSON on stdin to `rembero remember --batch`.
+   Stop JSON on stdin to `remembero remember --batch`.
 2. **Complete:** only a bounded regular transcript beneath Claude's configured projects
    root is read. Tool/thinking/code noise is removed, credential-like text fails closed,
    duplicate fingerprints and per-namespace UTC-day quotas are reserved before the LLM
    call, and extraction accepts additive ground facts only.
 3. **Complete:** every capture is journaled as started/captured/empty/failed/skipped with
-   stable IDs and no raw transcript copy. `rembero review` shows recent attempts and
+   stable IDs and no raw transcript copy. `remembero review` shows recent attempts and
    numbers current/removed facts; `--forget <n,...>` performs explicit journaled pruning.
 
 ## Phase 8 — Time & provenance  *(v0.6)*
@@ -50,7 +50,7 @@ old fact. Fix by making time first-class:
 2. **Complete — provenance-aware temporal recall**: historical predicates participate in
    ordinary recall, deterministic proofs, and the query-scoped personal knowledge graph.
    Their sources carry the preceding clause and exact valid-until instant.
-3. **Complete — `rembero history <pattern>`**: a bounded, redacted, fail-closed replay of
+3. **Complete — `remembero history <pattern>`**: a bounded, redacted, fail-closed replay of
    one fact pattern's append-order life story across the CLI, MCP, and library APIs.
 
 ## Phase 9 — Retrieval quality at scale  *(v0.7)*
@@ -700,7 +700,7 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 
 ## Not planned
 
-- Hosted/multi-user service (rembero is deliberately local-first; revisit on demand)
+- Hosted/multi-user service (remembero is deliberately local-first; revisit on demand)
 - Full Prolog (function symbols, cut, arbitrary recursion) — the termination guarantee
   is a feature, not a limitation
 - Vector similarity as the *primary* retrieval path — logic stays the source of truth

@@ -23,10 +23,10 @@ Use `history <pattern> --json` to discover relevant journal sequences, then pass
 `list`. The library uses `recordedSequence`; MCP exposes the same field.
 
 ```bash
-rembero history 'status(mira, _)' --json
-rembero query 'status(mira, State)' --as-of-sequence 17
-rembero explain 'colleague(mira, Who)' --as-of-sequence 17
-rembero diff 17 23 --query 'colleague(mira, Who)'
+remembero history 'status(mira, _)' --json
+remembero query 'status(mira, State)' --as-of-sequence 17
+remembero explain 'colleague(mira, Who)' --as-of-sequence 17
+remembero diff 17 23 --query 'colleague(mira, Who)'
 ```
 
 Historical results include `recordedSnapshot` metadata with the selected sequence,

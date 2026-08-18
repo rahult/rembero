@@ -7,9 +7,9 @@ not mutation authority.
 ## Use
 
 ```bash
-rembero repair 'eligible(bob)'
-rembero repair 'ready(bob)' --repair-steps 4 --plan-limit 8
-rembero repair 'eligible(mira)' --entity-identity canonical
+remembero repair 'eligible(bob)'
+remembero repair 'ready(bob)' --repair-steps 4 --plan-limit 8
+remembero repair 'eligible(mira)' --entity-identity canonical
 ```
 
 The library exposes `planKnowledgeRepair(store, query, options)`. MCP exposes

@@ -7,9 +7,9 @@ so optimization evidence cannot drift from semantics.
 ## Use
 
 ```bash
-rembero profile 'relevant(X, Y)'
-rembero profile 'path(a, Y)' --compare-scan
-rembero profile 'count(*) as Count where employee(Person)' --as-of-sequence 17
+remembero profile 'relevant(X, Y)'
+remembero profile 'path(a, Y)' --compare-scan
+remembero profile 'count(*) as Count where employee(Person)' --as-of-sequence 17
 ```
 
 The library exposes `profileKnowledge(...)`. MCP exposes `profile_query`.

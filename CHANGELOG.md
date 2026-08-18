@@ -3,6 +3,15 @@
 Release notes previously embedded in the README are collected here in reverse
 chronological order. Only releases that had a standalone README note are listed.
 
+## 0.55.0
+
+Renames the npm package and primary command-line tools to `remembero` and
+`remembero-web`, matching the public product, repository, and domain. Installations of
+the new package retain `rembero` and `rembero-web` executable aliases for compatibility.
+Existing `REMBERO_*` environment variables, `.rembero` data directories, hook markers,
+portable formats, and native SQLite symbols remain unchanged so existing memory and
+integrations continue to work. See [the migration note](docs/MIGRATING-0.55.md).
+
 ## 0.54.0
 
 Adds a public structured-memory benchmark that reports exact typed answers,

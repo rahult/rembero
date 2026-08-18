@@ -7,9 +7,9 @@ reading the two endpoints across different concurrent journal states.
 ## Use
 
 ```bash
-rembero diff 17 23
-rembero diff 17 23 --query 'status(mira, State)'
-rembero diff 17 23 --trust include_tentative
+remembero diff 17 23
+remembero diff 17 23 --query 'status(mira, State)'
+remembero diff 17 23 --trust include_tentative
 ```
 
 The library exposes `diffRecordedKnowledge(store, from, to, options)`. MCP exposes

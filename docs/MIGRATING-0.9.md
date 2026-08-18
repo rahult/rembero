@@ -23,7 +23,7 @@ stratification. Existing rule ordinals and default outputs therefore remain unch
 ## New APIs and tools
 
 - Library: `checkIntegrity(clauses, sourceIndex?, options?)`
-- CLI: `rembero assert <datalog>` and `rembero check`
+- CLI: `remembero assert <datalog>` and `remembero check`
 - MCP: `check_integrity`; `assert_facts` also accepts constraints
 - Listing: `list_memories` adds `constraints` only when declarations exist
 
@@ -32,13 +32,13 @@ proof/source/graph evidence. The new options are `maxViolations` and the existin
 bounds, including `maxProofsPerRow`.
 
 The CLI exits `2` for a successfully completed audit that found violations. Scripts that
-call `rembero check` should treat exit `2` as an integrity finding rather than an
+call `remembero check` should treat exit `2` as an integrity finding rather than an
 execution failure.
 
 ## Trust boundary
 
 Natural-language `remember` and auto-capture cannot create integrity policy. Declare
-constraints only through raw local Datalog (`rembero assert`, MCP `assert_facts`, import,
+constraints only through raw local Datalog (`remembero assert`, MCP `assert_facts`, import,
 or direct library/store use). Checking is read-only in 0.9; writes are not automatically
 rejected or repaired.
 

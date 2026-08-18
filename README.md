@@ -26,7 +26,8 @@ knowledge, local search, health, and the explicit knowledge graph. It uses a ded
 For an online product tour, open the public
 [Remembero site](http://remembero.rahultrikha.com/). Its `/playground` route runs SQLite
 WebAssembly with the native extension linked into the same binary, over fictional sample
-knowledge entirely in the browser. The npm package and CLI remain named `rembero`. See
+knowledge entirely in the browser. Install the `remembero` package and run the `remembero`
+CLI; the former `rembero` executable remains a compatibility alias. See
 [the hosted-playground contract](docs/MARKETING-PLAYGROUND.md).
 
 ```
@@ -43,7 +44,7 @@ Facts nobody ever stated directly (like `colleague(rahul, mira)`) are *derived*,
 ## Install
 
 ```bash
-npm install -g rembero        # or run ad hoc with: npx -y rembero
+npm install -g remembero        # or run ad hoc with: npx -y remembero
 ```
 
 Configuration is via environment variables (a `.env` file in the working directory also works):
@@ -67,6 +68,9 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_CHECK_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view |
 | `REMBERO_ENTITY_IDENTITY` | no | `off`; use `canonical` for explicit position-scoped alias projection |
 
+The `REMBERO_*` names and `.rembero` directories are stable compatibility contracts;
+renaming the package and CLI does not move or hide existing memory.
+
 The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `query`,
 `check`, `assert_facts`, `assert_tentative`, `review_tentative`, `resolve_tentative`,
 `supersede_facts`, `propose-memory`, `propose_memory`, `apply-memory`, `apply_memory_proposal`, `what-if`, `what_if`, `apply-rule-change`, `apply_rule_change`, `why-not`, `why_not`, `topology`,
@@ -81,16 +85,16 @@ natural-language `remember`/`recall` call the LLM.
 ## Use from Claude Code (MCP)
 
 ```bash
-claude mcp add rembero --env LLM_API_KEY=sk-or-... -- npx -y rembero serve
+claude mcp add remembero --env LLM_API_KEY=sk-or-... -- npx -y remembero serve
 ```
 
-From a git checkout instead: `claude mcp add rembero -- node /path/to/rembero/dist/cli.js serve`
+From a git checkout instead: `claude mcp add remembero -- node /path/to/rembero/dist/cli.js serve`
 
 To make agents use memory *proactively*, add a snippet like this to your `CLAUDE.md`
 (or system prompt):
 
 ```markdown
-## Memory (rembero)
+## Memory (Remembero)
 - At the start of tasks, use `recall` to check for relevant remembered context.
 - When I state something durable — a preference, decision, relationship, or fact about
   me or a project — store it with `remember`. Updates ("X is now Y") supersede old facts.
@@ -135,7 +139,7 @@ Manual `remember` remains the default. To opt into ambient capture at the end of
 Code turns:
 
 ```bash
-rembero init-hooks --namespace personal
+remembero init-hooks --namespace personal
 ```
 
 This safely merges one asynchronous Stop hook into your personal Claude settings. It
@@ -147,9 +151,9 @@ package-install time and never performs automatic retractions.
 Every capture, empty result, failure, cap, and duplicate is visible locally:
 
 ```bash
-rembero review --namespace personal
-rembero review --namespace personal --forget 2,5
-rembero init-hooks --remove
+remembero review --namespace personal
+remembero review --namespace personal --forget 2,5
+remembero init-hooks --remove
 ```
 
 The raw transcript is not persisted as per-fact provenance. See the
@@ -298,7 +302,7 @@ development headers. From a source checkout use:
 npm run build:sqlite
 ```
 
-From an installed npm package use `rembero sqlite-build`. The command compiles the native
+From an installed npm package use `remembero sqlite-build`. The command compiles the native
 library inside the installed package; it does not run automatically during installation,
 so Remembero's existing non-SQLite memory features do not acquire a native toolchain
 requirement.
@@ -331,7 +335,7 @@ The result is deterministic JSON:
 The public library adapter exposes the same path:
 
 ```ts
-import { openDatalogDatabase, sqliteDatalogExecutionMode } from 'rembero';
+import { openDatalogDatabase, sqliteDatalogExecutionMode } from 'remembero';
 
 const db = await openDatalogDatabase('world.db');
 const rule = 'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.';
@@ -435,7 +439,7 @@ closed. Extension loading is disabled again immediately after the library is loa
 - **`failed to load ….dl`** — a memory file was hand-edited into a state that doesn't
   parse; the error names the file and line. Fix the line (or delete it) and retry.
   Nothing is ever silently dropped.
-- **Server shows "disconnected" in Claude Code** — run `npx -y rembero serve` manually;
+- **Server shows "disconnected" in Claude Code** — run `npx -y remembero serve` manually;
   anything printed before the JSON handshake (e.g. npm warnings) breaks stdio. Use
   `npx -y` (never a bare `npm run`) so nothing pollutes stdout.
 

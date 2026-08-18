@@ -8,10 +8,10 @@ verifiable without opening or mutating a store.
 ## Use
 
 ```bash
-rembero bundle > knowledge.json
-rembero bundle --namespaces personal,work > selected.json
-rembero bundle --as-of-sequence 17 > recorded-17.json
-rembero verify-bundle knowledge.json
+remembero bundle > knowledge.json
+remembero bundle --namespaces personal,work > selected.json
+remembero bundle --as-of-sequence 17 > recorded-17.json
+remembero verify-bundle knowledge.json
 ```
 
 The library exposes `createKnowledgeBundle(...)`, `serializeKnowledgeBundle(...)`, and

@@ -185,11 +185,13 @@ export {
 } from './autocapture/transcript.js';
 export { createServer, serveStdio } from './mcp/server.js';
 export {
+  RememberoWebService,
   RemberoWebService,
   WebServiceError,
   GUIDED_QUESTIONS,
   WEB_DEMO_NAMESPACE,
   type GuidedQuestion,
+  type RememberoWebServiceOptions,
   type RemberoWebServiceOptions,
 } from './web/service.js';
 export { startWebServer, type StartWebServerOptions } from './web/server.js';

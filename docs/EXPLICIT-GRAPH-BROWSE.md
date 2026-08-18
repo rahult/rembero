@@ -10,11 +10,11 @@ Version 0.41 adds a separate bounded shortest-path view for connecting two entit
 ## Use
 
 ```bash
-rembero browse mira
-rembero browse mira --browse-depth 3 --claim-limit 200
-rembero browse --predicate works_at/2 --browse-depth 2
-rembero browse 42 --focus-number
-rembero browse mira --as-of-sequence 17
+remembero browse mira
+remembero browse mira --browse-depth 3 --claim-limit 200
+remembero browse --predicate works_at/2 --browse-depth 2
+remembero browse 42 --focus-number
+remembero browse mira --as-of-sequence 17
 ```
 
 The library exposes `browseKnowledgeGraph(clauses, sources, options)`. MCP exposes

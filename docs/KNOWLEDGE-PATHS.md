@@ -16,12 +16,12 @@ the selected shortest paths. Derived edges are never persisted.
 ## Use
 
 ```bash
-rembero connect mira rahul
-rembero connect mira rahul --path-depth 6 --path-limit 8 --claim-limit 500
-rembero connect 'Mira Patel' rahul --entity-identity canonical
-rembero connect 42 answer --from-number
-rembero connect mira rahul --as-of-sequence 17
-rembero connect mira rahul --include-derived
+remembero connect mira rahul
+remembero connect mira rahul --path-depth 6 --path-limit 8 --claim-limit 500
+remembero connect 'Mira Patel' rahul --entity-identity canonical
+remembero connect 42 answer --from-number
+remembero connect mira rahul --as-of-sequence 17
+remembero connect mira rahul --include-derived
 ```
 
 The library exposes:

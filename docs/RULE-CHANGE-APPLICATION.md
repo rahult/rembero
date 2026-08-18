@@ -8,12 +8,12 @@ and either commits the complete rule change atomically or writes nothing.
 ## Workflow
 
 ```bash
-rembero what-if 'eligible(Person)' \
+remembero what-if 'eligible(Person)' \
   --without-rule 'eligible(X) :- employee(X), badge(X).' \
   --assume-rule 'eligible(X) :- employee(X), badge(X), \\+ suspended(X).' \
   --check-suite checks.json > rule-review.json
 
-rembero apply-rule-change rule-review.json --op-id eligibility-v2
+remembero apply-rule-change rule-review.json --op-id eligibility-v2
 ```
 
 The proposal can be either the standalone `ruleProposal` object or the complete `what-if`

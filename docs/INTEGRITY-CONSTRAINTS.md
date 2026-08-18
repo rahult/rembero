@@ -14,8 +14,8 @@ predicate is single-valued; integrity exists only where a user explicitly declar
 Declare policy through the raw, local surfaces:
 
 ```bash
-rembero assert ':- works_at(Person, Left), works_at(Person, Right), Left < Right.'
-rembero check
+remembero assert ':- works_at(Person, Left), works_at(Person, Right), Left < Right.'
+remembero check
 ```
 
 The equivalent MCP operations are `assert_facts` and `check_integrity`. Natural-language
@@ -48,7 +48,7 @@ must be bound by an earlier positive relation.
 
 ## Inspection result
 
-`rembero check` returns JSON with:
+`remembero check` returns JSON with:
 
 - `status`: `unconstrained`, `consistent`, or `violations`;
 - the number of distinct alpha-equivalent constraints checked;
@@ -69,7 +69,7 @@ Use `--proof-limit <n>` to inspect alternative derivations of a violation and
 `maxViolations`. If another proof or violation exists beyond the requested bound,
 inspection fails rather than presenting an incomplete audit as complete.
 
-Version 0.18 adds `rembero conflicts [focus]` and MCP `conflict_views` when a person- or
+Version 0.18 adds `remembero conflicts [focus]` and MCP `conflict_views` when a person- or
 entity-oriented projection is more useful than the policy-oriented `checks` array. It
 groups complete rows by the first alpha-stable binding authored in each constraint and
 combines their source/proof graphs without inferring new policy. See

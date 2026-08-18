@@ -1,9 +1,11 @@
 {
-  "name": "rembero",
-  "version": "0.54.0",
+  "name": "remembero",
+  "version": "0.55.0",
   "description": "Logic-based memory for LLM chats and agents: deterministic Datalog rules, explicit entity identity, integrity, provenance, graphs, and MCP",
   "type": "module",
   "bin": {
+    "remembero": "dist/cli.js",
+    "remembero-web": "dist/web/server.js",
     "rembero": "dist/cli.js",
     "rembero-web": "dist/web/server.js"
   },
@@ -122,6 +124,7 @@
     "docs/MIGRATING-0.52.md",
     "docs/MIGRATING-0.53.md",
     "docs/MIGRATING-0.54.md",
+    "docs/MIGRATING-0.55.md",
     "CHANGELOG.md",
     "README.md",
     "LICENSE"

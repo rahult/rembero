@@ -8,11 +8,11 @@ queries.
 ## Use
 
 ```bash
-rembero what-if 'colleague(mira, Who)' \
+remembero what-if 'colleague(mira, Who)' \
   --without 'works_at(rahul, _)' \
   --assume 'works_at(rahul, acme).'
 
-rembero what-if 'status(mira, State)' \
+remembero what-if 'status(mira, State)' \
   --assume 'status(mira, paused).' \
   --proof-limit 2 --max-violations 100
 ```

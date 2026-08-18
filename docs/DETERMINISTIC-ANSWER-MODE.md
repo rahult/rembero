@@ -7,8 +7,8 @@ needs authority over the final wording when deterministic mode is selected.
 ## Enable
 
 ```bash
-rembero recall 'Who works at Acme?' --answer-mode deterministic
-rembero recall-explain 'What may Mira status be?' \
+remembero recall 'Who works at Acme?' --answer-mode deterministic
+remembero recall-explain 'What may Mira status be?' \
   --trust include_tentative --answer-mode deterministic
 
 export REMBERO_RECALL_ANSWER_MODE=deterministic

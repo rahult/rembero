@@ -10,10 +10,10 @@ No LLM is called and nothing is mutated.
 ## Use
 
 ```bash
-rembero health
-rembero health --namespaces personal,work
-rembero health --check-suite checks.json
-rembero health --as-of-sequence 17
+remembero health
+remembero health --namespaces personal,work
+remembero health --check-suite checks.json
+remembero health --as-of-sequence 17
 ```
 
 The library exposes `inspectKnowledgeHealth(store, options)`. MCP exposes

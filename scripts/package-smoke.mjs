@@ -31,7 +31,18 @@ try {
     ['install', '--ignore-scripts', '--no-audit', '--no-fund', join(directory, archive)],
     { cwd: directory }
   );
-  const installedPackage = join(directory, 'node_modules', 'rembero');
+  const installedPackage = join(directory, 'node_modules', 'remembero');
+  const installedPackageJson = JSON.parse(
+    readFileSync(join(installedPackage, 'package.json'), 'utf8')
+  );
+  if (
+    installedPackageJson.name !== 'remembero' ||
+    installedPackageJson.bin?.remembero !== 'dist/cli.js' ||
+    installedPackageJson.bin?.['remembero-web'] !== 'dist/web/server.js' ||
+    installedPackageJson.bin?.rembero !== 'dist/cli.js'
+  ) {
+    throw new Error('packed package name or CLI aliases are incorrect');
+  }
   if (
     !readFileSync(join(installedPackage, 'dist', 'web-client', 'index.html'), 'utf8').includes(
       '<div id="root"></div>'
@@ -47,7 +58,7 @@ try {
     [
       '--input-type=module',
       '--eval',
-      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, RemberoWebService, analyzeKnowledgeTopology, applyMemoryProposal, applyRuleChangeProposal, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, connectKnowledgeGraph, createKnowledgeBundle, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, inspectKnowledgeHealth, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, profileKnowledge, proposeRememberText, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, runKnowledgeChecks, searchKnowledge, selectExplanationGraph, selectRecallSchema, serializeKnowledgeBundle, simulateKnowledge, sqliteDatalogExecutionMode, verifyKnowledgeBundle } from 'rembero'; " +
+      "import { IncompleteHistoryError, IntegrityViolationError, MemoryStore, OperationConflictError, RememberoWebService, analyzeKnowledgeTopology, applyMemoryProposal, applyRuleChangeProposal, assertTentativeFacts, auditKnowledgeRules, browseKnowledgeGraph, canonicalizeKnowledge, checkIntegrity, connectKnowledgeGraph, createKnowledgeBundle, diffRecordedKnowledge, evaluate, evaluateQuerySpec, explainKnowledge, explainWhyNot, inspectConflicts, inspectKnowledgeHealth, isAggregateRule, materialize, parseProgram, parseQuery, parseQuerySpec, planKnowledgeRepair, profileKnowledge, proposeRememberText, recallQuestion, resolveTentativeFacts, retrieveQuestion, reviewTentativeClaims, runKnowledgeChecks, searchKnowledge, selectExplanationGraph, selectRecallSchema, serializeKnowledgeBundle, simulateKnowledge, sqliteDatalogExecutionMode, verifyKnowledgeBundle } from 'remembero'; " +
         "const rows = evaluateQuerySpec(parseProgram('item(a). item(b).'), parseQuerySpec('count(*) as Count where item(Item)')); " +
         "if (rows[0]?.Count?.value !== 2) throw new Error('public aggregate API failed'); " +
         "const projectedRows = evaluateQuerySpec(parseProgram('edge(a, x1). edge(a, x2). edge(x1, z). edge(x2, z).'), parseQuerySpec('select End where edge(a, Mid), edge(Mid, End)')); " +
@@ -87,7 +98,7 @@ try {
         "if (repair.plans[0]?.assume[0] !== 'badge(bob).' || repairStore.clausesFor(['default']).length !== 2) throw new Error('public repair planning API failed'); " +
         "const localSearch = searchKnowledge(repairStore.clausesFor(['default']), 'eligible', repairStore.sourcesFor(['default']), { kinds: ['rule'] }); " +
         "if (localSearch.results[0]?.clause !== 'eligible(X) :- employee(X), badge(X).' || !localSearch.graph.edges.some((edge) => edge.kind === 'defines')) throw new Error('public local search API failed'); " +
-        "const webStore = new MemoryStore('./web-memory'); const webService = new RemberoWebService({ store: webStore, llmConfigured: false }); webService.seedDemo(); const webBootstrap = webService.bootstrap(); const webAnswer = await webService.ask({ question: 'Who is collaborating on Atlas?', presetId: 'collaborators' }); " +
+        "const webStore = new MemoryStore('./web-memory'); const webService = new RememberoWebService({ store: webStore, llmConfigured: false }); webService.seedDemo(); const webBootstrap = webService.bootstrap(); const webAnswer = await webService.ask({ question: 'Who is collaborating on Atlas?', presetId: 'collaborators' }); " +
         "if (webBootstrap.counts.facts !== 12 || webBootstrap.counts.rules !== 3 || webBootstrap.health.status !== 'healthy' || webAnswer.answer !== 'Maya is collaborating on Atlas.' || webAnswer.evidence.rules.length !== 1) throw new Error('public web console service API failed'); " +
         "const browsed = browseKnowledgeGraph(repairStore.clausesFor(['default']), repairStore.sourcesFor(['default']), { focus: 'bob' }); " +
         "if (browsed.selection.selectedClaims !== 1 || !browsed.graph.nodes.some((node) => node.kind === 'claim' && node.predicate === 'employee') || browsed.graph.nodes.some((node) => node.kind === 'claim' && node.predicate === 'eligible')) throw new Error('public explicit graph browse API failed'); " +
@@ -149,11 +160,21 @@ try {
     ],
     { cwd: directory }
   );
-  const installedCli = join(directory, 'node_modules', 'rembero', 'dist', 'cli.js');
+  const installedCli = join(directory, 'node_modules', 'remembero', 'dist', 'cli.js');
+  const installedPrimaryCli = join(directory, 'node_modules', '.bin', 'remembero');
+  const primaryHelp = run(installedPrimaryCli, ['--help'], { cwd: directory });
+  if (!primaryHelp.startsWith('remembero — logic-based memory')) {
+    throw new Error('primary remembero CLI executable failed');
+  }
+  const installedLegacyCli = join(directory, 'node_modules', '.bin', 'rembero');
+  const legacyHelp = run(installedLegacyCli, ['--help'], { cwd: directory });
+  if (!legacyHelp.startsWith('remembero — logic-based memory')) {
+    throw new Error('legacy rembero CLI alias failed');
+  }
   const installedExtractionEval = join(
     directory,
     'node_modules',
-    'rembero',
+    'remembero',
     'dist',
     'evals',
     'run-extraction.js'

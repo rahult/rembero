@@ -2,7 +2,7 @@
 
 Remembero's product marketing site and deterministic browser playground are deployed at:
 
-<https://rembero.rahultrikha.chatgpt.site>
+<http://remembero.rahultrikha.com/>
 
 The current Sites deployment is private and uses Sign in with ChatGPT owner access. The
 site can be made public through an explicit access-policy change when desired.

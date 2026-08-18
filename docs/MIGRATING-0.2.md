@@ -9,7 +9,7 @@ account for additive union members in the public AST and proof types.
 `Goal` now includes `Negation`:
 
 ```ts
-import { isComparison, isNegation, type Goal } from 'rembero';
+import { isComparison, isNegation, type Goal } from 'remembero';
 
 function visit(goal: Goal) {
   if (isComparison(goal)) return visitComparison(goal);

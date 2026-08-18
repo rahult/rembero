@@ -18,8 +18,8 @@ namespace, temporal-history, or SQLite migration is required.
 CLI:
 
 ```bash
-rembero explain 'path(a, X)' --proof-limit 4
-rembero recall-explain "How can A reach X?" --proof-limit 4
+remembero explain 'path(a, X)' --proof-limit 4
+remembero recall-explain "How can A reach X?" --proof-limit 4
 ```
 
 MCP:

@@ -7,7 +7,7 @@ or view rows.
 ## Use
 
 ```bash
-rembero sqlite-plan world.db \
+remembero sqlite-plan world.db \
   'colleague(X, Y) :- works_at(X, C), works_at(Y, C), X != Y.'
 ```
 

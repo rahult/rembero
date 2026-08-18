@@ -541,3 +541,7 @@ export class RemberoWebService {
     };
   }
 }
+
+/** Canonical product-name alias. The original export remains for compatibility. */
+export { RemberoWebService as RememberoWebService };
+export type RememberoWebServiceOptions = RemberoWebServiceOptions;

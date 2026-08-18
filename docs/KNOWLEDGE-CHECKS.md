@@ -43,9 +43,9 @@ without a threshold; see [semantic rule coverage](RULE-COVERAGE.md).
 ## Run
 
 ```bash
-rembero test-knowledge checks.json
-rembero test-knowledge checks.json --as-of-sequence 17
-rembero test-knowledge checks.json --include-passing-evidence
+remembero test-knowledge checks.json
+remembero test-knowledge checks.json --as-of-sequence 17
+remembero test-knowledge checks.json --include-passing-evidence
 ```
 
 The library exposes `parseKnowledgeCheckSuite(...)` and `runKnowledgeChecks(...)`. MCP

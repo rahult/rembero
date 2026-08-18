@@ -137,55 +137,55 @@ import {
 } from './safety.js';
 import { buildSqliteExtension, openDatalogDatabase } from './sqlite/extension.js';
 
-const USAGE = `rembero — logic-based memory for chats and agents
+const USAGE = `remembero — logic-based memory for chats and agents
 
 Usage:
-  rembero serve                          Start the MCP server on stdio
-  rembero remember <text>                Extract facts from text and store them
-  rembero propose-memory <text>         Extract and preview accepted memory without writing
-  rembero apply-memory <file>            Apply one reviewed accepted-memory proposal
-  rembero remember --batch               Auto-capture from Claude Stop-hook JSON on stdin
-  rembero recall <question>              Answer a question from memory
-  rembero recall-explain <question>      Recall with proofs, sources, and a graph
-  rembero query <datalog>                Run a raw Datalog query
-  rembero assert <datalog>               Store raw Datalog facts, rules, or constraints
-  rembero claims                         List tentative facts awaiting review
-  rembero accept <datalog>               Promote exact tentative facts to accepted
-  rembero reject <datalog>               Reject exact tentative facts without accepting
-  rembero supersede [datalog]            End matching facts; optionally add replacements
-  rembero explain <datalog>              Query with proofs, sources, and a knowledge graph
-  rembero check                          Check explicit integrity constraints with evidence
-  rembero conflicts [focus]              Group conflicts by authored focus with evidence
-  rembero what-if <query>                Preview fact or rule changes with deterministic impact
-  rembero apply-rule-change <file>       Apply one reviewed digest-bound rule proposal
-  rembero why-not <query>                Explain deterministic blockers for a query
-  rembero topology [predicate]           Map rules, policies, strata, and influence
-  rembero diff <from> <to>               Compare two exact recorded knowledge states
-  rembero repair <query>                 Propose minimal verified fact-only query repairs
-  rembero audit-rules [predicate]        Audit rule health with deterministic evidence
-  rembero health                         Inspect complete deterministic knowledge health
-  rembero search <text>                  Search facts, rules, policies, and sources locally
-  rembero browse [entity]                Browse a bounded explicit personal graph
-  rembero connect <from> <to>            Find bounded shortest explicit graph paths
-  rembero bundle                         Export raw clauses and provenance with a digest
-  rembero verify-bundle <file>           Verify a standalone knowledge bundle
-  rembero test-knowledge <file>          Run a deterministic rule regression suite
-  rembero profile <query>                Profile deterministic relation work and proofs
-  rembero forget <pattern>               Retract facts matching a pattern
-  rembero history <pattern>              Show a fact's deterministic life story
-  rembero checkpoint                     Rotate the active journal into a verified segment
-  rembero checkpoints                    List immutable journal checkpoints
-  rembero list                           List stored memories
-  rembero review                         Review recent auto-captured facts
-  rembero init-hooks                     Install the opt-in Claude Stop hook
-  rembero init-hooks --remove            Remove only Remembero's managed hook
-  rembero export                         Print all memories as portable Datalog
-  rembero import <ns> <file>             Load clauses from a .dl file into a namespace
-  rembero sqlite-build                   Compile the loadable SQLite extension
-  rembero sqlite-sql <db> <rule>         Compile a Datalog rule against a SQLite database
-  rembero sqlite-query <db> <program>    Execute a Datalog program against a SQLite database
-  rembero sqlite-explain <db> <program>  Execute with one derivation proof per result
-  rembero sqlite-plan <db> <program>     Inspect routing and schema without scanning rows
+  remembero serve                          Start the MCP server on stdio
+  remembero remember <text>                Extract facts from text and store them
+  remembero propose-memory <text>         Extract and preview accepted memory without writing
+  remembero apply-memory <file>            Apply one reviewed accepted-memory proposal
+  remembero remember --batch               Auto-capture from Claude Stop-hook JSON on stdin
+  remembero recall <question>              Answer a question from memory
+  remembero recall-explain <question>      Recall with proofs, sources, and a graph
+  remembero query <datalog>                Run a raw Datalog query
+  remembero assert <datalog>               Store raw Datalog facts, rules, or constraints
+  remembero claims                         List tentative facts awaiting review
+  remembero accept <datalog>               Promote exact tentative facts to accepted
+  remembero reject <datalog>               Reject exact tentative facts without accepting
+  remembero supersede [datalog]            End matching facts; optionally add replacements
+  remembero explain <datalog>              Query with proofs, sources, and a knowledge graph
+  remembero check                          Check explicit integrity constraints with evidence
+  remembero conflicts [focus]              Group conflicts by authored focus with evidence
+  remembero what-if <query>                Preview fact or rule changes with deterministic impact
+  remembero apply-rule-change <file>       Apply one reviewed digest-bound rule proposal
+  remembero why-not <query>                Explain deterministic blockers for a query
+  remembero topology [predicate]           Map rules, policies, strata, and influence
+  remembero diff <from> <to>               Compare two exact recorded knowledge states
+  remembero repair <query>                 Propose minimal verified fact-only query repairs
+  remembero audit-rules [predicate]        Audit rule health with deterministic evidence
+  remembero health                         Inspect complete deterministic knowledge health
+  remembero search <text>                  Search facts, rules, policies, and sources locally
+  remembero browse [entity]                Browse a bounded explicit personal graph
+  remembero connect <from> <to>            Find bounded shortest explicit graph paths
+  remembero bundle                         Export raw clauses and provenance with a digest
+  remembero verify-bundle <file>           Verify a standalone knowledge bundle
+  remembero test-knowledge <file>          Run a deterministic rule regression suite
+  remembero profile <query>                Profile deterministic relation work and proofs
+  remembero forget <pattern>               Retract facts matching a pattern
+  remembero history <pattern>              Show a fact's deterministic life story
+  remembero checkpoint                     Rotate the active journal into a verified segment
+  remembero checkpoints                    List immutable journal checkpoints
+  remembero list                           List stored memories
+  remembero review                         Review recent auto-captured facts
+  remembero init-hooks                     Install the opt-in Claude Stop hook
+  remembero init-hooks --remove            Remove only Remembero's managed hook
+  remembero export                         Print all memories as portable Datalog
+  remembero import <ns> <file>             Load clauses from a .dl file into a namespace
+  remembero sqlite-build                   Compile the loadable SQLite extension
+  remembero sqlite-sql <db> <rule>         Compile a Datalog rule against a SQLite database
+  remembero sqlite-query <db> <program>    Execute a Datalog program against a SQLite database
+  remembero sqlite-explain <db> <program>  Execute with one derivation proof per result
+  remembero sqlite-plan <db> <program>     Inspect routing and schema without scanning rows
 
 Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
@@ -803,8 +803,12 @@ function reviewSelections(raw: string | undefined, factCount: number): number[] 
 }
 
 async function main(): Promise<void> {
-  loadEnv();
   const [command, ...rest] = process.argv.slice(2);
+  if (command === undefined || command === '--help' || command === '-h') {
+    console.log(USAGE);
+    return;
+  }
+  loadEnv();
   const args = parseArgs(rest);
   const store = new MemoryStore();
   const graphSelector = graphSelectorOption(args);
@@ -1913,7 +1917,7 @@ async function main(): Promise<void> {
     case 'import': {
       const [ns, file] = args.positional;
       if (!ns || !file) {
-        console.error('usage: rembero import <namespace> <file.dl>');
+        console.error('usage: remembero import <namespace> <file.dl>');
         process.exitCode = 1;
         return;
       }
@@ -1945,7 +1949,7 @@ async function main(): Promise<void> {
       const [databasePath, ...ruleParts] = args.positional;
       const rule = ruleParts.join(' ');
       if (!databasePath || !rule) {
-        console.error(`usage: rembero ${command} <database> <datalog-program>`);
+        console.error(`usage: remembero ${command} <database> <datalog-program>`);
         process.exitCode = 1;
         return;
       }
@@ -2034,7 +2038,7 @@ async function main(): Promise<void> {
           `${index + 1}. ${fact.current ? '[current]' : '[removed]'} ${fact.namespace}: ${fact.clause}`
         );
       });
-      console.log('\nPrune with: rembero review --forget <number,...>');
+      console.log('\nPrune with: remembero review --forget <number,...>');
       return;
     }
     case 'init-hooks':

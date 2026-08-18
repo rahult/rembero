@@ -3,7 +3,7 @@
 Version 0.53 is additive. Existing library, CLI, MCP, SQLite, storage, and package APIs are
 unchanged.
 
-The package adds the `rembero-web` binary, a prebuilt browser client under `dist`, the
+The package adds the `remembero-web` binary (`rembero-web` remains an alias), a prebuilt browser client under `dist`, the
 `RemberoWebService` library facade, and `startWebServer(...)`. `npm run web:dev` starts the
 development console; `npm run web` builds and starts the production console.
 

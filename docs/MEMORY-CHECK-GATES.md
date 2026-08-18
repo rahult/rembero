@@ -7,10 +7,10 @@ preview and must pass again on the exact in-lock candidate before `memory_change
 ## Use
 
 ```bash
-rembero propose-memory 'Mira now works at Initech.' \
+remembero propose-memory 'Mira now works at Initech.' \
   --check-suite checks.json > memory-review.json
 
-rembero apply-memory memory-review.json --op-id mira-work-v2
+remembero apply-memory memory-review.json --op-id mira-work-v2
 ```
 
 MCP `propose_memory` accepts serialized `checkSuite`; `apply_memory_proposal` reads the

@@ -44,9 +44,9 @@ Callers must explicitly request `include_tentative` to project encoded claims in
 logical view:
 
 ```bash
-rembero query 'works_at(mira, Company)' --trust include_tentative
-rembero recall-explain 'Where might Mira work?' --trust include_tentative
-rembero check --trust include_tentative
+remembero query 'works_at(mira, Company)' --trust include_tentative
+remembero recall-explain 'Where might Mira work?' --trust include_tentative
+remembero check --trust include_tentative
 ```
 
 Opt-in results include `trustMode: "include_tentative"`. Tentative proof leaves, durable
@@ -64,10 +64,10 @@ alternative; it never downgrades the accepted proof.
 Raw CLI:
 
 ```bash
-rembero assert 'works_at(mira, acme).' --trust tentative --op-id claim-17
-rembero claims
-rembero accept 'works_at(mira, acme).' --op-id review-17
-rembero reject 'works_at(mira, acme).' --op-id review-18
+remembero assert 'works_at(mira, acme).' --trust tentative --op-id claim-17
+remembero claims
+remembero accept 'works_at(mira, acme).' --op-id review-17
+remembero reject 'works_at(mira, acme).' --op-id review-18
 ```
 
 MCP exposes `assert_tentative`, `review_tentative`, and `resolve_tentative`. The library

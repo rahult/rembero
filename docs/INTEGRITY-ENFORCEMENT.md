@@ -4,8 +4,8 @@ Remembero 0.10 can turn the explicit constraints introduced in 0.9 into an opt-i
 write boundary. Audit remains the default: upgrading does not silently reject writes.
 
 ```bash
-rembero assert 'suspended(mira).' --integrity-mode strict
-rembero remember 'Mira is now suspended' --integrity-mode strict
+remembero assert 'suspended(mira).' --integrity-mode strict
+remembero remember 'Mira is now suspended' --integrity-mode strict
 ```
 
 Every enforced write evaluates the complete post-mutation candidate before changing a
@@ -16,7 +16,7 @@ proposed sources, and query-scoped graph evidence.
 ## Modes
 
 - `strict` rejects any write whose resulting selected knowledge view has a violation.
-  Use it after `rembero check` is clean.
+  Use it after `remembero check` is clean.
 - `no_new_violations` is the migration mode. Existing violation identities may remain or
   be removed, but the write cannot introduce another identity. Identity is the stable
   alpha-normalized constraint ID plus its ordered bound values; renaming variables does
@@ -28,7 +28,7 @@ Configure a CLI or MCP server process with:
 ```bash
 export REMBERO_INTEGRITY_MODE=strict
 export REMBERO_INTEGRITY_NAMESPACES='*'
-rembero serve
+remembero serve
 ```
 
 `REMBERO_INTEGRITY_NAMESPACES` accepts `*` or a comma-separated ordered list. When it is
@@ -39,9 +39,9 @@ write itself.
 For a staged migration:
 
 ```bash
-rembero check --namespaces '*'
+remembero check --namespaces '*'
 REMBERO_INTEGRITY_MODE=no_new_violations \
-REMBERO_INTEGRITY_NAMESPACES='*' rembero assert 'project(atlas).'
+REMBERO_INTEGRITY_NAMESPACES='*' remembero assert 'project(atlas).'
 # Repair every reported row, then move the process default to strict.
 ```
 
@@ -92,7 +92,7 @@ multi-file atomic commit that the portable store does not provide.
 - Constraints remain explicit raw Datalog policy. Natural-language remember and ambient
   capture still cannot create, modify, or retract them.
 - Direct hand edits to `.dl` files and writers from older Remembero versions do not
-  participate in the 0.10 lock. Stop writers before editing, then run `rembero check`.
+  participate in the 0.10 lock. Stop writers before editing, then run `remembero check`.
 - Separate `REMBERO_HOME` roots are separate authorities. Namespaces are organization,
   not access control.
 - The experimental SQLite extension remains audit/enforcement-independent in 0.10.
