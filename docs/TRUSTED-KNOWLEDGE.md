@@ -8,7 +8,7 @@ This supports jobs such as:
 - “Use tentative evidence for this investigation, but do not treat it as accepted truth.”
 - “Accept or reject this claim without erasing how the decision happened.”
 
-Trust is explicit and binary: `accepted` or `tentative`. Rembero does not assign hidden
+Trust is explicit and binary: `accepted` or `tentative`. Remembero does not assign hidden
 confidence scores, probabilities, or model-derived authority.
 
 ## Portable authority

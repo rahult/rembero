@@ -1,6 +1,6 @@
 # Digest-bound reviewed rule change application
 
-Rembero 0.44 closes the rule-review loop without making simulation itself authoritative.
+Remembero 0.44 closes the rule-review loop without making simulation itself authoritative.
 `what-if` still only proposes and proves a change. A separate explicit apply operation
 accepts that exact proposal after review, revalidates it under the global mutation lock,
 and either commits the complete rule change atomically or writes nothing.

@@ -1,6 +1,6 @@
 # Content-addressed portable knowledge bundles
 
-Rembero 0.33 packages raw portable knowledge authority and durable provenance into one
+Remembero 0.33 packages raw portable knowledge authority and durable provenance into one
 deterministic JSON artifact. It fills the gap between clause-only text export and internal
 journal checkpoints: bundles are standalone, namespace-aware, content-addressed, and
 verifiable without opening or mutating a store.

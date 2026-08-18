@@ -9,7 +9,7 @@ Adds a public structured-memory benchmark that reports exact typed answers,
 answerability, gold-evidence retrieval, proof citations, temporal updates, and trust views
 as separate dimensions. `npm run bench:memory:check` is a deterministic release gate;
 isolated JSON command adapters let external stacks participate without adding their
-dependencies or credentials to Rembero. The first checked-in result measures Rembero and
+dependencies or credentials to Remembero. The first checked-in result measures Remembero and
 transparent direct, lexical, and recency baselines only. See the
 [benchmark](docs/research/MEMORY-STACK-BENCHMARK.md),
 [Medium draft](docs/research/MEDIUM-DRAFT.md), and
@@ -202,7 +202,7 @@ default. See [the deterministic-answer-mode contract](docs/DETERMINISTIC-ANSWER-
 
 Makes negative natural-language recall deterministic after query review. A
 final full-schema empty query receives complete why-not evidence and a local blocker
-summary; Rembero no longer sends empty bindings to the LLM for phrasing. If diagnostic
+summary; Remembero no longer sends empty bindings to the LLM for phrasing. If diagnostic
 limits are exceeded, recall returns an explicit `whyNotUnavailable` marker and an honest
 generic negative answer. See
 [the grounded-negative-recall contract](docs/GROUNDED-NEGATIVE-RECALL.md).
@@ -368,5 +368,5 @@ Can promote those declarations into an opt-in atomic write boundary.
 remain or be repaired while rejecting new violation identities. Every rejection carries
 the same bounded proof, source, and query-scoped graph evidence as `check`; CLI exit `3`
 means no mutation was committed. All supported writers share one cross-process mutation
-lock so a cross-namespace candidate cannot race another Rembero 0.10 writer. Audit remains
+lock so a cross-namespace candidate cannot race another Remembero 0.10 writer. Audit remains
 the default. See [the enforcement and migration contract](docs/INTEGRITY-ENFORCEMENT.md).

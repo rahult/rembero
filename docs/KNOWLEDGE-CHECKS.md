@@ -1,6 +1,6 @@
 # Portable deterministic knowledge checks
 
-Rembero 0.35 adds executable regression suites for facts and rules. Suites are standalone
+Remembero 0.35 adds executable regression suites for facts and rules. Suites are standalone
 JSON, never stored in the knowledge base, and run without an LLM or mutation.
 
 ## Format

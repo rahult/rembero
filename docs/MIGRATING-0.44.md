@@ -10,7 +10,7 @@ New interfaces are:
 - CLI `apply-rule-change <file> --op-id <id>`; and
 - MCP `apply_rule_change`.
 
-The journal gains a replayable `rule_change` operation. Rembero handles it automatically
+The journal gains a replayable `rule_change` operation. Remembero handles it automatically
 in current sources, recorded snapshots/diffs, checkpoint rotation, and idempotent replay.
 
 Application always enforces the proposal digest, current baseline digest, candidate rule

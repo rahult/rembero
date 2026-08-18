@@ -1,6 +1,6 @@
 # Deterministic counterfactual impact
 
-Rembero 0.23 can answer a bounded factual question before a proposed correction becomes
+Remembero 0.23 can answer a bounded factual question before a proposed correction becomes
 authority. The operation is a read-only sandbox over the same rules, constraints,
 identity projection, trust view, proof engine, and explanation graph used by ordinary
 queries.

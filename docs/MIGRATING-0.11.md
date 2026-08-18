@@ -1,4 +1,4 @@
-# Migrating to Rembero 0.11
+# Migrating to Remembero 0.11
 
 Version 0.11 adds explicit entity identity as an opt-in read projection. Existing `.dl`
 files, journals, history, literal queries, recall, integrity checks, and graphs require

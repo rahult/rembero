@@ -1,6 +1,6 @@
 # Deterministic local knowledge search
 
-Rembero 0.31 searches the readable personal knowledge program without an LLM, embedding
+Remembero 0.31 searches the readable personal knowledge program without an LLM, embedding
 model, vector index, or persistent search database. It is a deterministic discovery
 surface for finding likely clauses and provenance before using `query` or `explain` for
 logical proof.

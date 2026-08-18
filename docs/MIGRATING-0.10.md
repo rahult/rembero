@@ -1,4 +1,4 @@
-# Migrating to Rembero 0.10
+# Migrating to Remembero 0.10
 
 Version 0.10 adds opt-in atomic integrity enforcement. Existing `.dl` files, 0.9
 constraints, journal entries, queries, proofs, recall results, and graphs require no data

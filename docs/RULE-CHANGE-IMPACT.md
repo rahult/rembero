@@ -1,6 +1,6 @@
 # Proposal-only deterministic rule change impact
 
-Rembero 0.43 lets a rule author prove what a proposed program change would do before the
+Remembero 0.43 lets a rule author prove what a proposed program change would do before the
 rule becomes authority. It extends the existing read-only counterfactual sandbox rather
 than introducing a second evaluator or mutation path.
 
@@ -65,7 +65,7 @@ adds a separate explicitly authorized apply operation that revalidates the artif
 all gates under the mutation lock; simulation itself remains non-mutating. See
 [reviewed rule change application](RULE-CHANGE-APPLICATION.md).
 
-With `recordedSequence`, Rembero reconstructs the exact namespace view at that global
+With `recordedSequence`, Remembero reconstructs the exact namespace view at that global
 journal position, including per-namespace duplicate witnesses, then applies the proposed
 rule only in memory. The result includes the recorded coordinate and never mixes later
 facts or rules into either side.

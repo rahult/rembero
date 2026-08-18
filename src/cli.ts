@@ -178,7 +178,7 @@ Usage:
   rembero list                           List stored memories
   rembero review                         Review recent auto-captured facts
   rembero init-hooks                     Install the opt-in Claude Stop hook
-  rembero init-hooks --remove            Remove only Rembero's managed hook
+  rembero init-hooks --remove            Remove only Remembero's managed hook
   rembero export                         Print all memories as portable Datalog
   rembero import <ns> <file>             Load clauses from a .dl file into a namespace
   rembero sqlite-build                   Compile the loadable SQLite extension
@@ -239,7 +239,7 @@ Options:
       --graph-neighbors <node-id>  Export a bounded undirected neighborhood
       --graph-depth <n>   Neighborhood depth (default: 1; max: ${MAX_GRAPH_NEIGHBOR_DEPTH})
       --limit <n>          History event limit (maximum: 1000)
-      --extension <path>   Path to the compiled Rembero SQLite extension
+      --extension <path>   Path to the compiled Remembero SQLite extension
       --daily-cap <n>      Max auto-capture attempts per namespace/UTC day (default: 10)
       --tail-bytes <n>     Transcript tail bytes sent for extraction (default: 24576)
       --days <n>           Auto-capture review window (default: 7)
@@ -2060,7 +2060,7 @@ async function main(): Promise<void> {
             ),
           });
       console.log(
-        `${remove ? 'removed' : 'installed'} Rembero Claude hook${result.changed ? '' : ' (already current)'}: ${result.settingsPath}`
+        `${remove ? 'removed' : 'installed'} Remembero Claude hook${result.changed ? '' : ' (already current)'}: ${result.settingsPath}`
       );
       return;
     }

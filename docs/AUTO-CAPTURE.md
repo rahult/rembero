@@ -1,13 +1,13 @@
 # Opt-in Claude Code auto-capture
 
-Rembero can review the end of each Claude Code turn for durable personal facts. This is
+Remembero can review the end of each Claude Code turn for durable personal facts. This is
 an optional ingestion lane around the same deterministic parser, store, and journal used
 by manual `remember`; it does not change the Datalog engine or make generated text
 authoritative by itself.
 
 ## Install or remove the hook
 
-Install Rembero globally, configure `LLM_API_KEY`, then opt in:
+Install Remembero globally, configure `LLM_API_KEY`, then opt in:
 
 ```bash
 rembero init-hooks --namespace personal
@@ -24,7 +24,7 @@ Use a different settings scope explicitly when required:
 rembero init-hooks --settings .claude/settings.local.json --namespace project
 ```
 
-Remove only Rembero's managed entry with either command:
+Remove only Remembero's managed entry with either command:
 
 ```bash
 rembero init-hooks --remove
@@ -32,7 +32,7 @@ rembero remove-hooks
 ```
 
 Re-run `init-hooks` after moving or reinstalling the package because the safe exec-form
-hook records the resolved Node and Rembero CLI paths. Installation and removal are
+hook records the resolved Node and Remembero CLI paths. Installation and removal are
 idempotent.
 
 Claude Code documents the current Stop payload and settings scopes in its
@@ -42,7 +42,7 @@ turns are the supported auto-capture path.
 
 ## What is allowed to become memory
 
-The hook passes JSON to `rembero remember --batch` on standard input. Rembero then:
+The hook passes JSON to `rembero remember --batch` on standard input. Remembero then:
 
 1. accepts only a Claude `Stop` event;
 2. resolves a regular `.jsonl` transcript beneath the configured Claude `projects/`

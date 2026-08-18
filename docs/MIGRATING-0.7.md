@@ -1,4 +1,4 @@
-# Migrating to Rembero 0.7
+# Migrating to Remembero 0.7
 
 Version 0.7 adds deterministic, bounded schema selection to natural-language recall. No
 memory or journal migration is required.
@@ -34,7 +34,7 @@ The accepted range is 1–256. The equivalent CLI option is
 `--schema-predicate-limit`; MCP uses `schemaPredicateLimit`. Programmatic callers can set
 `PipelineDeps.recallSchemaPredicateLimit` or `RecallOptions.schemaPredicateLimit`.
 
-This limit controls the first attempt. If it is inconclusive, Rembero may widen once
+This limit controls the first attempt. If it is inconclusive, Remembero may widen once
 within the fixed predicate and byte safety bounds before returning a negative status.
 
 ## Unchanged contracts

@@ -1,6 +1,6 @@
 # Digest-bound reviewed personal memory application
 
-Rembero 0.46 completes the proposal-first accepted-memory workflow. `propose-memory`
+Remembero 0.46 completes the proposal-first accepted-memory workflow. `propose-memory`
 remains non-mutating; a separate explicit apply operation accepts the reviewed artifact,
 revalidates it under the global mutation lock, and commits all exact facts, rules,
 removals, and temporal archives as one crash-safe change or writes nothing.

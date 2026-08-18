@@ -18,7 +18,7 @@ Most benchmarks measure whether the right information was found or whether a mod
 liked the final response. Those are important tests. They are not the same as proving that
 an answer follows from recorded facts and reviewed rules.
 
-That distinction is why I built Rembero, a logic-based memory layer for agents, and why I
+That distinction is why I built Remembero, a logic-based memory layer for agents, and why I
 have now published a benchmark that tries to measure the difference without turning it
 into a marketing trick.
 
@@ -81,7 +81,7 @@ derivation over a fixed knowledge snapshot.
 
 ## A scorecard, not a single score
 
-The first Rembero structured-memory suite reports separate tracks:
+The first Remembero structured-memory suite reports separate tracks:
 
 - exact typed answer rows;
 - answerability and abstention;
@@ -104,7 +104,7 @@ Here is the first checked-in result:
 
 | Adapter | Answer coverage | Answer accuracy | Retrieval Recall@k | MRR | Citation recall |
 |---|---:|---:|---:|---:|---:|
-| Rembero engine | 100% | 100% | 100% | 100% | 100% |
+| Remembero engine | 100% | 100% | 100% | 100% | 100% |
 | Direct fact scan | 100% | 50% | 42.9% | 42.9% | 50% |
 | Lexical overlap top-k | 0% | not applicable | 85.7% | 100% | not applicable |
 | Recency top-k | 0% | not applicable | 100% | 92.9% | not applicable |
@@ -115,10 +115,10 @@ First, the retrieval-only baselines are not assigned zero answer accuracy. They 
 produce answers, so the metric is not applicable. Treating “unsupported capability” as
 “wrong answer” would make the chart look better while making the science worse.
 
-Second, this is not yet a measured claim that Rembero beats Mem0, Graphiti, Letta,
+Second, this is not yet a measured claim that Remembero beats Mem0, Graphiti, Letta,
 LangGraph, or LlamaIndex. No external vendor adapter was executed in this snapshot. The
 suite now includes an isolated JSON adapter protocol so those runs can be added without
-bringing vendor dependencies or secrets into Rembero itself.
+bringing vendor dependencies or secrets into Remembero itself.
 
 ## What the first result actually shows
 
@@ -129,10 +129,10 @@ reasoning begins.
 
 The lexical and recency baselines retrieve much of the relevant evidence. They still do
 not tell us whether the evidence entails an answer. This is the key product distinction I
-want Rembero to earn: retrieval helps an agent find context; proof-carrying memory tells an
+want Remembero to earn: retrieval helps an agent find context; proof-carrying memory tells an
 agent what the selected knowledge snapshot supports.
 
-In the Rembero lane, the same engine that returns the answer returns the proof. A derived
+In the Remembero lane, the same engine that returns the answer returns the proof. A derived
 answer names its authored rule and recursively includes the base facts used. A missing
 answer stays a no-match. Tentative facts remain outside ordinary recall unless the caller
 explicitly selects the tentative view.
@@ -186,18 +186,18 @@ For every public memory comparison, I want to see:
 Most importantly, I want “the system retrieved relevant text” and “the answer is entailed”
 to remain different claims.
 
-Rembero’s first suite is not large enough to settle the agent-memory market. It is large
+Remembero’s first suite is not large enough to settle the agent-memory market. It is large
 enough to make our own standard falsifiable. The next milestone is to run pinned external
 adapters on this conformance suite and on cleaned LongMemEval, then publish the complete
-artifacts whether the results flatter Rembero or not.
+artifacts whether the results flatter Remembero or not.
 
 That is the point of proof-carrying memory: the answer should not get special treatment
 because it is ours.
 
 ---
 
-**Disclosure:** Rahul Trikha is the creator of Rembero. The benchmark and article are
-vendor-authored. Current results cover Rembero and transparent local baselines only. No
+**Disclosure:** Rahul Trikha is the creator of Remembero. The benchmark and article are
+vendor-authored. Current results cover Remembero and transparent local baselines only. No
 external commercial system was measured in this snapshot.
 
 **Suggested Medium tags:** Artificial Intelligence, AI Agents, Databases, Open Source,

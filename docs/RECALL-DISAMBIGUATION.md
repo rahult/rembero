@@ -5,7 +5,7 @@ natural-language query choice. Before 0.19, the first structurally valid query t
 returned rows was accepted immediately. A related but semantically wrong predicate could
 therefore produce a confident answer backed by real—but irrelevant—facts.
 
-Rembero now reviews a non-empty query once when deterministic local evidence identifies
+Remembero now reviews a non-empty query once when deterministic local evidence identifies
 one of two bounded ambiguity classes:
 
 - **same-anchor predicate competition**: the chosen predicate has no direct word overlap

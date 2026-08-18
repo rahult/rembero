@@ -1,6 +1,6 @@
 # Deterministic rule health audit
 
-Rembero 0.28 audits a selected rule program before a user has to discover its structural
+Remembero 0.28 audits a selected rule program before a user has to discover its structural
 or current-data hazards through a failed query. The audit is derived from v0.25 topology
 and the same bounded fixpoint used by query evaluation. It does not guess domain intent or
 rewrite valid Datalog.

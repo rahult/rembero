@@ -10,7 +10,7 @@ New interfaces are:
 - MCP `apply_memory_proposal`.
 
 The journal gains a replayable `memory_change` operation for reviewed mixed clause
-changes. Rembero handles it automatically in sources, fact history, temporal lineage,
+changes. Remembero handles it automatically in sources, fact history, temporal lineage,
 recorded snapshots/diffs, bundles, checkpoints, and idempotent replay.
 
 Application always enforces proposal and baseline digests, candidate rule audit, and

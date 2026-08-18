@@ -1,6 +1,6 @@
 # Bounded alternative proofs
 
-Rembero normally returns the first deterministic proof for each query result. That fast
+Remembero normally returns the first deterministic proof for each query result. That fast
 path remains the default. When trust, debugging, or rule authoring requires more evidence,
 v0.8 can enumerate every branch-simple proof up to an explicit completeness limit:
 
@@ -64,7 +64,7 @@ Recursive proofs are branch-simple: a grounded claim cannot repeat on one root-t
 branch. This removes cyclic self-support and makes proof trees finite even when the fact
 graph contains cycles.
 
-Rembero never silently labels a partial evidence set as complete. If more structurally
+Remembero never silently labels a partial evidence set as complete. If more structurally
 distinct proofs exist than `proofLimit`, or enumeration exceeds its internal search cap,
 the explanation fails with an `EngineLimitError`. Existing global proof-depth, proof-node,
 row, fact, output, and MCP result limits still apply across the primary and alternative

@@ -1,6 +1,6 @@
 # Immutable deterministic personal knowledge health
 
-Rembero 0.48 provides one answer to “Is this knowledge base healthy?” without replacing
+Remembero 0.48 provides one answer to “Is this knowledge base healthy?” without replacing
 the underlying evidence tools. It captures one coherent current or exact recorded snapshot
 and runs integrity, rule audit/topology, tentative review debt, identity metadata,
 provenance completeness, and an optional knowledge/coverage suite over that same state.

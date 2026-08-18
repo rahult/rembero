@@ -1,6 +1,6 @@
 # Deterministic personal knowledge paths
 
-Rembero 0.41 answers a local graph question that neighborhood browse does not: “How are
+Remembero 0.41 answers a local graph question that neighborhood browse does not: “How are
 these two entities connected?” It finds every bounded shortest path through explicit
 stored ground facts and returns the exact claims, argument positions, provenance, aliases,
 trust labels, and recorded-view coordinate supporting each path.
@@ -64,7 +64,7 @@ fails rather than presenting a partial set as complete.
 
 ## Proof-carrying derived paths
 
-Explicit facts remain the default. With derived traversal enabled, Rembero first applies
+Explicit facts remain the default. With derived traversal enabled, Remembero first applies
 the same bounded stratified Datalog fixpoint used by query evaluation. A rule conclusion
 such as `reachable(a, c)` may therefore be a one-hop semantic relationship even when its
 proof uses several stored `edge` facts.

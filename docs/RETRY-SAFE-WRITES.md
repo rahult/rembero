@@ -1,6 +1,6 @@
 # Retry-safe raw writes
 
-Rembero 0.13 gives raw assertions and retractions an explicit at-most-once effect under
+Remembero 0.13 gives raw assertions and retractions an explicit at-most-once effect under
 caller retries. The portable `.dl` file remains authoritative, while the existing
 append-only journal records the operation result needed for deterministic replay.
 

@@ -1,6 +1,6 @@
 # Atomic integrity enforcement
 
-Rembero 0.10 can turn the explicit constraints introduced in 0.9 into an opt-in
+Remembero 0.10 can turn the explicit constraints introduced in 0.9 into an opt-in
 write boundary. Audit remains the default: upgrading does not silently reject writes.
 
 ```bash
@@ -91,7 +91,7 @@ multi-file atomic commit that the portable store does not provide.
 
 - Constraints remain explicit raw Datalog policy. Natural-language remember and ambient
   capture still cannot create, modify, or retract them.
-- Direct hand edits to `.dl` files and writers from older Rembero versions do not
+- Direct hand edits to `.dl` files and writers from older Remembero versions do not
   participate in the 0.10 lock. Stop writers before editing, then run `rembero check`.
 - Separate `REMBERO_HOME` roots are separate authorities. Namespaces are organization,
   not access control.

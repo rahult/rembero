@@ -5,7 +5,7 @@ date: "18 August 2026"
 bibliography: references.bib
 link-citations: true
 abstract: |
-  Agent-memory evaluations commonly combine memory formation, retrieval, and language-model reading into a single answer score. This makes failures difficult to localize and does not test whether an answer is deterministically supported by the selected memory snapshot. We introduce the Rembero Structured-Memory Conformance Suite, a small public benchmark that reports exact typed answers, answerability, gold-evidence retrieval, citations, temporal updates, trust views, and deterministic replay as separate dimensions. The v1 suite contains seven cases and eight questions spanning direct recall among distractors, multi-hop and recursive rules, a knowledge update, abstention, tentative knowledge, and conflict detection. We evaluate Rembero and three transparent baselines. Rembero attains 100% exact answer accuracy and citation recall on the suite; a direct-fact baseline attains 50% answer accuracy, while lexical and recency baselines are evaluated only on retrieval. These preliminary results establish conformance, not statistical superiority over external memory systems. We contribute an isolated JSON adapter protocol for future Mem0, Graphiti/Zep, Letta, LangGraph, and LlamaIndex runs, and position the suite as a complement to LoCoMo and LongMemEval rather than a replacement.
+  Agent-memory evaluations commonly combine memory formation, retrieval, and language-model reading into a single answer score. This makes failures difficult to localize and does not test whether an answer is deterministically supported by the selected memory snapshot. We introduce the Remembero Structured-Memory Conformance Suite, a small public benchmark that reports exact typed answers, answerability, gold-evidence retrieval, citations, temporal updates, trust views, and deterministic replay as separate dimensions. The v1 suite contains seven cases and eight questions spanning direct recall among distractors, multi-hop and recursive rules, a knowledge update, abstention, tentative knowledge, and conflict detection. We evaluate Remembero and three transparent baselines. Remembero attains 100% exact answer accuracy and citation recall on the suite; a direct-fact baseline attains 50% answer accuracy, while lexical and recency baselines are evaluated only on retrieval. These preliminary results establish conformance, not statistical superiority over external memory systems. We contribute an isolated JSON adapter protocol for future Mem0, Graphiti/Zep, Letta, LangGraph, and LlamaIndex runs, and position the suite as a complement to LoCoMo and LongMemEval rather than a replacement.
 ---
 
 # 1. Introduction
@@ -165,7 +165,7 @@ precision and recall apply the same set equations to explicit citation IDs. Dupl
 are removed before scoring.
 
 Capability coverage is reported with every metric. Timing is reported diagnostically but
-excluded from semantic digests. A release check requires a full-coverage Rembero run with
+excluded from semantic digests. A release check requires a full-coverage Remembero run with
 exact answers, exact answerability, complete citations, no stale leakage, and zero
 operational errors.
 
@@ -175,11 +175,11 @@ The harness launches one process per case, without a shell, passes one bounded J
 on standard input, and requires one JSON response on standard output. It enforces time and
 output limits, kills failed children, suppresses standard-error contents, and passes only
 a small environment allowlist plus explicit adapter configuration. This provides state isolation and prevents vendor packages
-from becoming Rembero runtime dependencies.
+from becoming Remembero runtime dependencies.
 
 # 4. Systems and baselines
 
-**Rembero engine.** Accepted clauses, plus tentative clauses only when selected, are parsed
+**Remembero engine.** Accepted clauses, plus tentative clauses only when selected, are parsed
 and evaluated by the same bounded Datalog engine used by the product [@rembero2026]. Answer
 rows come from explicit variables. Citation event IDs are recovered recursively from base
 facts, rule identifiers, and aggregate contributors in the deterministic proof.
@@ -207,12 +207,12 @@ Table 2 reports the checked-in 18 August 2026 run.
 
 | Adapter | Answer coverage | Exact answer | Retrieval R@k | MRR | Citation recall | Errors |
 |---|---:|---:|---:|---:|---:|---:|
-| Rembero engine | 100% | 100% | 100% | 100% | 100% | 0 |
+| Remembero engine | 100% | 100% | 100% | 100% | 100% | 0 |
 | Direct fact scan | 100% | 50% | 42.9% | 42.9% | 50% | 0 |
 | Lexical overlap top-k | 0% | N/A | 85.7% | 100% | N/A | 0 |
 | Recency top-k | 0% | N/A | 100% | 92.9% | N/A | 0 |
 
-Rembero returned the exact expected typed rows and complete source-event set for every
+Remembero returned the exact expected typed rows and complete source-event set for every
 question. Three repeated deterministic runs in the automated test produced an identical
 semantic digest; wall-clock duration is intentionally excluded from that digest.
 
@@ -245,11 +245,11 @@ incorrectly returned as current.
 **Scale.** Eight questions cannot estimate real-world accuracy or support significance
 tests. The suite is a release conformance gate.
 
-**Task composition.** The cases were designed by the Rembero author around Rembero's
+**Task composition.** The cases were designed by the Remembero author around Remembero's
 contracts. This creates obvious vendor bias. External benchmark results must be reported
 alongside LoCoMo and LongMemEval, and future cases should accept independent contributions.
 
-**Structured input advantage.** Rembero receives canonical clauses and queries. This
+**Structured input advantage.** Remembero receives canonical clauses and queries. This
 removes its natural-language extraction and translation failure modes. The suite measures
 the structured memory layer, not the complete user experience.
 
@@ -266,7 +266,7 @@ attribution labels.
 # 8. Reproducibility and future work
 
 All fixtures, labels, scorers, adapters, tests, and the versioned result summary are stored
-with Rembero [@rembero2026]. The release command builds the project before executing the
+with Remembero [@rembero2026]. The release command builds the project before executing the
 suite. The semantic result excludes generated timestamps and timings.
 
 Immediate future work is:
@@ -287,10 +287,10 @@ Immediate future work is:
 
 Agent memory should be evaluated as a pipeline, not a single answer score. Retrieval,
 answer use, temporal behavior, abstention, citations, and deterministic proof are related
-but distinct properties. The Rembero Structured-Memory Conformance Suite makes those
+but distinct properties. The Remembero Structured-Memory Conformance Suite makes those
 properties explicit and provides a reproducible process boundary for other systems.
 
-The first result is intentionally modest: Rembero conforms to eight published structured
+The first result is intentionally modest: Remembero conforms to eight published structured
 memory questions; simple controls expose where direct lookup and retrieval stop. The work
 does not yet establish superiority over external stacks. Its purpose is to make the next
 comparison inspectable enough that a reader can tell exactly what was measured, what was
@@ -298,8 +298,8 @@ not measured, and why every reported answer received its score.
 
 # Disclosure
 
-The author is the creator of Rembero. The suite and paper are vendor-authored. The current
-snapshot contains measured Rembero and transparent baseline results only.
+The author is the creator of Remembero. The suite and paper are vendor-authored. The current
+snapshot contains measured Remembero and transparent baseline results only.
 
 # References
 

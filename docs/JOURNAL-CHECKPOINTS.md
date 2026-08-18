@@ -1,6 +1,6 @@
 # Immutable journal checkpoints
 
-Rembero 0.22 can rotate a full or administratively chosen active journal without
+Remembero 0.22 can rotate a full or administratively chosen active journal without
 discarding its recorded-time history. The checkpoint is an audit boundary, not a new
 knowledge authority: portable `.dl` files remain current state and the complete logical
 journal remains the source for recorded snapshots.
@@ -39,7 +39,7 @@ zero and every historical sequence therefore retain their pre-rotation meaning.
 
 ## Failure and recovery
 
-Rembero rejects symbolic links, non-files, unexpected artifacts, invalid ranges,
+Remembero rejects symbolic links, non-files, unexpected artifacts, invalid ranges,
 non-contiguous segment chains, content/name digest mismatches, malformed checkpoints, and
 checkpoint state that differs from deterministic replay. It never silently skips a bad
 artifact.

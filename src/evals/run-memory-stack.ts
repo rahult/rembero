@@ -29,7 +29,7 @@ Options:
   --cases <list>          Run selected case IDs
   --external <id>=<path>  Run an isolated v1 JSON adapter executable
   --json                  Print machine-readable output
-  --check                 Require a perfect Rembero conformance run
+  --check                 Require a perfect Remembero conformance run
 `;
 
 function value(argv: string[], index: number, flag: string): string {

@@ -1,6 +1,6 @@
 # Deterministic query work profiling
 
-Rembero 0.38 profiles rule/query work using deterministic engine counters rather than
+Remembero 0.38 profiles rule/query work using deterministic engine counters rather than
 wall-clock timing. The result retains the ordinary rows, proofs, sources, rules, and graph
 so optimization evidence cannot drift from semantics.
 

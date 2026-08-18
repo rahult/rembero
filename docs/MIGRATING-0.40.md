@@ -8,7 +8,7 @@ authority mode:
 
 - accepted mode skips hedged claims instead of silently promoting them to accepted truth;
 - tentative mode asks the model to extract explicitly stated durable uncertainty as an
-  ordinary clause, after which Rembero assigns tentative trust locally; and
+  ordinary clause, after which Remembero assigns tentative trust locally; and
 - alias-only statements remain no-ops instead of becoming inert `same_person` facts.
 
 Callers already using `{ trust: 'tentative' }` require no code change. The behavior is

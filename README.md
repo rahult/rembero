@@ -1,8 +1,8 @@
-# rembero
+# Remembero
 
 [![CI](https://github.com/rahult/remembero/actions/workflows/ci.yml/badge.svg)](https://github.com/rahult/remembero/actions/workflows/ci.yml)
 
-Logic-based memory for LLM chats and agents. Instead of fuzzy vector recall, rembero stores
+Logic-based memory for LLM chats and agents. Instead of fuzzy vector recall, Remembero stores
 memories as **Datalog facts, rules, and explicit integrity constraints** and answers
 questions by **logical inference** —
 an LLM (GPT-5.6 Luna via OpenRouter) translates natural language in and out, and a
@@ -23,10 +23,10 @@ knowledge, local search, health, and the explicit knowledge graph. It uses a ded
 `.rembero-web/` sandbox and does not touch existing memory. See
 [the web-console contract](docs/WEB-CONSOLE.md).
 
-For an online product tour, open the private
-[Rembero marketing playground](http://remembero.rahultrikha.com/). It runs the real
-deterministic engine over fictional sample knowledge entirely in the browser, including a
-supported rule proof, an honest non-answer, and a session-only sourced correction. See
+For an online product tour, open the public
+[Remembero site](http://remembero.rahultrikha.com/). Its `/playground` route runs SQLite
+WebAssembly with the native extension linked into the same binary, over fictional sample
+knowledge entirely in the browser. The npm package and CLI remain named `rembero`. See
 [the hosted-playground contract](docs/MARKETING-PLAYGROUND.md).
 
 ```
@@ -241,7 +241,7 @@ Explanations keep the first deterministic witness by default. Pass `--proof-limi
 branch-simple alternative derivations. The same `proofLimit` option is available on the
 MCP explain tools. Additional proofs remain query-scoped, retain ordered source evidence,
 and appear as distinct proof instances in the graph; no graph sidecar or proof index is
-persisted. If more proofs exist than the requested limit, Rembero fails explicitly rather
+persisted. If more proofs exist than the requested limit, Remembero fails explicitly rather
 than presenting incomplete evidence as complete. See
 [the alternative-proof contract](docs/ALTERNATIVE-PROOFS.md).
 
@@ -283,7 +283,7 @@ lineage without changing explicit `forget`. See
 
 ## SQLite extension (experimental)
 
-Rembero also ships the source for a real loadable SQLite extension. It treats ordinary
+Remembero also ships the source for a real loadable SQLite extension. It treats ordinary
 SQLite tables (and views) as Datalog predicates: arguments map to columns by position,
 and SQLite remains the storage and transaction authority. Ordinary positive rules use
 the native extension; the Node adapter deterministically bridges advanced rules to the
@@ -300,7 +300,7 @@ npm run build:sqlite
 
 From an installed npm package use `rembero sqlite-build`. The command compiles the native
 library inside the installed package; it does not run automatically during installation,
-so Rembero's existing non-SQLite memory features do not acquire a native toolchain
+so Remembero's existing non-SQLite memory features do not acquire a native toolchain
 requirement.
 
 Then create a normal database and query it through the CLI (the adapter requires Node.js

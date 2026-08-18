@@ -1,6 +1,6 @@
 # Regression-gated reviewed personal memory
 
-Rembero 0.49 lets an accepted-memory proposal bind the same portable knowledge checks and
+Remembero 0.49 lets an accepted-memory proposal bind the same portable knowledge checks and
 semantic rule coverage used in CI and reviewed rule changes. The suite is evaluated during
 preview and must pass again on the exact in-lock candidate before `memory_change` commits.
 

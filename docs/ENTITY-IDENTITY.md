@@ -1,6 +1,6 @@
 # Explicit entity identity
 
-Rembero 0.11 adds an opt-in canonical read model for names that refer to the same
+Remembero 0.11 adds an opt-in canonical read model for names that refer to the same
 entity. It does not guess identity from spelling, embeddings, or predicate names.
 Portable Datalog declarations define both aliases and the exact argument positions where
 identity has meaning:

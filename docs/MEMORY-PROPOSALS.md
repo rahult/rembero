@@ -1,6 +1,6 @@
 # Proposal-first accepted personal memory
 
-Rembero 0.45 separates natural-language extraction from accepted-memory mutation. It uses
+Remembero 0.45 separates natural-language extraction from accepted-memory mutation. It uses
 the identical model prompt, retry, parser, secret rejection, identity/trust restriction,
 rule validation, and retraction validation as `remember`, but returns a review artifact
 and never calls a store writer.
@@ -22,7 +22,7 @@ instant, integrity evidence bounds, and canonical identity view.
 
 ## Deterministic review evidence
 
-After the LLM response is locally validated, Rembero captures one coherent current
+After the LLM response is locally validated, Remembero captures one coherent current
 baseline. A concurrent write during the model call therefore becomes part of the proposal
 baseline rather than creating immediately stale evidence.
 

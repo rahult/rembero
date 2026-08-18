@@ -1,4 +1,4 @@
-# Migrating to Rembero 0.12
+# Migrating to Remembero 0.12
 
 Version 0.12 adds optional graph navigation. Existing `.dl` files, journals, queries,
 explanations, recall, integrity checks, MCP clients, and SQLite extension behavior need

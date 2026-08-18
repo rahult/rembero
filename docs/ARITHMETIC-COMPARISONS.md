@@ -1,6 +1,6 @@
 # Arithmetic comparison expressions
 
-Rembero 0.4 adds deterministic numeric expressions to comparison filters in the portable
+Remembero 0.4 adds deterministic numeric expressions to comparison filters in the portable
 engine. Arithmetic never constructs stored or derived values; it only decides whether a
 grounded candidate row survives:
 
@@ -31,7 +31,7 @@ the finite Datalog universe.
 
 ## Numeric and failure semantics
 
-Operations use finite JavaScript numbers (IEEE-754 binary64), matching Rembero's existing
+Operations use finite JavaScript numbers (IEEE-754 binary64), matching Remembero's existing
 numeric fact and aggregate domain. Evaluation is deterministic for a fixed ordered
 program and runtime:
 

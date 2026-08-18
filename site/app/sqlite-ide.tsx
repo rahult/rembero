@@ -137,7 +137,7 @@ async function evaluateProgram(
     compiledSql = await database.datalogSql(program);
   } catch {
     compiledSql =
-      "Recursive programs run in Rembero's native fixpoint evaluator; there is no single compiled SQL statement.";
+      "Recursive programs run in Remembero's native fixpoint evaluator; there is no single compiled SQL statement.";
   }
   return { compiledSql, rows, explanations };
 }
@@ -449,17 +449,17 @@ export function SqliteIde() {
     <section
       className="ide-root"
       id="playground"
-      aria-label="Rembero SQLite and Datalog IDE"
+      aria-label="Remembero SQLite and Datalog IDE"
       data-mobile-pane={mobilePane}
     >
       <header className="ide-topbar">
-        <a className="ide-brand" href="/" aria-label="Rembero main site">
-          rembero
+        <a className="ide-brand" href="/" aria-label="Remembero main site">
+          remembero
         </a>
         <strong className="ide-product-name">SQLite + Datalog IDE</strong>
         <span className="ide-runtime-line" aria-live="polite">
           {runtime
-            ? `SQLite ${runtime.sqliteVersion} · Rembero extension · WebAssembly · browser local`
+            ? `SQLite ${runtime.sqliteVersion} · Remembero extension · WebAssembly · browser local`
             : phase === "error"
               ? "SQLite runtime could not start"
               : "Starting SQLite WebAssembly…"}
@@ -749,7 +749,7 @@ export function SqliteIde() {
                     Integrity constraints <ChevronIcon />
                   </summary>
                   <p>
-                    Governed-memory constraints are intentionally a Rembero policy layer,
+                    Governed-memory constraints are intentionally a Remembero policy layer,
                     not part of this SQLite bridge. The IDE shows the boundary instead of
                     pretending the native extension executes it.
                   </p>
@@ -832,7 +832,7 @@ export function SqliteIde() {
                 <span>{runtime ? "ready" : phase}</span>
               </div>
               <code>&gt; sqlite3_auto_extension(sqlite3_rembero_init)</code>
-              <strong>{runtime?.extensionLoaded ? "Rembero extension linked into SQLite" : "Loading extension…"}</strong>
+              <strong>{runtime?.extensionLoaded ? "Remembero extension linked into SQLite" : "Loading extension…"}</strong>
               <code>&gt; SELECT sqlite_version();</code>
               <span>{runtime?.sqliteVersion ?? "…"}</span>
             </div>

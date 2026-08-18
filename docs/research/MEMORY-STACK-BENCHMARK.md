@@ -1,4 +1,4 @@
-# Rembero structured-memory benchmark
+# Remembero structured-memory benchmark
 
 Status: v1.0.0, measured 18 August 2026 AEST
 
@@ -23,7 +23,7 @@ npm run bench:memory -- --json
 npm run bench:memory -- --cases temporal_update,explicit_trust
 ```
 
-`bench:memory:check` is a release gate: Rembero must have full answer coverage, exact
+`bench:memory:check` is a release gate: Remembero must have full answer coverage, exact
 answers, correct answerability, complete citations, no stale leakage, and no operational
 errors. Timings are diagnostic only; they are excluded from the semantic digest.
 
@@ -31,7 +31,7 @@ errors. Timings are diagnostic only; they are excluded from the semantic digest.
 
 | Adapter | Answer coverage | Answer accuracy | Retrieval Recall@k | MRR | Citation recall |
 |---|---:|---:|---:|---:|---:|
-| Rembero engine | 100% | 100% | 100% | 100% | 100% |
+| Remembero engine | 100% | 100% | 100% | 100% | 100% |
 | Direct fact scan | 100% | 50% | 42.9% | 42.9% | 50% |
 | Lexical overlap top-k | 0% | not applicable | 85.7% | 100% | not applicable |
 | Recency top-k | 0% | not applicable | 100% | 92.9% | not applicable |
@@ -129,7 +129,7 @@ or citation system.
 
 ## Mapping other stacks
 
-The protocol deliberately avoids requiring any vendor package in Rembero:
+The protocol deliberately avoids requiring any vendor package in Remembero:
 
 - **Mem0:** add each event as a memory, search with the question, map returned memory IDs
   to event IDs, and return answer rows only if the bridge also runs a disclosed reader.

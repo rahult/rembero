@@ -1,6 +1,6 @@
 # Temporal history
 
-Rembero 0.6 can preserve the fact that was current immediately before a manual
+Remembero 0.6 can preserve the fact that was current immediately before a manual
 natural-language update. The feature is opt-in: deletion remains the default.
 
 ```bash
@@ -76,7 +76,7 @@ truncate when the requested bound is exceeded. Source statements are redacted
 again on read and individually bounded to 4 KiB. Raw auto-capture transcripts,
 session IDs, and hook payloads are never included.
 
-Older assert/retract journals remain readable. Rembero replays the exact clauses
+Older assert/retract journals remain readable. Remembero replays the exact clauses
 available in their prior assertions; new retract entries additionally record the
 exact clauses removed. A corrupt line, timestamp, clause, archive mapping, or
 count fails the history read closed.

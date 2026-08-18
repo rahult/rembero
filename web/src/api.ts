@@ -452,7 +452,7 @@ function normalizeBootstrap(payload: unknown): BootstrapResponse {
     .filter(Boolean);
   return {
     profile: {
-      workspaceLabel: asString(root.workspaceLabel, 'Rembero'),
+      workspaceLabel: asString(root.workspaceLabel, 'Remembero'),
       personaLabel:
         asString(isRecord(root.profile) ? root.profile.personaLabel : undefined) ||
         asString(isRecord(root.profile) ? root.profile.name : undefined) ||

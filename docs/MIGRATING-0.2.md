@@ -1,4 +1,4 @@
-# Migrating to Rembero 0.2
+# Migrating to Remembero 0.2
 
 Version 0.2 adds stratified negation to the portable Datalog language. Existing positive
 programs and runtime result objects retain their behavior, but TypeScript consumers must

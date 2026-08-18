@@ -14,12 +14,12 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the Rembero marketing homepage with playground navigation", async () => {
+test("server-renders the Remembero marketing homepage with playground navigation", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>Rembero — Memory you can reason with<\/title>/i);
+  assert.match(html, /<title>Remembero — Memory you can reason with<\/title>/i);
   assert.match(html, /Memory you(?:<br\/>|\s)+can reason with\./);
   assert.match(html, /Not another vector store\./);
   assert.match(html, /The database is the demo\./);
@@ -34,7 +34,7 @@ test("server-renders the full SQLite IDE on the playground route", async () => {
   const response = await render("/playground");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /<title>Rembero Playground — SQLite \+ Datalog IDE<\/title>/i);
+  assert.match(html, /<title>Remembero Playground — SQLite \+ Datalog IDE<\/title>/i);
   assert.match(html, /SQLite \+ Datalog IDE/);
   assert.match(html, /Get to the proof/);
   assert.match(html, /Insert SQLite row/);
@@ -104,7 +104,7 @@ test("GitHub Pages export is self-contained when present", async () => {
   await access(new URL("../dist/pages/sqlite-wasm/sqlite3.wasm", import.meta.url));
 });
 
-test("SQLite Wasm contains the pinned Rembero extension build", async () => {
+test("SQLite Wasm contains the pinned Remembero extension build", async () => {
   const assetRoot = new URL("../public/sqlite-wasm/", import.meta.url);
   const manifest = JSON.parse(
     await readFile(new URL("manifest.json", assetRoot), "utf8"),

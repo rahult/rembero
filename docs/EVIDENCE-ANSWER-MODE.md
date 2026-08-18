@@ -1,6 +1,6 @@
 # Compact deterministic evidence answer mode
 
-Rembero 0.51 adds `answerMode: "evidence"` for people who want a readable local answer
+Remembero 0.51 adds `answerMode: "evidence"` for people who want a readable local answer
 and its trust basis without inspecting full explanation JSON or granting an LLM phrasing
 authority.
 

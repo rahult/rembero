@@ -1,6 +1,6 @@
 # Deterministic knowledge topology
 
-Rembero 0.25 exposes the structure of the selected personal knowledge program. Unlike a
+Remembero 0.25 exposes the structure of the selected personal knowledge program. Unlike a
 query-scoped explanation graph, topology answers system questions: which predicates feed
 a rule, which conclusions depend on a fact family, where negation raises the stratum,
 which rules recurse, and which referenced inputs have no definition.

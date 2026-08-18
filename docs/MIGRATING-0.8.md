@@ -1,6 +1,6 @@
-# Migrating to Rembero 0.8
+# Migrating to Remembero 0.8
 
-Rembero 0.8 adds opt-in bounded alternative-proof inspection. No memory, journal,
+Remembero 0.8 adds opt-in bounded alternative-proof inspection. No memory, journal,
 namespace, temporal-history, or SQLite migration is required.
 
 ## Backward compatibility

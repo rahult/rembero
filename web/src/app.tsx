@@ -466,7 +466,7 @@ export function App() {
 
   const topBar = mobile ? (
     <header className="mobile-topbar">
-      <div className="brandmark">rembero</div>
+      <div className="brandmark">remembero</div>
       <button className="nav-button nav-button--profile" type="button">
         <FolderIcon size={24} />
         <span>{bootstrap?.profile.personaLabel ?? 'Personal'}</span>
@@ -527,7 +527,7 @@ export function App() {
     <div className="app-shell">
       {!mobile ? (
         <aside className="sidebar">
-          <div className="brandmark">rembero</div>
+          <div className="brandmark">remembero</div>
           {navigation}
           <div className="sidebar__footer">
             <button className="nav-button nav-button--footer" type="button">
@@ -562,7 +562,7 @@ export function App() {
             />
             <div className="mobile-nav-sheet__panel">
               <div className="mobile-nav-sheet__header">
-                <div className="brandmark">rembero</div>
+                <div className="brandmark">remembero</div>
                 <button
                   className="icon-button icon-button--ghost"
                   type="button"

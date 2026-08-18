@@ -1,9 +1,9 @@
-# Rembero product site and playground
+# Remembero product site and playground
 
 The hosted product site at `/` and browser-contained proof playground at `/playground` for
-[Rembero](https://github.com/rahult/remembero).
+[Remembero](https://github.com/rahult/remembero).
 
-The playground runs SQLite 3.53.4 as WebAssembly with Rembero's C extension linked into
+The playground runs SQLite 3.53.4 as WebAssembly with Remembero's C extension linked into
 the same binary. It uses an in-memory Atlas fixture, performs no model calls or remote
 mutations, stores no browser data, and resets on refresh.
 

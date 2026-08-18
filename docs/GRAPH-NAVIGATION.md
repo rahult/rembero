@@ -1,6 +1,6 @@
 # Query-scoped graph navigation
 
-Rembero 0.12 can return a focused portion of an explanation graph while keeping the
+Remembero 0.12 can return a focused portion of an explanation graph while keeping the
 portable Datalog store as the only authority. Selection is a pure projection over an
 already bounded explanation: result rows, proofs, rules, sources, and stored clauses are
 not filtered or mutated.

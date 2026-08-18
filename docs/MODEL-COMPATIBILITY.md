@@ -1,6 +1,6 @@
 # Model compatibility
 
-Rembero keeps rule evaluation, proofs, graph construction, schema selection, and final
+Remembero keeps rule evaluation, proofs, graph construction, schema selection, and final
 deterministic answer rendering local. The configured model translates natural-language
 memory and recall requests; it is not the reasoning authority.
 

@@ -1,6 +1,6 @@
 # Bounded explicit personal graph browse
 
-Rembero 0.32 lets callers inspect the stored personal knowledge graph around an entity or
+Remembero 0.32 lets callers inspect the stored personal knowledge graph around an entity or
 predicate without first generating a Datalog query. The graph is derived on demand from
 explicit ground facts only; portable `.dl` clauses remain the sole authority.
 

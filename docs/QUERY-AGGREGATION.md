@@ -1,6 +1,6 @@
 # Scalar query aggregation
 
-Rembero 0.3 added exact scalar reduction over portable-engine query results:
+Remembero 0.3 added exact scalar reduction over portable-engine query results:
 
 ```prolog
 ?- count(*) as Count where works_at(Person, acme).
@@ -44,7 +44,7 @@ take a variable bound by a positive goal, and the output alias must be fresh.
 `maxRows` limits returned rows and is never used as an aggregate input shortcut. Exact
 aggregation inspects up to `maxAggregateRows` candidate relational solutions (100,000 by
 default), including distinct wildcard solutions that expose the same binding. Crossing
-that cap throws `EngineLimitError`; Rembero never returns a partial count, sum, or
+that cap throws `EngineLimitError`; Remembero never returns a partial count, sum, or
 extremum.
 
 Plain aggregation and explanation have separate limits. Exact `query` can consume the

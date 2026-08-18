@@ -1,6 +1,6 @@
 # Exact recorded knowledge diff
 
-Rembero 0.26 compares two authoritative global journal positions. It answers both “what
+Remembero 0.26 compares two authoritative global journal positions. It answers both “what
 changed?” and “what did that change affect?” without deriving order from timestamps or
 reading the two endpoints across different concurrent journal states.
 

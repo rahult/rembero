@@ -8,13 +8,13 @@ web
 
 ## Users
 
-Rembero is for developers and technical evaluators building agents that need durable,
+Remembero is for developers and technical evaluators building agents that need durable,
 inspectable memory. The public playground also serves people comparing memory and
 retrieval approaches who need to see the mechanism rather than accept a product claim.
 
 ## Product Purpose
 
-Rembero stores readable facts, rules, and constraints, evaluates exact Datalog queries,
+Remembero stores readable facts, rules, and constraints, evaluates exact Datalog queries,
 and returns deterministic answers with their proof and source chain. The browser showcase
 must let a visitor insert data, inspect SQLite tables, run SQL and Datalog, see result
 rows, follow derivations, and watch the knowledge graph change without installing
@@ -22,9 +22,9 @@ anything or sending the sample data to a service.
 
 ## Positioning
 
-Rembero is proof-carrying agent memory: similarity can find nearby text, while Rembero
+Remembero is proof-carrying agent memory: similarity can find nearby text, while Remembero
 shows exactly what follows from the selected knowledge. The showcase must prove that the
-database and the Rembero SQLite extension are executing as WebAssembly in the visitor's
+database and the Remembero SQLite extension are executing as WebAssembly in the visitor's
 browser, not imitate their API in a presentation layer.
 
 ## Operating Context
@@ -52,7 +52,7 @@ persistence.
 
 ## Brand Commitments
 
-The product name is Rembero. Existing product language includes “Memory you can reason
+The product name is Remembero. Existing product language includes “Memory you can reason
 with,” “Models translate. Rules decide,” “proof-carrying memory,” and honest non-answers.
 The current site uses a direct, technically literate voice and avoids claims of universal
 correctness, semantic/vector retrieval, or model-free arbitrary natural-language recall.

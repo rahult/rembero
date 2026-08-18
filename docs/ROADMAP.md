@@ -1,4 +1,4 @@
-# Rembero MVP Roadmap — ship as a public npm package
+# Remembero MVP Roadmap — ship as a public npm package
 
 > Historical v0.1 plan. The repository is now preparing v0.4; see
 > [ROADMAP-POST-MVP.md](ROADMAP-POST-MVP.md), [STRATIFIED-NEGATION.md](STRATIFIED-NEGATION.md),

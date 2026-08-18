@@ -1,6 +1,6 @@
 # Deterministic why-not explanations
 
-Rembero 0.24 explains why a bounded Datalog query has no result. This is engine evidence,
+Remembero 0.24 explains why a bounded Datalog query has no result. This is engine evidence,
 not an LLM-generated story: diagnostics materialize the same finite fixpoint, preserve
 authored goal order, and follow each eliminated binding through the rules that could have
 derived the requested predicate.

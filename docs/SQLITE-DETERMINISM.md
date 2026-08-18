@@ -1,6 +1,6 @@
 # SQLite determinism and parity
 
-Rembero 0.15 gives the Node SQLite adapter the same bounded rule semantics as the
+Remembero 0.15 gives the Node SQLite adapter the same bounded rule semantics as the
 portable evaluator without introducing a second persistent store. SQLite remains the
 storage and transaction authority; advanced evaluation consumes a read-only snapshot of
 only the relations named by the query.

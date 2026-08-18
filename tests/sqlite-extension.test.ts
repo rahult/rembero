@@ -84,7 +84,7 @@ describe.skipIf(!hasSqliteCli)('SQLite loadable extension', () => {
   });
 });
 
-describe.skipIf(nodeMajor < 22)('Rembero SQLite integration', () => {
+describe.skipIf(nodeMajor < 22)('Remembero SQLite integration', () => {
   it('plans native execution from schema without scanning table data', async () => {
     const database = await openDatalogDatabase(':memory:', { extensionPath });
     try {

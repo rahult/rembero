@@ -337,7 +337,7 @@ export class RemberoWebService {
       llmConfigured: this.llmConfigured,
       empty: health.clauseCount === 0,
       profile: {
-        workspaceLabel: 'Rembero',
+        workspaceLabel: 'Remembero',
         personaLabel: 'Personal',
         storageLabel: 'Local-first',
       },

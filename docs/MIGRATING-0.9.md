@@ -1,6 +1,6 @@
-# Migrating to Rembero 0.9
+# Migrating to Remembero 0.9
 
-Rembero 0.9 is storage-compatible with 0.8. Existing facts, rules, journals, histories,
+Remembero 0.9 is storage-compatible with 0.8. Existing facts, rules, journals, histories,
 recall behavior, proof ordering, and query-scoped graphs require no migration.
 
 ## Additive language syntax

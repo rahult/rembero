@@ -1,4 +1,4 @@
-# Migrating to Rembero 0.3
+# Migrating to Remembero 0.3
 
 Version 0.3 adds scalar query aggregation without changing the existing relational
 `parseQuery`, `evaluate`, or `evaluateWithProof` contracts.

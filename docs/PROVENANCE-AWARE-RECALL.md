@@ -1,6 +1,6 @@
 # Provenance-aware recall schema ranking
 
-Rembero 0.34 uses the user's own durable source vocabulary to improve local recall schema
+Remembero 0.34 uses the user's own durable source vocabulary to improve local recall schema
 selection. This addresses cases where a canonical predicate is intentionally technical or
 generic but the source statement contains the language used in a later question.
 

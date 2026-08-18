@@ -1,6 +1,6 @@
 # Explainable personal knowledge graph
 
-Rembero's personal memory remains portable Datalog in `.dl` files. The graph is a
+Remembero's personal memory remains portable Datalog in `.dl` files. The graph is a
 deterministic projection of query results and their derivation proofs, not a second store
 that can drift from the facts.
 
@@ -63,7 +63,7 @@ claims a source because it is a deterministic calculation over query results.
 
 Datalog supports zero-arity, unary, binary, and wider predicates. Converting everything
 to subject-predicate-object triples would discard positional meaning for wider facts.
-Rembero therefore represents each grounded literal as a claim node:
+Remembero therefore represents each grounded literal as a claim node:
 
 ```text
 result {Who: mira}
@@ -104,7 +104,7 @@ proof and graph objects.
   defense in depth.
 
 Namespaces organize one local personal store; they are not tenant or authorization
-boundaries. Run separate Rembero processes and storage roots where access isolation is
+boundaries. Run separate Remembero processes and storage roots where access isolation is
 required.
 
 The graph is intentionally query-scoped. Temporal history now builds on this contract by

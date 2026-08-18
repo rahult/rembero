@@ -1,6 +1,6 @@
 # Deterministic relation indexing
 
-Version 0.17 makes selective rules and queries scale without changing Rembero's
+Version 0.17 makes selective rules and queries scale without changing Remembero's
 evaluation order, proof order, or durable knowledge format.
 
 ## Contract

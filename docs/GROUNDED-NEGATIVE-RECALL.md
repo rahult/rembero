@@ -1,6 +1,6 @@
 # Grounded deterministic negative recall
 
-Rembero 0.29 removes the LLM from the final negative-answer step. The model may still
+Remembero 0.29 removes the LLM from the final negative-answer step. The model may still
 translate a natural-language question into a bounded Datalog query and receive the
 existing one fallback chance when that query is empty. Once a final full-schema query is
 accepted and still has no rows, local deterministic evidence owns the answer.

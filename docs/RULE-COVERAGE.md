@@ -1,6 +1,6 @@
 # Semantic rule coverage
 
-Rembero 0.36 derives rule coverage from the proof trees produced while running v0.35
+Remembero 0.36 derives rule coverage from the proof trees produced while running v0.35
 knowledge checks. Coverage measures exercised rule meaning, not line execution or source
 text occurrence.
 

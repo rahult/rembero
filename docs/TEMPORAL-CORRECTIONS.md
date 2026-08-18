@@ -1,6 +1,6 @@
 # Explicit temporal corrections
 
-Rembero 0.16 lets local applications and agents correct current knowledge while
+Remembero 0.16 lets local applications and agents correct current knowledge while
 preserving what immediately preceded it, without asking an LLM to translate the change.
 The portable `.dl` file remains the only fact authority.
 
@@ -43,7 +43,7 @@ violation bound, entity projection, and graph selector as other guarded raw writ
 
 ## Atomic result
 
-For every matched current ground fact, Rembero validates and adds a corresponding
+For every matched current ground fact, Remembero validates and adds a corresponding
 `<predicate>_until(..., '<instant>').` fact, removes the current fact, and adds the
 optional replacement clauses in one crash-recoverable mutation. If validation, integrity
 enforcement, journal capacity, or commit preparation fails, none of those changes become

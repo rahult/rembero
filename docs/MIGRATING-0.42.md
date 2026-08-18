@@ -7,7 +7,7 @@ stored formats require no migration.
 opt-in `includeDerived` / `--include-derived` mode. The default remains explicit stored
 facts only.
 
-When enabled, Rembero materializes the existing bounded Datalog fixpoint only for path
+When enabled, Remembero materializes the existing bounded Datalog fixpoint only for path
 discovery. Every claim on a selected shortest path is then independently explained
 through the source-aware proof engine. Results add:
 

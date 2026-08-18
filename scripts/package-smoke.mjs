@@ -37,7 +37,7 @@ try {
       '<div id="root"></div>'
     ) ||
     !readFileSync(join(installedPackage, 'dist', 'web', 'server.js'), 'utf8').includes(
-      'Rembero web console'
+      'Remembero web console'
     )
   ) {
     throw new Error('packed web console assets are incomplete');

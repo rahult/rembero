@@ -1,6 +1,6 @@
 # Deterministic related knowledge for recall
 
-Rembero 0.52 can attach bounded local discovery evidence when natural-language recall
+Remembero 0.52 can attach bounded local discovery evidence when natural-language recall
 cannot produce an answer. It helps a caller pivot from an honest `no_match`,
 `unanswerable`, or `schema_budget_exhausted` result to nearby stored facts, rules, and
 policies without another model call.
@@ -53,5 +53,5 @@ The default is 20 related results and the hard maximum is 100. Callers may filte
 ranking, namespace, recorded-history, and 16 MiB CLI/MCP output limits.
 
 Invalid filters, out-of-range limits, non-searchable text, or resource overflow fail
-explicitly. Rembero never returns an invented summary or silently treats discovery
+explicitly. Remembero never returns an invented summary or silently treats discovery
 evidence as a successful recall answer.

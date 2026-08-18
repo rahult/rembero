@@ -210,7 +210,7 @@ export async function openBrowserDatalogDatabase(): Promise<BrowserDatalogDataba
         `SQLite Wasm version ${runtime.sqliteVersion} does not match manifest ${manifest.sqlite.version}`,
       );
     }
-    if (!runtime.extensionLoaded) throw new Error("Rembero SQLite extension is not registered");
+    if (!runtime.extensionLoaded) throw new Error("Remembero SQLite extension is not registered");
     return new BrowserDatalogDatabase(promiser, worker, runtime);
   } catch (error) {
     worker.terminate();

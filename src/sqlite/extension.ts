@@ -449,7 +449,7 @@ function platformLibraryName(): string {
     case 'linux':
       return 'rembero.so';
     default:
-      throw new Error(`Rembero SQLite V0 does not support ${process.platform}.`);
+      throw new Error(`Remembero SQLite V0 does not support ${process.platform}.`);
   }
 }
 
@@ -459,7 +459,7 @@ function packageRoot(): string {
 
 export function buildSqliteExtension(): string {
   if (process.platform !== 'darwin' && process.platform !== 'linux') {
-    throw new Error(`Rembero SQLite V0 does not support ${process.platform}.`);
+    throw new Error(`Remembero SQLite V0 does not support ${process.platform}.`);
   }
   const root = packageRoot();
   const output = execFileSync('sh', [resolve(root, 'native', 'build.sh')], {
@@ -478,7 +478,7 @@ export function resolveSqliteExtensionPath(explicitPath?: string): string {
   const candidate = resolve(configured ?? resolve(packageRoot(), 'build', platformLibraryName()));
   if (!existsSync(candidate)) {
     throw new Error(
-      `Rembero SQLite extension not found at ${candidate}. ` +
+      `Remembero SQLite extension not found at ${candidate}. ` +
         'Run "rembero sqlite-build" (or "npm run build:sqlite" in a checkout), ' +
         'or set REMBERO_SQLITE_EXTENSION.'
     );

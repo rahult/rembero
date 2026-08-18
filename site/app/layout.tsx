@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const title = "Rembero — Memory you can reason with";
+const title = "Remembero — Memory you can reason with";
 const description =
   "Proof-carrying memory for agents: readable facts, deterministic rules, sourced answers, and an SQLite-native browser playground.";
 

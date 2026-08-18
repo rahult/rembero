@@ -214,14 +214,14 @@ Conformance Suite for Answers, Evidence, Updates, and Trust</h1>
 retrieval, and language-model reading into a single answer score. This
 makes failures difficult to localize and does not test whether an answer
 is deterministically supported by the selected memory snapshot. We
-introduce the Rembero Structured-Memory Conformance Suite, a small
+introduce the Remembero Structured-Memory Conformance Suite, a small
 public benchmark that reports exact typed answers, answerability,
 gold-evidence retrieval, citations, temporal updates, trust views, and
 deterministic replay as separate dimensions. The v1 suite contains seven
 cases and eight questions spanning direct recall among distractors,
 multi-hop and recursive rules, a knowledge update, abstention, tentative
-knowledge, and conflict detection. We evaluate Rembero and three
-transparent baselines. Rembero attains 100% exact answer accuracy and
+knowledge, and conflict detection. We evaluate Remembero and three
+transparent baselines. Remembero attains 100% exact answer accuracy and
 citation recall on the suite; a direct-fact baseline attains 50% answer
 accuracy, while lexical and recency baselines are evaluated only on
 retrieval. These preliminary results establish conformance, not
@@ -435,7 +435,7 @@ equations to explicit citation IDs. Duplicate IDs are removed before
 scoring.</p>
 <p>Capability coverage is reported with every metric. Timing is reported
 diagnostically but excluded from semantic digests. A release check
-requires a full-coverage Rembero run with exact answers, exact
+requires a full-coverage Remembero run with exact answers, exact
 answerability, complete citations, no stale leakage, and zero
 operational errors.</p>
 <h2 id="external-adapter-isolation">3.5 External adapter isolation</h2>
@@ -445,9 +445,9 @@ response on standard output. It enforces time and output limits, kills
 failed children, suppresses standard-error contents, and passes only a
 small environment allowlist plus explicit adapter configuration. This
 provides state isolation and prevents vendor packages from becoming
-Rembero runtime dependencies.</p>
+Remembero runtime dependencies.</p>
 <h1 id="systems-and-baselines">4. Systems and baselines</h1>
-<p><strong>Rembero engine.</strong> Accepted clauses, plus tentative
+<p><strong>Remembero engine.</strong> Accepted clauses, plus tentative
 clauses only when selected, are parsed and evaluated by the same bounded
 Datalog engine used by the product <span class="citation" data-cites="rembero2026">(<a href="#ref-rembero2026" role="doc-biblioref">Trikha 2026</a>)</span>. Answer rows come from
 explicit variables. Citation event IDs are recovered recursively from
@@ -495,7 +495,7 @@ Table 2 reports the checked-in 18 August 2026 run.</p>
 </thead>
 <tbody>
 <tr>
-<td>Rembero engine</td>
+<td>Remembero engine</td>
 <td style="text-align: right;">100%</td>
 <td style="text-align: right;">100%</td>
 <td style="text-align: right;">100%</td>
@@ -532,7 +532,7 @@ Table 2 reports the checked-in 18 August 2026 run.</p>
 </tr>
 </tbody>
 </table>
-<p>Rembero returned the exact expected typed rows and complete
+<p>Remembero returned the exact expected typed rows and complete
 source-event set for every question. Three repeated deterministic runs
 in the automated test produced an identical semantic digest; wall-clock
 duration is intentionally excluded from that digest.</p>
@@ -564,11 +564,11 @@ values incorrectly returned as current.</p>
 accuracy or support significance tests. The suite is a release
 conformance gate.</p>
 <p><strong>Task composition.</strong> The cases were designed by the
-Rembero author around Rembero’s contracts. This creates obvious vendor
+Remembero author around Remembero’s contracts. This creates obvious vendor
 bias. External benchmark results must be reported alongside LoCoMo and
 LongMemEval, and future cases should accept independent
 contributions.</p>
-<p><strong>Structured input advantage.</strong> Rembero receives
+<p><strong>Structured input advantage.</strong> Remembero receives
 canonical clauses and queries. This removes its natural-language
 extraction and translation failure modes. The suite measures the
 structured memory layer, not the complete user experience.</p>
@@ -584,7 +584,7 @@ claims or several source spans, requiring finer attribution labels.</p>
 <h1 id="reproducibility-and-future-work">8. Reproducibility and future
 work</h1>
 <p>All fixtures, labels, scorers, adapters, tests, and the versioned
-result summary are stored with Rembero <span class="citation" data-cites="rembero2026">(<a href="#ref-rembero2026" role="doc-biblioref">Trikha 2026</a>)</span>. The release command builds
+result summary are stored with Remembero <span class="citation" data-cites="rembero2026">(<a href="#ref-rembero2026" role="doc-biblioref">Trikha 2026</a>)</span>. The release command builds
 the project before executing the suite. The semantic result excludes
 generated timestamps and timings.</p>
 <p>Immediate future work is:</p>
@@ -605,10 +605,10 @@ expanding the suite.</li>
 <h1 id="conclusion">9. Conclusion</h1>
 <p>Agent memory should be evaluated as a pipeline, not a single answer
 score. Retrieval, answer use, temporal behavior, abstention, citations,
-and deterministic proof are related but distinct properties. The Rembero
+and deterministic proof are related but distinct properties. The Remembero
 Structured-Memory Conformance Suite makes those properties explicit and
 provides a reproducible process boundary for other systems.</p>
-<p>The first result is intentionally modest: Rembero conforms to eight
+<p>The first result is intentionally modest: Remembero conforms to eight
 published structured memory questions; simple controls expose where
 direct lookup and retrieval stop. The work does not yet establish
 superiority over external stacks. Its purpose is to make the next
@@ -616,8 +616,8 @@ comparison inspectable enough that a reader can tell exactly what was
 measured, what was not measured, and why every reported answer received
 its score.</p>
 <h1 id="disclosure">Disclosure</h1>
-<p>The author is the creator of Rembero. The suite and paper are
-vendor-authored. The current snapshot contains measured Rembero and
+<p>The author is the creator of Remembero. The suite and paper are
+vendor-authored. The current snapshot contains measured Remembero and
 transparent baseline results only.</p>
 <h1 id="references">References</h1>
 <div id="refs" class="references csl-bib-body hanging-indent" role="list">
@@ -670,7 +670,7 @@ Neural Information Processing Systems Datasets and Benchmarks
 Track</em>. <a href="https://arxiv.org/abs/2104.08663">https://arxiv.org/abs/2104.08663</a>.
 </div>
 <div id="ref-rembero2026" class="csl-entry" role="listitem">
-Trikha, Rahul. 2026. <em>Rembero: Logic-Based Memory for Agents</em>. <a href="https://github.com/rahult/remembero">https://github.com/rahult/remembero</a>.
+Trikha, Rahul. 2026. <em>Remembero: Logic-Based Memory for Agents</em>. <a href="https://github.com/rahult/remembero">https://github.com/rahult/remembero</a>.
 </div>
 <div id="ref-longmemeval2025" class="csl-entry" role="listitem">
 Wu, Di, Hongwei Wang, Wenhao Yu, Yuwei Zhang, Kai-Wei Chang, and Dong

@@ -25,7 +25,7 @@ the body. Every other head variable is a deterministic group key and must be bou
 positive body relation. Constants and repeated non-output head terms retain ordinary
 Datalog head semantics.
 
-For each distinct ordered group-head tuple, Rembero reduces all matching body solutions
+For each distinct ordered group-head tuple, Remembero reduces all matching body solutions
 and inserts one derived fact. Contributor order follows deterministic body evaluation.
 
 - `count(*)` returns the number of complete body solutions;

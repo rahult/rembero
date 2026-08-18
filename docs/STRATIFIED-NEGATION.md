@@ -1,6 +1,6 @@
 # Stratified negation
 
-Rembero's portable Datalog engine supports closed-world negation over relational
+Remembero's portable Datalog engine supports closed-world negation over relational
 literals:
 
 ```prolog

@@ -1,6 +1,6 @@
 # All-writer knowledge check enforcement
 
-Rembero 0.50 promotes portable knowledge checks and semantic rule coverage from explicit
+Remembero 0.50 promotes portable knowledge checks and semantic rule coverage from explicit
 review gates into an optional store-wide write invariant. Every supported writer reaches
 the same `MemoryStore.enforceMutation` hook, so enforcement cannot depend on whether a
 change came from raw Datalog, natural language, ambient capture, trust review, temporal
@@ -42,7 +42,7 @@ This supports adoption on legacy knowledge without accepting new deterministic d
 
 ## Atomic evidence boundary
 
-While holding the global mutation lock, Rembero builds complete baseline and candidate
+While holding the global mutation lock, Remembero builds complete baseline and candidate
 clause/source views for the configured namespaces. New clauses receive their prospective
 source and temporal metadata before checks run. Both views use the ordinary proof engine,
 identity/trust projection, aggregation, and coverage semantics.

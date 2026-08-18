@@ -1,4 +1,4 @@
-# Rembero post-MVP roadmap (v0.10 →)
+# Remembero post-MVP roadmap (v0.10 →)
 
 MVP shipped: public repo, CI, GitHub release v0.1.0, npm package ready (publish pending
 auth). What follows is ordered by user value per unit of effort — each phase is
@@ -28,7 +28,7 @@ The engine's expressiveness ceiling is the first thing power users will hit.
 Today the agent decides when to call `remember`. Auto-capture makes memory ambient:
 
 1. **Complete:** `rembero init-hooks` idempotently merges one safe exec-form asynchronous
-   Claude Code Stop hook; removal touches only Rembero's managed entry. The hook sends
+   Claude Code Stop hook; removal touches only Remembero's managed entry. The hook sends
    Stop JSON on stdin to `rembero remember --batch`.
 2. **Complete:** only a bounded regular transcript beneath Claude's configured projects
    root is read. Tool/thinking/code noise is removed, credential-like text fails closed,
@@ -211,7 +211,7 @@ Schema summaries stop fitting in a prompt somewhere around ~100 predicates:
 
 1. **Complete — authored focus clustering**: complete integrity violations group by each
    constraint's first alpha-stable binding, while variable-free policy enters one global
-   cluster. Rembero never guesses subject semantics from predicate names.
+   cluster. Remembero never guesses subject semantics from predicate names.
 2. **Complete — personal and recorded inspection**: library, CLI `conflicts`, and MCP
    `conflict_views` support optional ground focus terms, canonical aliases, namespace
    unions, exact recorded sequences, proof limits, and complete violation bounds.

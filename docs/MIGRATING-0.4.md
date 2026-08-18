@@ -1,4 +1,4 @@
-# Migrating to Rembero 0.4
+# Migrating to Remembero 0.4
 
 Version 0.4 adds filter-only arithmetic expressions to portable-engine comparisons. The
 existing parser, evaluator, query-spec, proof, CLI, MCP, and knowledge-graph entry points

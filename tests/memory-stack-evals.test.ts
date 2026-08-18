@@ -61,7 +61,7 @@ describe('memory-stack benchmark contract', () => {
 });
 
 describe('memory-stack benchmark adapters and scoring', () => {
-  it('gates the Rembero engine on exact answers and proof citations', async () => {
+  it('gates the Remembero engine on exact answers and proof citations', async () => {
     const first = await runMemoryStackBenchmark({
       suite: MEMORY_STACK_SUITE,
       cases: MEMORY_STACK_CASES,

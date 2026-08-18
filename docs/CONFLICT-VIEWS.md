@@ -14,7 +14,7 @@ The MCP equivalent is `conflict_views`. No LLM is used.
 
 ## Authority boundary
 
-Rembero still does not guess that two facts conflict. Only an explicit headless Datalog
+Remembero still does not guess that two facts conflict. Only an explicit headless Datalog
 constraint defines a forbidden state:
 
 ```prolog

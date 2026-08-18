@@ -1,6 +1,6 @@
 # Deterministic recall schema pruning
 
-Rembero v0.7 keeps natural-language recall useful when a personal knowledge base grows
+Remembero v0.7 keeps natural-language recall useful when a personal knowledge base grows
 beyond 100 predicates. Storage, inference, proofs, and sources are not pruned. Only the
 schema context shown to the query-writing LLM is bounded.
 
@@ -48,7 +48,7 @@ A partial schema slice may find an answer, because the accepted query is evaluat
 the full knowledge base. A partial slice may not conclusively claim that a question is
 unanswerable or that no fact matches.
 
-When the first pass is empty or returns `unanswerable`, Rembero widens once to detailed
+When the first pass is empty or returns `unanswerable`, Remembero widens once to detailed
 context for the full schema when all predicates fit the 256-predicate and 24 KiB hard
 bounds. Only a complete widened pass may finalize a negative result. Otherwise recall
 returns:

@@ -13,7 +13,7 @@ npm run bench:memory -- --json
 
 The public v1 suite contains eight questions over direct facts, 100 distractors, rule and
 recursive derivations, a temporal update, honest abstention, tentative knowledge, and an
-integrity conflict. Rembero is gated at full answer and citation correctness. Direct-fact,
+integrity conflict. Remembero is gated at full answer and citation correctness. Direct-fact,
 lexical, and recency baselines disclose which capabilities they do not implement rather
 than receiving misleading zero or perfect scores.
 
@@ -25,12 +25,12 @@ npm run bench:memory -- --adapters rembero --external mem0=/absolute/path/to/bri
 
 See the [benchmark contract and current results](research/MEMORY-STACK-BENCHMARK.md), the
 [Medium draft](research/MEDIUM-DRAFT.md), and the [research paper](research/paper/paper.md).
-The current checked-in comparison has measured Rembero and transparent baselines only; it
+The current checked-in comparison has measured Remembero and transparent baselines only; it
 does not claim unexecuted results for Mem0, Graphiti/Zep, Letta, LangGraph, or LlamaIndex.
 
 ## Natural-language extraction and recall
 
-Rembero measures both personal-knowledge extraction and recall at deterministic evidence
+Remembero measures both personal-knowledge extraction and recall at deterministic evidence
 boundaries. The extraction runner scores the exact store mutation after validation; the
 recall runner scores exact engine bindings before answer phrasing.
 

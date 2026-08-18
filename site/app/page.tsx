@@ -25,7 +25,7 @@ export default function Home() {
   return (
     <main className="marketing-home">
       <header className="site-header">
-        <a className="brand" href="#top" aria-label="Rembero home">rembero</a>
+        <a className="brand" href="#top" aria-label="Remembero home">remembero</a>
         <nav className="desktop-nav" aria-label="Main navigation">
           <a href="#product">Product</a><a href="#how-it-works">How it works</a><a href={playground}>Playground</a><a href={github}>GitHub</a>
         </nav>
@@ -52,7 +52,7 @@ export default function Home() {
       <section className="difference section-dark" id="product">
         <div className="section-shell">
           <h2>Not another vector store.</h2>
-          <p className="section-lede">Similarity finds nearby text. Rembero proves what follows.</p>
+          <p className="section-lede">Similarity finds nearby text. Remembero proves what follows.</p>
           <div className="difference-grid">
             <article><h3>Readable memory</h3><p>Plain-text facts, rules, and constraints.</p><pre><code>{`project_owner(atlas, rahul).
 status(atlas, blocked).`}</code></pre></article>
@@ -72,8 +72,8 @@ status(atlas, blocked).`}</code></pre></article>
             <div><h2 id="showcase-title">The database is the demo.</h2><p>Insert a SQLite row, run Datalog, then inspect the exact facts and rule behind the answer—all inside your browser.</p></div>
             <a className="button primary" href={playground}>Open the full playground</a>
           </div>
-          <a className="showcase-frame" href={playground} aria-label="Open the Rembero SQLite and Datalog playground">
-            <Image src="/og.png" alt="Rembero SQLite and Datalog IDE showing tables, a query, proof, and graph" width={1731} height={909} unoptimized priority />
+          <a className="showcase-frame" href={playground} aria-label="Open the Remembero SQLite and Datalog playground">
+            <Image src="/og.png" alt="Remembero SQLite and Datalog IDE showing tables, a query, proof, and graph" width={1731} height={909} unoptimized priority />
           </a>
           <div className="showcase-ledger">
             <span><strong>SQLite owns the rows.</strong> Ordinary tables remain the storage authority.</span>
@@ -98,7 +98,7 @@ status(atlas, blocked).`}</code></pre></article>
         <div className="section-shell boundary-grid">
           <article className="model-boundary">
             <h2>Models translate.<br />Rules <em>decide.</em></h2>
-            <p>Natural language can translate a question into a query. Rembero evaluates the accepted query against explicit knowledge and returns the evidence locally.</p>
+            <p>Natural language can translate a question into a query. Remembero evaluates the accepted query against explicit knowledge and returns the evidence locally.</p>
             <ol className="boundary-flow"><li>Question <span>natural language</span></li><li>Translate <span>model</span></li><li>Query <span>accepted</span></li><li>Evaluate <span>rules + facts</span></li><li>Answer + evidence</li></ol>
           </article>
           <article className="integrations">
@@ -116,7 +116,7 @@ status(atlas, blocked).`}</code></pre></article>
       </section>
 
       <footer className="site-footer">
-        <strong>rembero</strong>
+        <strong>remembero</strong>
         <nav aria-label="Footer navigation"><a href={playground}>Playground</a><a href={github}>GitHub</a><a href={`${github}#readme`}>Docs</a><a href="https://www.npmjs.com/package/rembero">npm</a><span>MIT licensed</span></nav>
       </footer>
     </main>

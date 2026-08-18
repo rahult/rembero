@@ -1745,7 +1745,7 @@ describe('auto-capture CLI', () => {
       { encoding: 'utf8', env: { ...process.env } }
     );
     expect(install.status).toBe(0);
-    expect(install.stdout).toContain('installed Rembero Claude hook');
+    expect(install.stdout).toContain('installed Remembero Claude hook');
     const installed = JSON.parse(readFileSync(settingsPath, 'utf8'));
     const handlers = installed.hooks.Stop.flatMap(
       (group: { hooks: Record<string, unknown>[] }) => group.hooks

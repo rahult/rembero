@@ -1,6 +1,6 @@
 # Explicit deterministic relational projection
 
-Rembero 0.47 distinguishes variables that answer a query from variables used only to
+Remembero 0.47 distinguishes variables that answer a query from variables used only to
 join, compare, or constrain it. This removes model discretion from the final binding
 shape without weakening Datalog reasoning.
 

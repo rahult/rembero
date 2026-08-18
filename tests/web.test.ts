@@ -16,7 +16,7 @@ function webService(label: string): RemberoWebService {
   });
 }
 
-describe('Rembero web use-case service', () => {
+describe('Remembero web use-case service', () => {
   it('seeds one sourced personal workspace idempotently', () => {
     const service = webService('seed');
 

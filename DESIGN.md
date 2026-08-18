@@ -1,5 +1,5 @@
 ---
-name: Rembero
+name: Remembero
 description: Proof-carrying memory presented as a precise, inspectable evidence ledger.
 colors:
   ink: "#071525"
@@ -66,13 +66,13 @@ components:
     padding: "20px 26px"
 ---
 
-# Design System: Rembero
+# Design System: Remembero
 
 ## Overview
 
 **Creative North Star: “The Proof Ledger”**
 
-Rembero’s visual system makes technical causality legible. Large, direct sans-serif
+Remembero’s visual system makes technical causality legible. Large, direct sans-serif
 statements establish product confidence; monospaced data and query surfaces show the
 mechanism; a restrained serif voice marks human-readable answers and evidence. The page
 is predominantly white with navy structural bands, cobalt for action and execution, and
@@ -220,7 +220,7 @@ mirrors to the ordered proof list.
 
 ### Runtime truth boundary
 
-- The browser demo runs SQLite 3.53.4 WebAssembly with the Rembero C extension registered
+- The browser demo runs SQLite 3.53.4 WebAssembly with the Remembero C extension registered
   statically through `sqlite3_auto_extension`; it never implies dynamic extension loading.
 - Rows live in an in-memory, reload-reset SQLite database. Nothing is uploaded or persisted.
 - Results, proof ladders, and graphs come from one execution; derived answers are not stored.

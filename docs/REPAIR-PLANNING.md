@@ -1,6 +1,6 @@
 # Verified deterministic repair planning
 
-Rembero 0.27 can propose the smallest grounded fact changes it can prove would satisfy a
+Remembero 0.27 can propose the smallest grounded fact changes it can prove would satisfy a
 query. This is bounded abduction over the existing rule system, not an LLM suggestion and
 not mutation authority.
 

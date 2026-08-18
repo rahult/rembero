@@ -224,7 +224,7 @@ export async function startWebServer(options: StartWebServerOptions = {}) {
   const dev = options.dev ?? false;
   const host = options.host ?? process.env.REMBERO_WEB_HOST ?? '127.0.0.1';
   if (!LOOPBACK_HOSTS.has(host)) {
-    throw new Error('Rembero web console supports loopback hosts only');
+    throw new Error('Remembero web console supports loopback hosts only');
   }
   const port = options.port ?? portFromEnv(process.env.REMBERO_WEB_PORT);
   const root = options.root ?? process.env.REMBERO_WEB_ROOT ?? resolve('.rembero-web');
@@ -296,7 +296,7 @@ export async function startWebServer(options: StartWebServerOptions = {}) {
     ? address.port
     : port;
   const url = `http://${host}:${boundPort}`;
-  process.stdout.write(`Rembero web console: ${url}\n`);
+  process.stdout.write(`Remembero web console: ${url}\n`);
   process.stdout.write(`Memory root: ${root}\n`);
   return {
     server,

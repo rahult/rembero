@@ -1,6 +1,6 @@
 # Deterministic integrity constraints
 
-Rembero 0.9 adds explicit, headless Datalog constraints to the same portable `.dl`
+Remembero 0.9 adds explicit, headless Datalog constraints to the same portable `.dl`
 authority as facts and rules. A constraint is a body with no head:
 
 ```prolog
@@ -8,7 +8,7 @@ authority as facts and rules. A constraint is a body with no head:
 ```
 
 The body describes a forbidden current state. If it has any solution, the knowledge view
-violates the constraint. Rembero never guesses that `works_at/2`, `owner/2`, or any other
+violates the constraint. Remembero never guesses that `works_at/2`, `owner/2`, or any other
 predicate is single-valued; integrity exists only where a user explicitly declares it.
 
 Declare policy through the raw, local surfaces:

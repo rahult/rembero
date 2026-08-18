@@ -1,6 +1,6 @@
 # Recorded-time snapshots
 
-Rembero 0.14 can reconstruct the knowledge base exactly as it stood after a durable
+Remembero 0.14 can reconstruct the knowledge base exactly as it stood after a durable
 journal entry. This is a read-only, deterministic view over the same portable Datalog
 store; it is not a second database or an approximate retrieval index.
 
@@ -39,10 +39,10 @@ captured under one journal boundary.
 
 ## Completeness and failure behavior
 
-Before returning any past view, Rembero replays the complete selected journal and compares
+Before returning any past view, Remembero replays the complete selected journal and compares
 its final clause set with the current namespace files. A hand edit, legacy writer, missing
 journal record, corrupt/unknown in-scope operation, or out-of-range sequence fails closed with
-`IncompleteHistoryError` (`incomplete_recorded_history` over MCP and CLI exit `5`). Rembero never presents
+`IncompleteHistoryError` (`incomplete_recorded_history` over MCP and CLI exit `5`). Remembero never presents
 an incomplete replay as authoritative history.
 
 Rules, constraints, identity declarations, source provenance, valid-time archives, and

@@ -1,8 +1,8 @@
 # Local personal knowledge web console
 
-Rembero 0.53 adds a modern local web interface for testing the complete personal knowledge
+Remembero 0.53 adds a modern local web interface for testing the complete personal knowledge
 workflow against the real store, rule engine, proofs, search, health report, and graph.
-It is a product surface over Rembero—not a mocked dashboard.
+It is a product surface over Remembero—not a mocked dashboard.
 
 ## Start
 
@@ -19,7 +19,7 @@ For the production build:
 npm run web
 ```
 
-The default memory root is `.rembero-web/`, deliberately separate from existing Rembero
+The default memory root is `.rembero-web/`, deliberately separate from existing Remembero
 memory. A sourced Personal demo workspace is seeded only when that sandbox is empty. Set
 `REMBERO_WEB_SEED_DEMO=false` for an empty workspace, or point
 `REMBERO_WEB_ROOT` at another explicit directory.

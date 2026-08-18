@@ -1,6 +1,6 @@
 # Schema-only SQLite Datalog planning
 
-Rembero 0.37 makes SQLite Datalog routing and database dependencies inspectable before
+Remembero 0.37 makes SQLite Datalog routing and database dependencies inspectable before
 execution. Planning validates syntax and schema inside a savepoint but never scans table
 or view rows.
 

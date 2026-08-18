@@ -1,4 +1,4 @@
-# Migrating to Rembero 0.13
+# Migrating to Remembero 0.13
 
 Version 0.13 adds optional idempotency keys for raw writes. Existing `.dl` files,
 journals, history, generated operation IDs, natural-language memory, MCP clients, and

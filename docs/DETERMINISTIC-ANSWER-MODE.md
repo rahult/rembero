@@ -1,6 +1,6 @@
 # Deterministic positive answer mode
 
-Rembero 0.30 can render successful natural-language recall locally from exact Datalog
+Remembero 0.30 can render successful natural-language recall locally from exact Datalog
 bindings. Query translation may still use the configured model, but the model no longer
 needs authority over the final wording when deterministic mode is selected.
 
