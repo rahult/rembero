@@ -19,11 +19,11 @@ npm run bench:agent-db:check
 npm run bench:agent-db:cost
 npm run bench:agent-db:install:check
 npm run bench:agent-db:million
-npm run bench:memory:langgraph
+npm run bench:memory:external
 ```
 
-The pinned LangGraph/FastEmbed command runs the same hidden-label retrieval protocol
-against an externally maintained memory store without adding Python packages to Remembero.
+The pinned external command runs the same hidden-label retrieval protocol against LangGraph
+and LlamaIndex without adding their Python packages to Remembero.
 
 ## Try the real web console
 

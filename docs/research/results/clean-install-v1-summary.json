@@ -10,7 +10,7 @@
   },
   "method": {
     "command": "npm run bench:agent-db:install:check",
-    "runs": 3,
+    "runs": 4,
     "npmCache": "new empty temporary directory per run",
     "install": "packed current tree; ignore lifecycle scripts; no audit or funding calls",
     "query": "installed CLI writes two facts plus one rule, then explains collaborator(Person, atlas)",
@@ -43,6 +43,14 @@
       "coldInstallMs": 4892.680083,
       "firstWriteMs": 89.80541700000049,
       "firstProofQueryMs": 98.33324999999968,
+      "expectedAnswer": true,
+      "expectedSources": true
+    },
+    {
+      "environment": "GitHub-hosted Ubuntu, Node 24",
+      "coldInstallMs": 2997.66,
+      "firstWriteMs": 210.71,
+      "firstProofQueryMs": 224.03,
       "expectedAnswer": true,
       "expectedSources": true
     }

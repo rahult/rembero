@@ -13,7 +13,7 @@
     "facts": 1000000,
     "programBytes": 34778635,
     "repetitionsPerProcess": 3,
-    "freshProcesses": 3,
+    "freshProcesses": 4,
     "sourceRetention": "text program released after parse; explicit collection before timed evaluation",
     "limits": {
       "parseMs": 3000,
@@ -54,6 +54,18 @@
       "proofMedianMs": 2007.98,
       "proofP95Ms": 2049.49,
       "processMaxRssMiB": 2242.34,
+      "indexedRelationLookups": 2,
+      "candidateFactsVisited": 6,
+      "rowsAndProofsCorrect": true
+    },
+    {
+      "environment": "GitHub-hosted Ubuntu, Node 24, green calibrated gate",
+      "parseMs": 2197.45,
+      "queryMedianMs": 2038.62,
+      "queryP95Ms": 2458.13,
+      "proofMedianMs": 2039.77,
+      "proofP95Ms": 2047.37,
+      "processMaxRssMiB": 2240.84,
       "indexedRelationLookups": 2,
       "candidateFactsVisited": 6,
       "rowsAndProofsCorrect": true

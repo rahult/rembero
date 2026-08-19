@@ -104,6 +104,16 @@ function run(
   return { stdout: (result.stdout ?? '').trim(), durationMs };
 }
 
+function runNpm(
+  args: string[],
+  options: { cwd: string; env?: NodeJS.ProcessEnv }
+): CommandResult {
+  const npmEntrypoint = process.env.npm_execpath;
+  return npmEntrypoint === undefined
+    ? run(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, options)
+    : run(process.execPath, [npmEntrypoint, ...args], options);
+}
+
 async function directoryBytes(path: string): Promise<number> {
   const entry = await lstat(path);
   if (!entry.isDirectory()) return entry.size;
@@ -131,8 +141,7 @@ export async function runAgentDbInstallBenchmark(options: {
   const firstProofQueryThresholdMs = options.firstProofQueryThresholdMs ?? 1_000;
   try {
     await writeFile(npmUserConfig, '');
-    const pack = run(
-      'npm',
+    const pack = runNpm(
       ['pack', '--ignore-scripts', '--json', '--pack-destination', root],
       { cwd: projectRoot, env: commandEnvironment() }
     );
@@ -153,8 +162,7 @@ export async function runAgentDbInstallBenchmark(options: {
       npm_config_package_lock: 'false',
       npm_config_update_notifier: 'false',
     });
-    const install = run(
-      'npm',
+    const install = runNpm(
       [
         'install',
         '--ignore-scripts',
@@ -167,9 +175,10 @@ export async function runAgentDbInstallBenchmark(options: {
     );
     const installedPackage = join(root, 'node_modules', 'remembero');
     const installedBytes = await directoryBytes(installedPackage);
-    const cli = join(root, 'node_modules', '.bin', 'remembero');
+    const cli = process.execPath;
+    const cliArgs = [join(installedPackage, 'dist', 'cli.js')];
     const cliEnvironment = commandEnvironment({ REMBERO_HOME: memoryRoot });
-    const help = run(cli, ['--help'], { cwd: root, env: cliEnvironment });
+    const help = run(cli, [...cliArgs, '--help'], { cwd: root, env: cliEnvironment });
     if (!help.stdout.startsWith('remembero — logic-based memory')) {
       throw new Error('installed Remembero CLI did not return expected help');
     }
@@ -183,7 +192,7 @@ export async function runAgentDbInstallBenchmark(options: {
     ].join('\n');
     const write = run(
       cli,
-      ['assert', program, '--op-id', 'clean-install-seed'],
+      [...cliArgs, 'assert', program, '--op-id', 'clean-install-seed'],
       { cwd: root, env: cliEnvironment }
     );
     const writePayload = JSON.parse(write.stdout) as { added?: unknown };
@@ -192,7 +201,7 @@ export async function runAgentDbInstallBenchmark(options: {
     }
     const query = run(
       cli,
-      ['explain', 'collaborator(Person, atlas)'],
+      [...cliArgs, 'explain', 'collaborator(Person, atlas)'],
       { cwd: root, env: cliEnvironment }
     );
     const serialized = query.stdout;
@@ -226,7 +235,7 @@ export async function runAgentDbInstallBenchmark(options: {
         platform: process.platform,
         architecture: process.arch,
         nodeVersion: process.version,
-        npmVersion: run('npm', ['--version'], {
+        npmVersion: runNpm(['--version'], {
           cwd: root,
           env: commandEnvironment(),
         }).stdout,

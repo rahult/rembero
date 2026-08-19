@@ -86,8 +86,9 @@ test("server-renders the agent harness integration guide", async () => {
   assert.match(html, /bench:agent-db:install:check/);
   assert.match(html, /bench:agent-db:million/);
   assert.match(html, /bench:agent-db:cost/);
-  assert.match(html, /bench:memory:langgraph/);
-  assert.match(html, /LangGraph retrieval/);
+  assert.match(html, /bench:memory:external/);
+  assert.match(html, /External retrieval/);
+  assert.match(html, /2 stacks · 100% R@k/);
   assert.match(html, /\$0\.000644 avg/);
   assert.match(html, /href="\/labs\/chat-memory"/);
 });

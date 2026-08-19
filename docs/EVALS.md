@@ -39,6 +39,8 @@ npm run bench:memory
 npm run bench:memory:check
 npm run bench:memory -- --json
 npm run bench:memory:langgraph
+npm run bench:memory:llamaindex
+npm run bench:memory:external
 ```
 
 The public v1 suite contains eight questions over direct facts, 100 distractors, rule and
@@ -61,11 +63,16 @@ command plus timeout. The checked-in LangGraph manifest uses `InMemoryStore`, Fa
 Recall@k and MRR with zero operational errors and zero provider calls. It is retrieval-only,
 so answer and citation metrics remain not applicable.
 
+The LlamaIndex manifest pins `llama-index-core` 0.14.23 and its FastEmbed integration 0.6.0.
+It stores one event-tagged `ChatMessage` per fixture event in `VectorMemory`, retrieves with
+the same question/top-k/model, and also achieved 100% Recall@k/MRR with no provider calls.
+`bench:memory:external` runs Remembero and both external adapters together.
+
 See the [benchmark contract and current results](research/MEMORY-STACK-BENCHMARK.md), the
 [Medium draft](research/MEDIUM-DRAFT.md), and the [research paper](research/paper/paper.md).
-The current checked-in comparison measures Remembero, transparent baselines, and the pinned
-LangGraph retrieval adapter. It does not claim unexecuted results for Mem0, Graphiti/Zep,
-Letta, or LlamaIndex.
+The current checked-in comparison measures Remembero, transparent baselines, and pinned
+LangGraph and LlamaIndex retrieval adapters. It does not claim unexecuted results for Mem0,
+Graphiti/Zep, or Letta.
 
 ## Natural-language extraction and recall
 

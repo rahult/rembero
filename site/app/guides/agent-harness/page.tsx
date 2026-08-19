@@ -285,9 +285,9 @@ export default function AgentHarnessGuide() {
           <strong><span>Luna cost lead</span>about 15x</strong>
           <strong><span>Cold npm install</span>4.89 s</strong>
           <strong><span>First proof query</span>98.33 ms</strong>
-          <strong><span>LangGraph retrieval</span>100% Recall@k</strong>
+          <strong><span>External retrieval</span>2 stacks · 100% R@k</strong>
         </div>
-        <CodeBlock>{"npm run bench:agent-db:check\nnpm run bench:agent-db:scale -- --check\nnpm run bench:agent-db:install:check\nnpm run bench:agent-db:million\nnpm run bench:agent-db:cost\nnpm run bench:memory:langgraph"}</CodeBlock>
+        <CodeBlock>{"npm run bench:agent-db:check\nnpm run bench:agent-db:scale -- --check\nnpm run bench:agent-db:install:check\nnpm run bench:agent-db:million\nnpm run bench:agent-db:cost\nnpm run bench:memory:external"}</CodeBlock>
         <a className={styles.scorecardLink} href={githubScorecard}>
           Read the scorecard and evidence limits →
         </a>

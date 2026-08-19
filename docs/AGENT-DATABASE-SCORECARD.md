@@ -97,6 +97,8 @@ in 4.74–4.89 s, first write in 89.81–90.40 ms, and first proof query in 94.7
 current packed artifact was 0.92 MiB and the installed package was 3.80 MiB. npm registry download
 time is machine/network specific; the exact result is recorded in
 [`research/results/clean-install-v1-summary.json`](research/results/clean-install-v1-summary.json).
+The GitHub-hosted Ubuntu/Node 24 gate also passed: 3.00 s cold install, 210.71 ms first
+write, and 224.03 ms first proof query.
 
 ### Accuracy
 
@@ -146,6 +148,8 @@ against a GitHub-hosted Ubuntu/Node 24 run (2,232 ms parse, 2,564 ms query p95, 
 proof p95) rather than the faster local machine. Exact measurements and
 the boundary are recorded in
 [`research/results/million-scale-v1-summary.json`](research/results/million-scale-v1-summary.json).
+The final hosted gate passed at 2,197 ms parse, 2,458 ms query p95, 2,047 ms proof p95,
+and 2.188 GiB max RSS.
 
 ### Cost
 
@@ -212,16 +216,22 @@ Measured 20 August 2026 AEST on Apple M4 / 16 GiB, after the 67 MB model was cac
 | Adapter | Retrieval Recall@k | MRR | Exact typed answers | Citation recall | p95 | Provider calls |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Remembero engine | 100% | 100% | 100% | 100% | 1.82 ms | 0 |
-| LangGraph `InMemoryStore` + FastEmbed | 100% | 100% | not applicable | not applicable | 232.66 ms | 0 |
+| LangGraph `InMemoryStore` + FastEmbed | 100% | 100% | not applicable | not applicable | 224.32 ms | 0 |
+| LlamaIndex `VectorMemory` + FastEmbed | 100% | 100% | not applicable | not applicable | 319.97 ms | 0 |
 
 Remembero matched the external adapter's retrieval result while also returning exact typed
 answers and proof citations. The timing paths are disclosed rather than treated as identical:
 Remembero parses/evaluates/proves the structured question, while LangGraph creates a fresh
 store, embeds all case events, and runs vector search; dependency/model initialization is
-excluded from its `wallMs`. This is a real first external result, not a general LangGraph or
-commercial-system superiority claim. LangGraph documents custom embedding functions and
-semantic `Store.search`; FastEmbed documents the exact BGE-small model and its 384 dimensions:
+excluded from its `wallMs`. This is a real external result, not a general framework or
+commercial-system superiority claim. The second pinned adapter uses LlamaIndex 0.14.23's
+`VectorMemory` and official FastEmbed integration under the same retrieval policy. Three warm
+runs put its p95 between 291 and 531 ms; 319.97 ms is the recorded machine-readable run.
+LangGraph documents custom embedding functions and semantic `Store.search`; LlamaIndex
+documents its in-memory vector-store path; FastEmbed documents the exact BGE-small model and
+its 384 dimensions:
 <https://reference.langchain.com/python/langgraph.store/memory/InMemoryStore>,
+<https://docs.llamaindex.ai/en/stable/community/integrations/vector_stores/>,
 <https://qdrant.github.io/fastembed/Getting%20Started/>.
 
 ## Release gates
@@ -252,10 +262,11 @@ This scorecard does not yet prove:
 - natural-language cost stability across provider revisions and workloads beyond the
   measured recall/extraction suites;
 - installation success on every supported OS and CPU architecture;
-- comparative results for Mem0, Graphiti/Zep, Letta, or LlamaIndex without executing
-  pinned external adapters;
+- comparative results for Mem0, Graphiti/Zep, or Letta without executing pinned external
+  adapters;
 - broader LangGraph conclusions beyond the executed in-memory retrieval-only configuration.
+- broader LlamaIndex conclusions beyond the executed VectorMemory retrieval-only configuration.
 
-The next gates should add clean-install runners on Linux and Windows, cost-regression
+The next gates should add a clean-install runner on Windows, cost-regression
 thresholds after more provider samples, scale sweeps above one million facts, and additional
 pinned external adapters.

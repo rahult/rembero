@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "rembero.memory-stack.external-summary.v1",
+  "measuredAt": "2026-08-20T01:47:43+10:00",
+  "environment": {
+    "os": "macOS 26.5.2 arm64",
+    "cpu": "Apple M4",
+    "memoryBytes": 17179869184,
+    "node": "26.5.0",
+    "uv": "0.12.0"
+  },
+  "suite": {
+    "id": "rembero-structured-memory",
+    "version": "1.0.0",
+    "digest": "2a483f29d0123bea651a8f4a7eec0a7b5193e58667474b5e96bbe8319c131524",
+    "cases": 7,
+    "questions": 8
+  },
+  "method": {
+    "command": "npm run bench:memory:external",
+    "repetitions": 1,
+    "timingStatus": "diagnostic-only, warm embedding-model cache",
+    "sharedEmbeddingModel": "BAAI/bge-small-en-v1.5, FastEmbed 0.8.0, CPU",
+    "notes": [
+      "Remembero answers typed structured queries and returns proof citations without embeddings.",
+      "LangGraph and LlamaIndex are retrieval-only adapters and are not assigned answer or citation accuracy.",
+      "External wall time includes fresh store or memory creation, event embedding, and vector retrieval per question; dependency and model initialization are excluded."
+    ]
+  },
+  "runs": [
+    {
+      "adapter": "rembero-engine",
+      "answerCoverage": 1,
+      "answerAccuracy": 1,
+      "retrievalRecallAtK": 1,
+      "meanReciprocalRank": 1,
+      "citationRecall": 1,
+      "medianWallMs": 0.28916699999999906,
+      "p95WallMs": 1.772000000000002,
+      "operationalErrors": 0,
+      "semanticDigest": "8ca23aa43d8df715a14cf37ac534cee6febc75ed40a1c01a080f1a016eeea6cf"
+    },
+    {
+      "adapter": "langgraph-inmemory-fastembed",
+      "version": "langgraph-1.2.10_fastembed-0.8.0_bge-small-en-v1.5",
+      "answerCoverage": 0,
+      "answerAccuracy": null,
+      "retrievalRecallAtK": 1,
+      "meanReciprocalRank": 1,
+      "citationRecall": null,
+      "medianWallMs": 12.044958013575524,
+      "p95WallMs": 224.32262502843514,
+      "operationalErrors": 0,
+      "semanticDigest": "fd1702eda0a59e9124e1f0f7c697c64b41a094acc1d6ed35645ea3a143f84f59"
+    },
+    {
+      "adapter": "llamaindex-vector-memory-fastembed",
+      "version": "llama-index-core-0.14.23_fastembed-0.8.0_bge-small-en-v1.5",
+      "answerCoverage": 0,
+      "answerAccuracy": null,
+      "retrievalRecallAtK": 1,
+      "meanReciprocalRank": 1,
+      "citationRecall": null,
+      "medianWallMs": 53.52420802228153,
+      "p95WallMs": 319.96991694904864,
+      "operationalErrors": 0,
+      "semanticDigest": "9cb451a3d83fad0b52de748c75ace958b2b7fb046450d8518c31b5401842164d"
+    }
+  ]
+}
