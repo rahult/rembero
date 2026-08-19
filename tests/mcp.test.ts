@@ -52,6 +52,16 @@ describe('MCP explanation surfaces', () => {
     const server = createServer({
       store,
       llm: new ScriptedLlm(['?- pet(rahul, Name).', 'Your cat is Luna.']),
+      embeddings: {
+        model: 'test/embedding',
+        async embed(inputs) {
+          return {
+            model: this.model,
+            vectors: inputs.map(() => [1, 0]),
+            usage: { promptTokens: inputs.length, totalTokens: inputs.length, costUsd: 0 },
+          };
+        },
+      },
     });
     const client = new Client({ name: 'rembero-test', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -74,6 +84,7 @@ describe('MCP explanation surfaces', () => {
           'plan_query_repair',
           'audit_rules',
           'search_knowledge',
+          'semantic_search_knowledge',
           'browse_knowledge_graph',
           'connect_knowledge_graph',
           'export_knowledge_bundle',
@@ -296,6 +307,23 @@ describe('MCP explanation surfaces', () => {
             sources: [{ opId: 'mcp-source', text: 'My cat is called Luna.' }],
           },
         ],
+      });
+
+      const semantic = await client.callTool({
+        name: 'semantic_search_knowledge',
+        arguments: { text: 'recommend cat Luna advice', kinds: ['fact'], limit: 5 },
+      });
+      const semanticText = semantic.content.find((item) => item.type === 'text');
+      expect(
+        JSON.parse(semanticText?.type === 'text' ? semanticText.text : '')
+      ).toMatchObject({
+        status: 'matches',
+        route: 'semantic',
+        model: 'test/embedding',
+        cacheMisses: expect.any(Number),
+        results: expect.arrayContaining([
+          expect.objectContaining({ clause: 'pet(rahul, luna).' }),
+        ]),
       });
 
       const browsed = await client.callTool({

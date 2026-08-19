@@ -157,6 +157,7 @@
     "bench:memory:graphiti": "npm run build:core && node dist/evals/run-memory-stack.js --adapters rembero --external-manifest benchmarks/adapters/graphiti-openrouter-fastembed/adapter.json",
     "bench:longmemeval:download": "npm run build:core && node dist/evals/run-longmemeval.js --download-only",
     "bench:longmemeval": "npm run build:core && node dist/evals/run-longmemeval.js",
+    "bench:longmemeval:semantic": "npm run build:core && node dist/evals/run-longmemeval-semantic.js",
     "bench:agent-db": "npm run build && node dist/evals/run-agent-db-scorecard.js",
     "bench:agent-db:check": "npm run build && node dist/evals/run-agent-db-scorecard.js --check",
     "bench:agent-db:scale": "npm run build:core && node dist/evals/run-agent-db-scale.js",

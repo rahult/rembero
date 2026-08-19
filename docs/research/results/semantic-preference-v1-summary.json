@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "remembero.semantic-preference.v1",
+  "measuredAt": "2026-08-20T04:24:51+10:00",
+  "dataset": {
+    "id": "xiaowu0162/longmemeval-cleaned",
+    "split": "longmemeval_s_cleaned",
+    "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+    "questions": 500,
+    "preferenceQuestions": 30
+  },
+  "policy": {
+    "split": "first four SHA-256 bytes of question_id, unsigned big-endian, even=development and odd=held-out",
+    "intent": "recommend|suggest|suggestion|advice|tips|idea(s)|should i|what should|decide|choose|looking for",
+    "semanticTopK": 5,
+    "lexicalCandidateLimit": 100,
+    "sourceCharacterLimit": 16384,
+    "model": "perplexity/pplx-embed-v1-0.6b",
+    "abstentionAuthority": "none; embeddings retrieve only",
+    "sourceSafety": "store-equivalent credential redaction plus fail-closed secret scan before export"
+  },
+  "development": {
+    "questions": 261,
+    "preferenceQuestions": 15,
+    "routedQuestions": 11,
+    "lexical": { "precisionAtK": 0.08, "recallAtK": 0.4, "meanReciprocalRank": 0.3055555555555555 },
+    "semanticPolicy": { "precisionAtK": 0.16, "recallAtK": 0.8, "meanReciprocalRank": 0.6799999999999999 },
+    "providerUsage": { "calls": 11, "promptTokens": 988932, "totalTokens": 988932, "costUsd": 0.003955728 },
+    "coldSemanticP95Ms": 8502.563375
+  },
+  "heldOut": {
+    "questions": 239,
+    "preferenceQuestions": 15,
+    "routedQuestions": 11,
+    "lexical": { "precisionAtK": 0.09333333333333332, "recallAtK": 0.4666666666666667, "meanReciprocalRank": 0.16111111111111112 },
+    "semanticPolicy": { "precisionAtK": 0.10666666666666666, "recallAtK": 0.5333333333333333, "meanReciprocalRank": 0.45555555555555555 },
+    "providerUsage": { "calls": 11, "promptTokens": 1011024, "totalTokens": 1011024, "costUsd": 0.004044096 },
+    "coldSemanticP95Ms": 6317.284125000006
+  },
+  "combinedPreference": {
+    "lexical": { "precisionAtK": 0.08666666666666667, "recallAtK": 0.43333333333333335, "meanReciprocalRank": 0.2333333333333333 },
+    "semanticPolicy": { "precisionAtK": 0.13333333333333333, "recallAtK": 0.6666666666666666, "meanReciprocalRank": 0.5677777777777777 },
+    "providerUsage": { "calls": 22, "promptTokens": 1999956, "totalTokens": 1999956, "costUsd": 0.007999824, "averageCostPerRoutedQuestionUsd": 0.00036362836363636366 }
+  },
+  "liveMcpCacheProbe": {
+    "documents": 2,
+    "cold": { "wallMs": 649.583375, "cacheHits": 0, "cacheMisses": 2, "promptTokens": 32, "costUsd": 1.28e-7 },
+    "warm": { "wallMs": 277.47825, "cacheHits": 2, "cacheMisses": 0, "promptTokens": 9, "costUsd": 3.6e-8 }
+  }
+}

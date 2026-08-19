@@ -39,6 +39,7 @@ evidence sessions, with no model, embedding, remote call, or hidden answer data:
 npm run bench:longmemeval:download
 npm run bench:longmemeval
 npm run bench:longmemeval -- --json
+npm run bench:longmemeval:semantic
 ```
 
 The current recall-first configuration achieves 83.27% Recall@5, 80.96% MRR, and 75.32%
@@ -46,6 +47,12 @@ strict all-evidence coverage over 470 answerable questions at 10.78 ms p95 local
 Precision@5 is 30.72% and abstention empty rate is 0%, which remain explicit gaps rather
 than being hidden by answer generation. See the [full method, sweeps, and evidence
 boundary](research/LONGMEMEVAL.md).
+
+The live semantic policy benchmark uses a deterministic SHA-256 development/held-out split
+and routes only explicit recommendation/advice intent. On 15 held-out preference questions,
+Recall@5 improved from 46.7% to 53.3% and MRR from 16.1% to 45.6%. It requires an embedding
+provider and stays outside CI/prepublish. See the [semantic search contract and cost
+evidence](SEMANTIC-KNOWLEDGE-SEARCH.md).
 
 ## Structured-memory comparison
 

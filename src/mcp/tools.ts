@@ -68,6 +68,12 @@ import {
   type KnowledgeSearchResult,
 } from '../knowledge/search.js';
 import {
+  semanticSearchKnowledge,
+  type MemoryEmbeddingCache,
+  type SemanticKnowledgeSearchResult,
+} from '../knowledge/semantic-search.js';
+import type { EmbeddingClient } from '../llm/embeddings.js';
+import {
   browseKnowledgeGraph,
   type BrowseKnowledgeGraphResult,
 } from '../knowledge/browse.js';
@@ -144,6 +150,12 @@ export interface StoreToolDeps {
   knowledgeCheckEnforcement?: KnowledgeCheckEnforcementOptions | false;
   entityIdentity?: EntityIdentityMode | false;
   trustMode?: TrustViewMode | false;
+}
+
+export interface SemanticSearchToolDeps extends StoreToolDeps {
+  embeddings: EmbeddingClient;
+  semanticCache?: MemoryEmbeddingCache;
+  llmAllowedNamespaces?: ReadonlySet<string>;
 }
 
 function configuredCheckEnforcement(
@@ -977,6 +989,52 @@ export function searchKnowledgeTool(
     ...(entityIdentity === undefined ? {} : { entityIdentity }),
     ...(trustMode === 'accepted' ? {} : { trustMode }),
   });
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
+}
+
+export async function semanticSearchKnowledgeTool(
+  deps: SemanticSearchToolDeps,
+  args: {
+    text: string;
+    namespaces?: string[] | '*';
+    limit?: number;
+    kinds?: KnowledgeSearchClauseKind[];
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+  }
+): Promise<SemanticKnowledgeSearchResult & { recordedSnapshot?: RecordedSnapshotMetadata }> {
+  assertBoundedInput(args.text, 'semantic knowledge search text');
+  const namespaces = namespacesOrDefault(args.namespaces);
+  const selected = namespaces === '*' ? deps.store.listNamespaces() : namespaces;
+  const denied = selected.find((namespace) => !deps.llmAllowedNamespaces?.has(namespace));
+  if (deps.llmAllowedNamespaces !== undefined && denied !== undefined) {
+    throw new Error(
+      `namespace '${denied}' is local-only under REMBERO_LLM_ALLOWED_NAMESPACES`
+    );
+  }
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const result = await semanticSearchKnowledge(
+    recorded.clauses,
+    args.text,
+    recorded.sources,
+    deps.embeddings,
+    {
+      ...(args.limit === undefined ? {} : { limit: args.limit }),
+      ...(args.kinds === undefined ? {} : { kinds: args.kinds }),
+      ...(entityIdentity === undefined ? {} : { entityIdentity }),
+      ...(trustMode === 'accepted' ? {} : { trustMode }),
+      ...(deps.semanticCache === undefined ? {} : { cache: deps.semanticCache }),
+    }
+  );
   return {
     ...result,
     ...(recorded.recordedSnapshot === undefined

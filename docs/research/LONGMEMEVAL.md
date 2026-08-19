@@ -100,6 +100,12 @@ single-session assistant facts and 95.31% for single-session user facts. That ma
 semantic retrieval or a purpose-built preference index a concrete next experiment rather
 than an unmeasured feature claim.
 
+That experiment is now measured. A locked recommendation-intent policy using the opt-in
+semantic tool raises all-preference Recall@5 to 66.67% and held-out Recall@5 from 46.67% to
+53.33%. It does not change the recall-first lexical default or use similarity for
+abstention. See [semantic knowledge search](../SEMANTIC-KNOWLEDGE-SEARCH.md) for the split,
+cost, cache, and export-safety boundary.
+
 ## Evidence boundary
 
 This result establishes a reproducible, zero-provider-cost retrieval baseline on a broad

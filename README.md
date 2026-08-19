@@ -21,6 +21,7 @@ npm run bench:agent-db:install:check
 npm run bench:agent-db:million
 npm run bench:longmemeval:download
 npm run bench:longmemeval
+npm run bench:longmemeval:semantic # live embedding cost
 npm run bench:memory:external
 npm run bench:memory:mem0 # live OpenRouter extraction cost
 npm run bench:memory:graphiti # live OpenRouter graph formation cost
@@ -35,6 +36,9 @@ and uses native bulk episode formation, local FastEmbed, and a fresh embedded Fa
 graph per question.
 The pinned LongMemEval-S command runs all 500 cleaned questions as a retrieval-only,
 zero-model-call gate; its [result and limitations](docs/research/LONGMEMEVAL.md) are public.
+For fuzzy recommendations, the opt-in [`semantic_search_knowledge`](docs/SEMANTIC-KNOWLEDGE-SEARCH.md)
+tool reranks a bounded local shortlist, reports provider cost, and caches document vectors
+without changing structured query or proof authority.
 
 ## Try the real web console
 
@@ -77,9 +81,11 @@ Configuration is via environment variables (a `.env` file in the working directo
 
 | Variable | Required | Default |
 |---|---|---|
-| `LLM_API_KEY` | for `remember`/`recall` only | — (an [OpenRouter](https://openrouter.ai) key) |
+| `LLM_API_KEY` | for `remember`, `recall`, or semantic search | — (an [OpenRouter](https://openrouter.ai) key) |
 | `LLM_BASE_URL` | no | `https://openrouter.ai/api/v1` |
 | `LLM_MODEL` | no | `openai/gpt-5.6-luna` |
+| `REMBERO_EMBEDDING_MODEL` | no | `perplexity/pplx-embed-v1-0.6b` |
+| `REMBERO_EMBEDDING_BASE_URL` | no | `LLM_BASE_URL` or `https://openrouter.ai/api/v1` |
 | `REMBERO_HOME` | no | `~/.rembero` (memories live in `$REMBERO_HOME/memory/`) |
 | `REMBERO_LLM_ALLOWED_NAMESPACES` | no | all namespaces (comma-separated allowlist when set; empty blocks all LLM export) |
 | `REMBERO_AUTO_CAPTURE_DAILY_CAP` | no | `10` unique attempts per namespace/UTC day |
@@ -107,6 +113,8 @@ The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `que
 `profile_query`, `forget`, `list_memories`)
 work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
+Opt-in `semantic-search` / `semantic_search_knowledge` also requires the embedding provider
+key and reports its own usage and cost.
 
 ## Use from Claude Code (MCP)
 
@@ -135,7 +143,8 @@ Tools exposed: `remember`, `propose_memory`, `apply_memory_proposal`, `recall`, 
 `assert_tentative`, `review_tentative`, `resolve_tentative`, `supersede_facts`,
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `apply_rule_change`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
-`plan_query_repair`, `audit_rules`, `knowledge_health`, `search_knowledge`, `checkpoint_journal`,
+`plan_query_repair`, `audit_rules`, `knowledge_health`, `search_knowledge`,
+`semantic_search_knowledge`, `checkpoint_journal`,
 `browse_knowledge_graph`, `connect_knowledge_graph`, `export_knowledge_bundle`, `verify_knowledge_bundle`,
 `run_knowledge_checks`, `profile_query`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct

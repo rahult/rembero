@@ -381,6 +381,29 @@ export {
   type KnowledgeSearchResult,
 } from './knowledge/search.js';
 export {
+  semanticSearchKnowledge,
+  isRecommendationIntent,
+  MemoryEmbeddingCache,
+  DEFAULT_SEMANTIC_SEARCH_CANDIDATES,
+  MAX_SEMANTIC_SEARCH_CANDIDATES,
+  MAX_SEMANTIC_SOURCE_CHARS,
+  type SemanticKnowledgeSearchOptions,
+  type SemanticKnowledgeSearchResult,
+  type SemanticKnowledgeSearchResultItem,
+} from './knowledge/semantic-search.js';
+export {
+  OpenRouterEmbeddingClient,
+  embeddingClientFromEnv,
+  lazyEmbeddingClientFromEnv,
+  DEFAULT_EMBEDDING_MODEL,
+  MAX_EMBEDDING_INPUTS,
+  MAX_EMBEDDING_DIMENSIONS,
+  type EmbeddingClient,
+  type EmbeddingConfig,
+  type EmbeddingResult,
+  type EmbeddingUsage,
+} from './llm/embeddings.js';
+export {
   browseKnowledgeGraph,
   DEFAULT_BROWSE_GRAPH_DEPTH,
   MAX_BROWSE_GRAPH_DEPTH,

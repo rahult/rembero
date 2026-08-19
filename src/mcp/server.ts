@@ -50,6 +50,7 @@ import {
   repairPlanTool,
   auditRulesTool,
   searchKnowledgeTool,
+  semanticSearchKnowledgeTool,
   browseKnowledgeGraphTool,
   connectKnowledgeGraphTool,
   exportKnowledgeBundleTool,
@@ -57,6 +58,8 @@ import {
   runKnowledgeChecksTool,
   profileKnowledgeTool,
 } from './tools.js';
+import { lazyEmbeddingClientFromEnv } from '../llm/embeddings.js';
+import { MemoryEmbeddingCache } from '../knowledge/semantic-search.js';
 import {
   IncompleteHistoryError,
   MAX_HISTORY_EVENTS,
@@ -502,6 +505,8 @@ export function createServer(deps: PipelineDeps): McpServer {
     knowledgeCheckEnforcement: configuredChecks,
     entityIdentity,
   };
+  const embeddings = deps.embeddings ?? lazyEmbeddingClientFromEnv();
+  const semanticCache = deps.semanticCache ?? new MemoryEmbeddingCache();
   const server = new McpServer({ name: 'rembero', version: '0.54.0' });
 
   server.registerTool(
@@ -1123,6 +1128,59 @@ export function createServer(deps: PipelineDeps): McpServer {
             trustMode,
             recordedSequence,
           })
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'semantic_search_knowledge',
+    {
+      title: 'Search recommendation and preference memory semantically',
+      description:
+        'Rerank a bounded local lexical shortlist with an embedding provider. Use for recommendations, preferences, advice, and paraphrased prior context when exact lexical search is insufficient. This opt-in tool sends redacted source text only from LLM-allowed namespaces, reports provider tokens/cost, caches document vectors in the server process, and returns retrieval evidence—not proof or answer authority.',
+      inputSchema: {
+        text: boundedText(),
+        namespaces: namespacesField,
+        limit: knowledgeSearchLimitField,
+        kinds: knowledgeSearchKindsField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({
+      text,
+      namespaces,
+      limit,
+      kinds,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+    }) => {
+      try {
+        return asContent(
+          await semanticSearchKnowledgeTool(
+            {
+              store: resolvedDeps.store,
+              embeddings,
+              semanticCache,
+              llmAllowedNamespaces: resolvedDeps.llmAllowedNamespaces,
+              entityIdentity: resolvedDeps.entityIdentity,
+              trustMode: resolvedDeps.trustMode,
+            },
+            {
+              text,
+              namespaces,
+              limit,
+              kinds,
+              entityIdentity,
+              trustMode,
+              recordedSequence,
+            }
+          )
         );
       } catch (e) {
         return asError(e);

@@ -329,3 +329,15 @@ It verifies exact answers and citations, zero stale leakage, engine and real MCP
 a 100,000-fact indexed query/proof sweep, zero model/embedding/API-key cost for structured
 queries, and provider-reported natural-language recall cost. See
 [the current scorecard](AGENT-DATABASE-SCORECARD.md) for measured results and limitations.
+
+### Route fuzzy recommendations explicitly
+
+Use `semantic_search_knowledge` when the user asks for recommendations, preferences,
+suggestions, advice, or remembered context expressed with different words. The tool performs
+local lexical shortlisting first, then one bounded embedding request. Keep it out of exact
+workflow decisions: similarity retrieves candidate memory, while `query`, `explain_query`,
+or `recall_explain` establishes the answer.
+
+The semantic result reports its model, provider tokens/cost, cache hits/misses, semantic
+score, lexical rank, clause, and durable sources. Restrict exported namespaces with
+`REMBERO_LLM_ALLOWED_NAMESPACES`; detected secrets fail before the provider call.

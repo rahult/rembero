@@ -92,3 +92,8 @@ only the search text and bounded result count.
 fact follows logically or no semantically related knowledge exists. Use natural recall
 for model-assisted query translation, or raw `query`, `explain`, and `why-not` for
 deterministic logical conclusions.
+
+For paraphrased preference, recommendation, or advice retrieval, use the opt-in
+[`semantic-search` / `semantic_search_knowledge` path](SEMANTIC-KNOWLEDGE-SEARCH.md). It
+reranks this local search's bounded shortlist and remains retrieval evidence rather than
+logical proof.

@@ -157,7 +157,9 @@ function percentile(values: readonly number[], quantile: number): number {
   return sorted[Math.ceil((sorted.length - 1) * quantile)] ?? 0;
 }
 
-function summarize(results: readonly LongMemEvalQuestionResult[]): LongMemEvalRetrievalSummary {
+export function summarizeLongMemEvalResults(
+  results: readonly LongMemEvalQuestionResult[]
+): LongMemEvalRetrievalSummary {
   const answerable = results.filter(({ abstention }) => !abstention);
   const abstentions = results.filter(({ abstention }) => abstention);
   return {
@@ -179,6 +181,33 @@ function summarize(results: readonly LongMemEvalQuestionResult[]): LongMemEvalRe
     abstentionEmptyRate: mean(abstentions.map(({ empty }) => empty ? 1 : 0)),
     medianWallMs: percentile(results.map(({ wallMs }) => wallMs), 0.5),
     p95WallMs: percentile(results.map(({ wallMs }) => wallMs), 0.95),
+  };
+}
+
+export function scoreLongMemEvalRetrievedSessions(
+  instance: LongMemEvalInstance,
+  retrievedSessionIds: string[],
+  wallMs: number,
+  topScore: number
+): LongMemEvalQuestionResult {
+  const evidence = new Set(instance.answer_session_ids);
+  const retrieved = new Set(retrievedSessionIds);
+  const matches = [...retrieved].filter((id) => evidence.has(id)).length;
+  const abstention = instance.question_id.endsWith('_abs');
+  const firstRelevant = retrievedSessionIds.findIndex((id) => evidence.has(id));
+  return {
+    questionId: instance.question_id,
+    questionType: instance.question_type,
+    abstention,
+    evidenceSessionIds: [...instance.answer_session_ids],
+    retrievedSessionIds,
+    precisionAtK: abstention ? null : retrieved.size === 0 ? 0 : matches / retrieved.size,
+    recallAtK: abstention ? null : evidence.size === 0 ? 0 : matches / evidence.size,
+    reciprocalRank: abstention ? null : firstRelevant < 0 ? 0 : 1 / (firstRelevant + 1),
+    strictEvidenceCoverage: abstention ? null : matches === evidence.size,
+    empty: retrievedSessionIds.length === 0,
+    topScore,
+    wallMs,
   };
 }
 
@@ -247,32 +276,21 @@ export function scoreLongMemEvalInstances(
     const retrievedSessionIds = search.results.flatMap((result) =>
       result.sources[0]?.opId === undefined ? [] : [result.sources[0].opId]
     );
-    const evidence = new Set(instance.answer_session_ids);
-    const retrieved = new Set(retrievedSessionIds);
-    const matches = [...retrieved].filter((id) => evidence.has(id)).length;
-    const abstention = instance.question_id.endsWith('_abs');
-    const firstRelevant = retrievedSessionIds.findIndex((id) => evidence.has(id));
-    return {
-      questionId: instance.question_id,
-      questionType: instance.question_type,
-      abstention,
-      evidenceSessionIds: [...instance.answer_session_ids],
+    return scoreLongMemEvalRetrievedSessions(
+      instance,
       retrievedSessionIds,
-      precisionAtK: abstention ? null : retrieved.size === 0 ? 0 : matches / retrieved.size,
-      recallAtK: abstention ? null : evidence.size === 0 ? 0 : matches / evidence.size,
-      reciprocalRank: abstention ? null : firstRelevant < 0 ? 0 : 1 / (firstRelevant + 1),
-      strictEvidenceCoverage: abstention ? null : matches === evidence.size,
-      empty: retrievedSessionIds.length === 0,
-      topScore: search.results[0]?.score ?? 0,
       wallMs,
-    } satisfies LongMemEvalQuestionResult;
+      search.results[0]?.score ?? 0
+    );
   });
   const byQuestionType = Object.fromEntries(
     [...new Set(questions.map(({ questionType }) => questionType))]
       .sort()
       .map((questionType) => [
         questionType,
-        summarize(questions.filter((question) => question.questionType === questionType)),
+        summarizeLongMemEvalResults(
+          questions.filter((question) => question.questionType === questionType)
+        ),
       ])
   );
   return {
@@ -294,7 +312,7 @@ export function scoreLongMemEvalInstances(
     },
     topK,
     minimumScore,
-    summary: summarize(questions),
+    summary: summarizeLongMemEvalResults(questions),
     byQuestionType,
     questions,
   };

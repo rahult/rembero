@@ -109,6 +109,7 @@ import {
   repairPlanTool,
   auditRulesTool,
   searchKnowledgeTool,
+  semanticSearchKnowledgeTool,
   browseKnowledgeGraphTool,
   connectKnowledgeGraphTool,
   exportKnowledgeBundleTool,
@@ -118,6 +119,8 @@ import {
   knowledgeHealthTool,
   supersedeFactsTool,
 } from './mcp/tools.js';
+import { embeddingClientFromEnv } from './llm/embeddings.js';
+import { MemoryEmbeddingCache } from './knowledge/semantic-search.js';
 import {
   MAX_HISTORY_EVENTS,
   MAX_OPERATION_ID_BYTES,
@@ -165,6 +168,7 @@ Usage:
   remembero audit-rules [predicate]        Audit rule health with deterministic evidence
   remembero health                         Inspect complete deterministic knowledge health
   remembero search <text>                  Search facts, rules, policies, and sources locally
+  remembero semantic-search <text>         Provider-assisted search for preferences and advice
   remembero browse [entity]                Browse a bounded explicit personal graph
   remembero connect <from> <to>            Find bounded shortest explicit graph paths
   remembero bundle                         Export raw clauses and provenance with a digest
@@ -217,8 +221,8 @@ Options:
       --plan-limit <n>    Repair plans (default: 8; max: ${MAX_REPAIR_PLANS})
       --repair-steps <n>  Iterative repair depth (default: 4; max: ${MAX_REPAIR_STEPS})
       --search-states <n> Repair search states (default: 128; max: ${MAX_REPAIR_SEARCH_STATES})
-      --search-limit <n>  Local search results (default: 20; max: ${MAX_KNOWLEDGE_SEARCH_LIMIT})
-      --kind <kind>       Local search kind: fact, rule, or constraint; repeatable
+      --search-limit <n>  Search results (default: 20; max: ${MAX_KNOWLEDGE_SEARCH_LIMIT})
+      --kind <kind>       Search kind: fact, rule, or constraint; repeatable
       --predicate <name>  Browse seed predicate name or name/arity
       --browse-depth <n>  Explicit graph depth (default: 1; max: ${MAX_BROWSE_GRAPH_DEPTH})
       --claim-limit <n>   Explicit graph claims (default: 100; max: ${MAX_BROWSE_GRAPH_CLAIMS})
@@ -934,9 +938,10 @@ async function main(): Promise<void> {
   }
   if (
     (args.searchLimit !== undefined || args.searchKinds.length > 0) &&
-    command !== 'search'
+    command !== 'search' &&
+    command !== 'semantic-search'
   ) {
-    throw new Error('search limits and kinds are available only for search');
+    throw new Error('search limits and kinds are available only for search or semantic-search');
   }
   if (
     (args.related ||
@@ -994,10 +999,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['health', 'recall', 'recall-explain', 'query', 'explain', 'profile', 'what-if', 'why-not', 'topology', 'audit-rules', 'search', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['health', 'recall', 'recall-explain', 'query', 'explain', 'profile', 'what-if', 'why-not', 'topology', 'audit-rules', 'search', 'semantic-search', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for health, recall, recall-explain, query, explain, profile, what-if, why-not, topology, audit-rules, search, browse, connect, bundle, test-knowledge, check, conflicts, and list'
+      '--as-of-sequence is available for health, recall, recall-explain, query, explain, profile, what-if, why-not, topology, audit-rules, search, semantic-search, browse, connect, bundle, test-knowledge, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1613,6 +1618,36 @@ async function main(): Promise<void> {
                   args.searchLimit,
                   0,
                   'knowledge search limit'
+                ),
+              }),
+          ...(kinds === undefined ? {} : { kinds }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'semantic-search': {
+      const kinds = searchKindsOption(args.searchKinds);
+      const result = await semanticSearchKnowledgeTool(
+        {
+          store,
+          embeddings: embeddingClientFromEnv(),
+          semanticCache: new MemoryEmbeddingCache(),
+          llmAllowedNamespaces,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          text,
+          namespaces,
+          ...(args.searchLimit === undefined
+            ? {}
+            : {
+                limit: integerOption(
+                  args.searchLimit,
+                  0,
+                  'semantic search limit'
                 ),
               }),
           ...(kinds === undefined ? {} : { kinds }),
