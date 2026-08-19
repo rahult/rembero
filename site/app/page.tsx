@@ -2,6 +2,9 @@ import Image from "next/image";
 
 const github = "https://github.com/rahult/remembero";
 const playground = "/playground";
+const chatMemoryLab = "/labs/chat-memory";
+const groundedAgentLab = "/labs/grounded-agent";
+const agentHarnessGuide = "/guides/agent-harness";
 
 function HeroProof() {
   return (
@@ -27,14 +30,14 @@ export default function Home() {
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Remembero home">remembero</a>
         <nav className="desktop-nav" aria-label="Main navigation">
-          <a href="#product">Product</a><a href="#how-it-works">How it works</a><a href={playground}>Playground</a><a href={github}>GitHub</a>
+          <a href="#product">Product</a><a href="#labs">Labs</a><a href={agentHarnessGuide}>Agent guide</a><a href={playground}>Playground</a><a href={github}>GitHub</a>
         </nav>
         <div className="header-actions">
           <a className="button primary header-try" href={playground}>Try the playground</a>
           <a className="button secondary desktop-source" href={github}>View on GitHub</a>
           <details className="mobile-menu">
             <summary aria-label="Open menu"><i /><i /><i /></summary>
-            <nav aria-label="Mobile navigation"><a href="#product">Product</a><a href="#how-it-works">How it works</a><a href={playground}>Playground</a><a href={github}>GitHub</a></nav>
+            <nav aria-label="Mobile navigation"><a href="#product">Product</a><a href="#labs">Labs</a><a href={agentHarnessGuide}>Agent guide</a><a href={playground}>Playground</a><a href={github}>GitHub</a></nav>
           </details>
         </div>
       </header>
@@ -83,6 +86,35 @@ status(atlas, blocked).`}</code></pre></article>
         </div>
       </section>
 
+      <section className="labs-showcase section-dark" id="labs" aria-labelledby="labs-title">
+        <div className="section-shell">
+          <div className="labs-heading">
+            <h2 id="labs-title">See what better tools do for a small model.</h2>
+            <p>Three browser workbenches expose the full chain: optional Hermes 7B WebLLM inference with native tool calls, deterministic memory and policy, then SQLite + Wasm execution with the call, result, proof, and timing evidence on screen.</p>
+          </div>
+          <div className="lab-links">
+            <a href={chatMemoryLab}>
+              <span>Chat recall lab</span>
+              <strong>Same small model.<br /><em>Better tool.</em></strong>
+              <p>Watch Hermes 7B issue native WebLLM tool calls against one shared SQLite database: raw SQL rows in one lane, Remembero bindings and proof in the other.</p>
+              <b aria-hidden="true">Open lab →</b>
+            </a>
+            <a href={groundedAgentLab}>
+              <span>Grounded agent lab</span>
+              <strong>Let the model propose.<br /><em>Let rules decide.</em></strong>
+              <p>Run the same Hermes 7B model with and without memory, then watch the request facts, packet swap, gate query, rule, and proof chain stay visible while the action resolves.</p>
+              <b aria-hidden="true">Open lab →</b>
+            </a>
+            <a href={playground}>
+              <span>SQLite + Datalog playground</span>
+              <strong>Mutate SQLite.<br /><em>Measure the proof.</em></strong>
+              <p>Insert real rows, execute the Remembero extension inside SQLite WebAssembly, and inspect the browser-local tables, compiled rule, proof graph, and current-browser timings.</p>
+              <b aria-hidden="true">Open playground →</b>
+            </a>
+          </div>
+        </div>
+      </section>
+
       <section className="how section" id="how-it-works">
         <div className="section-shell">
           <h2>An answer is only useful if you can inspect <em>why.</em></h2>
@@ -110,14 +142,14 @@ status(atlas, blocked).`}</code></pre></article>
 
       <section className="final-cta section">
         <div className="section-shell final-cta-grid">
-          <div><h2>Build agents that can <em>show their work.</em></h2><p>Start with the product story, then open the IDE when you want to inspect the machinery.</p></div>
-          <div className="final-actions"><a className="button primary" href={playground}>Open the playground</a><a className="button link-button" href={github}>View the source <span aria-hidden="true">→</span></a></div>
+          <div><h2>Build agents that can <em>show their work.</em></h2><p>Try a real-life lab first, then open the IDE when you want to inspect the machinery.</p></div>
+          <div className="final-actions"><a className="button primary" href={chatMemoryLab}>Open a lab</a><a className="button link-button" href={playground}>Open the playground <span aria-hidden="true">→</span></a></div>
         </div>
       </section>
 
       <footer className="site-footer">
         <strong>remembero</strong>
-        <nav aria-label="Footer navigation"><a href={playground}>Playground</a><a href={github}>GitHub</a><a href={`${github}#readme`}>Docs</a><a href="https://www.npmjs.com/package/remembero">npm</a><span>MIT licensed</span></nav>
+        <nav aria-label="Footer navigation"><a href={chatMemoryLab}>Chat lab</a><a href={groundedAgentLab}>Agent lab</a><a href={playground}>Playground</a><a href={github}>GitHub</a><a href={`${github}#readme`}>Docs</a><a href="https://www.npmjs.com/package/remembero">npm</a><span>MIT licensed</span></nav>
       </footer>
     </main>
   );

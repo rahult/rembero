@@ -64,6 +64,13 @@ interface Evaluation {
   explanations: BrowserDatalogExplanation[];
 }
 
+interface RuntimeMetrics {
+  bootMs: number | null;
+  ruleMs: number | null;
+  insertMs: number | null;
+  sqlMs: number | null;
+}
+
 type MobilePane = "data" | "query" | "proof" | "graph";
 
 const github = "https://github.com/rahult/remembero";
@@ -167,6 +174,12 @@ function programHead(value: string): string {
   return value.trim().match(/^([a-z][a-z0-9_]*)\s*\(/)?.[1] ?? "query";
 }
 
+function formatMetric(value: number | null): string {
+  if (value === null) return "—";
+  const precision = value < 10 ? 2 : 1;
+  return `${Math.max(value, 0.01).toFixed(precision)} ms`;
+}
+
 export function SqliteIde() {
   const databaseRef = useRef<BrowserDatalogDatabase | null>(null);
   const [runtime, setRuntime] = useState<BrowserSqliteRuntimeInfo | null>(null);
@@ -198,6 +211,12 @@ export function SqliteIde() {
   const [proofVisited, setProofVisited] = useState(false);
   const [mobilePane, setMobilePane] = useState<MobilePane>("data");
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
+  const [metrics, setMetrics] = useState<RuntimeMetrics>({
+    bootMs: null,
+    ruleMs: null,
+    insertMs: null,
+    sqlMs: null,
+  });
 
   const selectedSnapshot = useMemo(
     () => tables.find((table) => table.name === selectedTable) ?? tables[0] ?? null,
@@ -226,26 +245,43 @@ export function SqliteIde() {
 
     const boot = async () => {
       try {
+        const bootStarted = performance.now();
         opened = await openBrowserDatalogDatabase();
+        const bootMs = performance.now() - bootStarted;
         if (!active) {
           await opened.close();
           return;
         }
         databaseRef.current = opened;
         await opened.exec(SAMPLE_SETUP_SQL);
+        const initialRule = (async () => {
+          const started = performance.now();
+          const value = await evaluateProgram(opened!, PRESETS[0].program);
+          return { value, durationMs: performance.now() - started };
+        })();
         const [nextTables, nextSqlRows, nextEvaluation] = await Promise.all([
           readTables(opened),
           opened.exec(DEFAULT_SQL),
-          evaluateProgram(opened, PRESETS[0].program),
+          initialRule,
         ]);
         if (!active) return;
         setRuntime(opened.runtime);
         setTables(nextTables);
         setSqlRows(nextSqlRows);
-        applyEvaluation(nextEvaluation);
+        applyEvaluation(nextEvaluation.value);
+        setMetrics({
+          bootMs,
+          ruleMs: nextEvaluation.durationMs,
+          insertMs: null,
+          sqlMs: null,
+        });
         setLineage((current) => [
           ...current,
-          timestampedEvent("DATALOG", "needs_follow_up", "2 derived rows"),
+          timestampedEvent(
+            "DATALOG",
+            "needs_follow_up",
+            `2 derived rows · ${formatMetric(nextEvaluation.durationMs)}`,
+          ),
         ]);
         setPhase("ready");
       } catch (value) {
@@ -277,11 +313,18 @@ export function SqliteIde() {
     setPhase("running");
     setError(null);
     try {
+      const started = performance.now();
       const next = await evaluateProgram(database, source);
+      const durationMs = performance.now() - started;
       applyEvaluation(next);
+      setMetrics((current) => ({ ...current, ruleMs: durationMs }));
       setLineage((current) => [
         ...current,
-        timestampedEvent("DATALOG", programHead(source), `${next.rows.length} derived rows`),
+        timestampedEvent(
+          "DATALOG",
+          programHead(source),
+          `${next.rows.length} derived rows · ${formatMetric(durationMs)}`,
+        ),
       ]);
       setPhase("ready");
       if (moveToProof) setMobilePane("proof");
@@ -297,12 +340,19 @@ export function SqliteIde() {
     setPhase("running");
     setError(null);
     try {
+      const started = performance.now();
       const rows = await database.exec(sqlText);
       setSqlRows(rows);
       await refreshTables(database);
+      const durationMs = performance.now() - started;
+      setMetrics((current) => ({ ...current, sqlMs: durationMs }));
       setLineage((current) => [
         ...current,
-        timestampedEvent("SQL", "scratchpad", rows.length ? `${rows.length} rows` : "statement complete"),
+        timestampedEvent(
+          "SQL",
+          "scratchpad",
+          `${rows.length ? `${rows.length} rows` : "statement complete"} · ${formatMetric(durationMs)}`,
+        ),
       ]);
       await runProgram(database, program);
     } catch (value) {
@@ -324,6 +374,7 @@ export function SqliteIde() {
     setPhase("running");
     setError(null);
     try {
+      const started = performance.now();
       await database.exec(
         `INSERT INTO ${quoteIdentifier(insertSnapshot.name)} (${columns
           .map(quoteIdentifier)
@@ -331,13 +382,17 @@ export function SqliteIde() {
         columns.map((column) => insertValues[column] ?? null),
       );
       await refreshTables(database);
+      const durationMs = performance.now() - started;
+      setMetrics((current) => ({ ...current, insertMs: durationMs }));
       setSelectedTable(insertSnapshot.name);
       setLineage((current) => [
         ...current,
         timestampedEvent(
           "INSERT",
           insertSnapshot.name,
-          columns.map((column) => formatCell(insertValues[column] ?? null)).join(", "),
+          `${columns
+            .map((column) => formatCell(insertValues[column] ?? null))
+            .join(", ")} · ${formatMetric(durationMs)}`,
         ),
       ]);
       await runProgram(database, program);
@@ -355,10 +410,15 @@ export function SqliteIde() {
     setError(null);
     try {
       await database.exec(SAMPLE_SETUP_SQL);
+      const resetRule = (async () => {
+        const started = performance.now();
+        const value = await evaluateProgram(database, PRESETS[0].program);
+        return { value, durationMs: performance.now() - started };
+      })();
       const [nextTables, nextSqlRows, nextEvaluation] = await Promise.all([
         readTables(database),
         database.exec(DEFAULT_SQL),
-        evaluateProgram(database, PRESETS[0].program),
+        resetRule,
       ]);
       setTables(nextTables);
       setSqlRows(nextSqlRows);
@@ -367,10 +427,20 @@ export function SqliteIde() {
       setSelectedTable("status");
       setInsertTable("status");
       setInsertValues({ ...INSERT_DEFAULTS.status });
-      applyEvaluation(nextEvaluation);
+      applyEvaluation(nextEvaluation.value);
+      setMetrics((current) => ({
+        ...current,
+        ruleMs: nextEvaluation.durationMs,
+        insertMs: null,
+        sqlMs: null,
+      }));
       setLineage([
         ...INITIAL_LINEAGE,
-        timestampedEvent("RESET", "Atlas.db", "sample restored"),
+        timestampedEvent(
+          "RESET",
+          "Atlas.db",
+          `sample restored · ${formatMetric(nextEvaluation.durationMs)}`,
+        ),
       ]);
       setProofVisited(false);
       setGuidanceOpen(true);
@@ -627,7 +697,12 @@ export function SqliteIde() {
                   />
                 </label>
               ))}
-              <button className="ide-primary" type="submit" disabled={busy || !insertSnapshot}>
+              <button
+                className="ide-primary"
+                type="button"
+                onClick={() => void insertRow()}
+                disabled={busy || !insertSnapshot}
+              >
                 <PlayIcon width="17" height="17" />
                 Insert row
               </button>
@@ -829,7 +904,25 @@ export function SqliteIde() {
             <div className="native-console">
               <div className="ide-panel-heading compact">
                 <h2>Native console</h2>
-                <span>{runtime ? "ready" : phase}</span>
+                <span>{runtime ? "current browser · seeded case" : phase}</span>
+              </div>
+              <div className="runtime-metrics" aria-label="Current browser performance">
+                <div>
+                  <strong>{formatMetric(metrics.bootMs)}</strong>
+                  <span>SQLite + Wasm boot</span>
+                </div>
+                <div>
+                  <strong>{formatMetric(metrics.ruleMs)}</strong>
+                  <span>rule + proof</span>
+                </div>
+                <div>
+                  <strong>{formatMetric(metrics.insertMs)}</strong>
+                  <span>last insert</span>
+                </div>
+                <div>
+                  <strong>{formatMetric(metrics.sqlMs)}</strong>
+                  <span>last SQL</span>
+                </div>
               </div>
               <code>&gt; sqlite3_auto_extension(sqlite3_rembero_init)</code>
               <strong>{runtime?.extensionLoaded ? "Remembero extension linked into SQLite" : "Loading extension…"}</strong>
@@ -940,6 +1033,7 @@ export function SqliteIde() {
           {runtime?.extensionLoaded ? "Extension linked into SQLite" : "Starting SQLite…"}
         </span>
         <span>Session only · nothing uploaded</span>
+        <span>Rule + proof {formatMetric(metrics.ruleMs)}</span>
         <span className="status-spacer" />
         <span>Line {cursor.line}, Col {cursor.column}</span>
         <span>Ctrl/⌘ + Enter to run</span>

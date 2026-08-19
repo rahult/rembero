@@ -15,14 +15,14 @@ const geistMono = Geist_Mono({
 
 const title = "Remembero — Memory you can reason with";
 const description =
-  "Proof-carrying memory for agents: readable facts, deterministic rules, sourced answers, and an SQLite-native browser playground.";
+  "Proof-carrying memory for agents: readable facts, deterministic rules, real-life browser labs, and an SQLite-native playground.";
 
 const designContract = `<!--
-THESIS: The main site sells proof-carrying memory; the playground lets visitors inspect the mechanism.
+THESIS: The main site sells proof-carrying memory; two labs show the real-life effect; the playground exposes the mechanism.
 OWN-WORLD: True white evidence canvas, navy structural chrome, cobalt execution, amber provenance, compact sans controls, mono data, serif answers.
-STORY: A visitor understands the product on the homepage, then opens /playground/ to insert a row, run a rule, and verify the proof.
+STORY: A visitor understands the product, compares real-life model behavior in /labs/, then opens /playground/ to inspect the machinery.
 FIRST VIEWPORT: Marketing hero with one proof-carrying answer, product promise, and direct Playground and GitHub actions.
-FORM: Editorial product site plus a separate Guided Query Canvas at /playground/.
+FORM: Editorial product site plus two comparison labs and a separate Guided Query Canvas at /playground/.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->`;
 

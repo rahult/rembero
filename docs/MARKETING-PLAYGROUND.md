@@ -1,14 +1,21 @@
-# Hosted marketing playground
+# Hosted marketing labs and playground
 
-Remembero's product marketing site and deterministic browser playground are deployed at:
+Remembero's product marketing site, real-life labs, and deterministic browser playground
+are deployed at:
 
 <http://remembero.rahultrikha.com/>
 
-The current Sites deployment is private and uses Sign in with ChatGPT owner access. The
-site can be made public through an explicit access-policy change when desired.
-
 ## What the public-facing experience proves
 
+- `/labs/chat-memory` runs two real model tool loops over one shared browser-local SQLite
+  database: a typed prepared-SQL call versus a Remembero Datalog query + proof call. The
+  model calls, executed commands, tool results, raw output, and answer contract stay visible;
+- `/labs/grounded-agent` keeps both model packets beside the proposed-action fact, gate
+  query, active policy rule, proof chain, deterministic authorization, and measured gate time;
+- `/playground` exposes current-browser SQLite + Wasm boot, rule + proof, SQL, and insert
+  timings beside the linked extension identity;
+- `/guides/agent-harness` provides the portable MCP and model-tool-loop integration contract,
+  including validation, proof-aware synthesis, fail-closed behavior, and review-gated writes;
 - supported queries execute through the actual browser-safe Remembero Datalog engine;
 - derived answers show their exact leaf claims, authored rule, and fictional source;
 - the gift question returns an explicit non-answer and visibly separate related context;
@@ -16,19 +23,23 @@ site can be made public through an explicit access-policy change when desired.
   directly supported answer; and
 - reset restores the immutable fictional Atlas fixture.
 
-No model, API route, D1 database, R2 bucket, cookie, browser storage, or private Remembero
-store participates. Preset questions map visibly to canonical Datalog queries. The demo
-bundles only `src/engine/index.ts` and its pure engine dependencies; Node-backed store,
-source, SQLite, and server modules stay outside the hosted client.
+No remote model API, API route, D1 database, R2 bucket, cookie, browser storage, or private
+Remembero store participates. Developers may explicitly download the optional Hermes 2 Pro Mistral 7B
+WebLLM weights; inference then runs locally and the browser caches those weights. A
+ready browser-native language model may also generate the comparison proposals locally;
+unsupported or zero-download sessions use explicitly labeled simulated prose.
+The facts, rules, results, and proofs are always evaluated by the real browser-safe engine.
+Node-backed store, source, SQLite, and server modules stay outside the hosted lab clients.
 
 ## Source
 
-The deployable Sites/vinext project is under `site/`. Its `.openai/hosting.json` retains
-the opaque Sites project ID with D1 and R2 disabled. The committed design references are:
+The deployable vinext project is under `site/`. The committed design references are:
 
 - `docs/assets/rembero-marketing-hero-concept.png`
 - `docs/assets/rembero-marketing-playground-concept.png`
 - `docs/assets/rembero-marketing-lower-concept.png`
 - `docs/assets/rembero-marketing-mobile-concept.png`
+- `docs/assets/rembero-chat-memory-lab-concept.png`
+- `docs/assets/rembero-grounded-agent-lab-concept.png`
 
 The social card is generated specifically for the finished site at `site/public/og.png`.

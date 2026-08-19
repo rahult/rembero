@@ -32,7 +32,9 @@ browser, not imitate their API in a presentation layer.
 The product is exercised through TypeScript, CLI, MCP, a local web console, and a native
 SQLite loadable extension. The public showcase is a static site deployed from GitHub and
 must work without a model, API key, account, server mutation endpoint, or network-backed
-database. Its sample workspace is fictional and resettable.
+database. Its sample workspace is fictional and resettable. Developers may explicitly
+load the optional Hermes 2 Pro Mistral 7B WebLLM model; model weights are downloaded and cached by
+the browser, while inference remains local. The simulator remains the zero-download path.
 
 ## Capabilities and Constraints
 
@@ -65,6 +67,8 @@ correctness, semantic/vector retrieval, or model-free arbitrary natural-language
 - SQLite adapter and execution planning: `src/sqlite/extension.ts`.
 - Existing browser-contained proof demo: `site/app/playground.tsx` and `site/lib/demo.ts`.
 - Public evaluation artifacts and measured transparent baselines: `docs/research/`.
+- Lab and playground timings are measured from the current browser and labeled as seeded
+  case measurements, not cross-device benchmarks.
 - No customer testimonials, production scale evidence, or external-stack benchmark runs
   are available and none may be fabricated for the showcase.
 

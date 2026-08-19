@@ -14,7 +14,7 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the Remembero marketing homepage with playground navigation", async () => {
+test("server-renders the Remembero marketing homepage with lab and playground navigation", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -23,11 +23,120 @@ test("server-renders the Remembero marketing homepage with playground navigation
   assert.match(html, /Memory you(?:<br\/>|\s)+can reason with\./);
   assert.match(html, /Not another vector store\./);
   assert.match(html, /The database is the demo\./);
+  assert.match(html, /See what better tools do for a small model\./);
   assert.match(html, /Models translate\./);
   assert.match(html, /Build agents that can/);
   assert.match(html, /href="\/playground"/);
+  assert.match(html, /href="\/labs\/chat-memory"/);
+  assert.match(html, /href="\/labs\/grounded-agent"/);
+  assert.match(html, /href="\/guides\/agent-harness"/);
   assert.match(html, /http:\/\/localhost(?::3000)?\/og\.png/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+});
+
+test("server-renders both real-life browser labs", async () => {
+  const [chatResponse, agentResponse] = await Promise.all([
+    render("/labs/chat-memory"),
+    render("/labs/grounded-agent"),
+  ]);
+  assert.equal(chatResponse.status, 200);
+  assert.equal(agentResponse.status, 200);
+
+  const [chatHtml, agentHtml] = await Promise.all([
+    chatResponse.text(),
+    agentResponse.text(),
+  ]);
+  assert.match(chatHtml, /<title>Remembero Lab — Same small model, different tool<\/title>/i);
+  assert.match(chatHtml, /Same small model\. Different tool\./);
+  assert.match(chatHtml, /Shared SQLite/);
+  assert.match(chatHtml, /Model calls/);
+  assert.match(chatHtml, /Data only/);
+  assert.match(chatHtml, /With Remembero/);
+  assert.match(chatHtml, /href="\/guides\/agent-harness"/);
+  assert.match(chatHtml, /Model calls use a labeled simulator/);
+
+  assert.match(agentHtml, /<title>Grounded Agent Lab — Let the gate show its work<\/title>/i);
+  assert.match(agentHtml, /Let the model propose\. Let the gate show its work\./);
+  assert.match(agentHtml, /Prompt-only agent/);
+  assert.match(agentHtml, /Grounded agent/);
+  assert.match(agentHtml, /The model never gets mutation authority\./);
+  assert.match(agentHtml, /Model proposals use the deterministic simulator/);
+});
+
+test("server-renders the agent harness integration guide", async () => {
+  const response = await render("/guides/agent-harness");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(
+    html,
+    /<title>Remembero Guide — Add proof-carrying memory to an agent harness<\/title>/i,
+  );
+  assert.match(html, /Add proof-carrying memory without dumping memory into the prompt\./);
+  assert.match(html, /Wire one narrow tool loop\./);
+  assert.match(html, /recall_explain/);
+  assert.match(html, /explain_query/);
+  assert.match(html, /propose_memory/);
+  assert.match(html, /apply_memory_proposal/);
+  assert.match(html, /href="\/labs\/chat-memory"/);
+});
+
+test("labs run real browser-safe tool and policy loops without remote model APIs or persistence surfaces", async () => {
+  const [chatClient, chatEngine, chatTools, agentClient, agentEngine, browserModel] = await Promise.all([
+    readFile(new URL("../app/labs/chat-memory/chat-memory-lab.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/chat-memory-lab.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/chat-memory-tools.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/labs/grounded-agent/grounded-agent-lab.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/grounded-agent-lab.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/browser-language-model.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(chatEngine, /from "\.\/engine"/);
+  assert.match(chatEngine, /evaluateQuerySpecWithProof/);
+  assert.match(chatEngine, /parseProgram/);
+  assert.doesNotMatch(chatClient, /FINAL_ANSWER/);
+  assert.match(chatClient, /openBrowserDatalogDatabase/);
+  assert.match(chatClient, /requestLoadedWebLlmToolCall/);
+  assert.match(chatClient, /finalAnswerPrompt/);
+  assert.match(chatClient, /not \(\?:to \)\?follow up/);
+  assert.match(chatClient, /vendor security review/);
+  assert.match(chatClient, /parseChatToolCall/);
+  assert.match(chatClient, /executeChatTool/);
+  assert.doesNotMatch(chatClient, /sharedSourceData|SOURCE_DATA:/);
+  assert.match(chatTools, /CREATE TABLE promised_update/);
+  assert.match(chatTools, /name: "Query"/);
+  assert.match(chatTools, /lane === "data"/);
+  assert.match(chatTools, /database\.datalogQuery/);
+  assert.match(chatTools, /database\.datalogExplain/);
+  assert.match(agentEngine, /from "\.\/engine"/);
+  assert.match(agentEngine, /evaluateQuerySpecWithProof/);
+  assert.match(agentEngine, /requires_human/);
+  assert.match(agentEngine, /proposed_action/);
+  assert.match(agentEngine, /action_allowed/);
+  assert.match(agentEngine, /action_blocked/);
+  assert.match(agentClient, /promptProposalStatus/);
+  assert.match(agentClient, /failed closed/);
+  assert.match(agentClient, /promptModel\(\s*AGENT_PROMPT,\s*promptOnlyRequest/);
+  assert.match(agentClient, /promptModel\(\s*AGENT_PROMPT,\s*groundedRequest/);
+
+  assert.match(browserModel, /LanguageModel/);
+  assert.match(browserModel, /availability\(\)/);
+  assert.match(browserModel, /!== "available"/);
+  assert.match(browserModel, /reason: "unsupported"/);
+  assert.match(browserModel, /reason: "not_ready"/);
+  assert.match(browserModel, /reason: "runtime_error"/);
+  assert.match(browserModel, /Hermes-2-Pro-Mistral-7B-q4f16_1-MLC/);
+  assert.match(browserModel, /CreateMLCEngine/);
+  assert.match(browserModel, /promptLoadedWebLlm/);
+  assert.match(browserModel, /requestLoadedWebLlmToolCall/);
+  assert.match(browserModel, /tool_choice/);
+  assert.match(browserModel, /tool_calls/);
+  assert.match(browserModel, /role: "system",\s*content: systemPrompt/);
+  assert.match(browserModel, /role: "user",\s*content: userPrompt/);
+
+  const hostedLabSource = `${chatClient}\n${chatEngine}\n${chatTools}\n${agentClient}\n${agentEngine}\n${browserModel}`;
+  assert.doesNotMatch(hostedLabSource, /fetch\s*\(|XMLHttpRequest|WebSocket|EventSource/);
+  assert.doesNotMatch(hostedLabSource, /localStorage|sessionStorage|document\.cookie|indexedDB/);
+  assert.doesNotMatch(hostedLabSource, /OPENAI_API_KEY|LLM_API_KEY/);
 });
 
 test("server-renders the full SQLite IDE on the playground route", async () => {
@@ -45,9 +154,10 @@ test("server-renders the full SQLite IDE on the playground route", async () => {
 });
 
 test("playground uses the statically linked SQLite extension and remains browser-contained", async () => {
-  const [playground, ide, demo, adapter, page, playgroundPage, packageJson, og] = await Promise.all([
+  const [playground, ide, globalCss, demo, adapter, page, playgroundPage, packageJson, og] = await Promise.all([
     readFile(new URL("../app/playground.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/sqlite-ide.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../lib/ide-demo.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/sqlite-wasm.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
@@ -65,6 +175,10 @@ test("playground uses the statically linked SQLite extension and remains browser
   assert.match(ide, /Insert SQLite row/);
   assert.match(ide, /Why this is true/);
   assert.match(ide, /Query graph/);
+  assert.match(ide, /onClick=\{\(\) => void insertRow\(\)\}/);
+  assert.match(ide, /Current browser performance/);
+  assert.match(ide, /performance\.now\(\)/);
+  assert.match(globalCss, /grid-template-rows: minmax\(140px, auto\)/);
   assert.doesNotMatch(ide, /localStorage|sessionStorage|document\.cookie/);
   assert.match(adapter, /new Worker\(/);
   assert.match(adapter, /sqlite3-worker1-promiser\.mjs/);
@@ -78,23 +192,43 @@ test("playground uses the statically linked SQLite extension and remains browser
   assert.doesNotMatch(`${page}\n${playgroundPage}\n${ide}`, /from "next\/link"/);
   assert.doesNotMatch(page, /_sites-preview|SkeletonPreview|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+  assert.match(packageJson, /"@mlc-ai\/web-llm"/);
   assert.equal(og.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
 });
 
 test("GitHub Pages export is self-contained when present", async () => {
   const exported = new URL("../dist/pages/index.html", import.meta.url);
   const exportedPlayground = new URL("../dist/pages/playground/index.html", import.meta.url);
+  const exportedChatLab = new URL("../dist/pages/labs/chat-memory/index.html", import.meta.url);
+  const exportedAgentLab = new URL("../dist/pages/labs/grounded-agent/index.html", import.meta.url);
+  const exportedAgentGuide = new URL("../dist/pages/guides/agent-harness/index.html", import.meta.url);
   await access(exported);
   await access(exportedPlayground);
-  const [html, playgroundHtml] = await Promise.all([
+  await access(exportedChatLab);
+  await access(exportedAgentLab);
+  await access(exportedAgentGuide);
+  const [html, playgroundHtml, chatLabHtml, agentLabHtml, agentGuideHtml] = await Promise.all([
     readFile(exported, "utf8"),
     readFile(exportedPlayground, "utf8"),
+    readFile(exportedChatLab, "utf8"),
+    readFile(exportedAgentLab, "utf8"),
+    readFile(exportedAgentGuide, "utf8"),
   ]);
   assert.match(html, /Memory you(?:<br\/>|\s)+can reason with\./);
   assert.match(html, /href="\/playground"/);
   assert.match(playgroundHtml, /SQLite \+ Datalog IDE/);
   assert.match(playgroundHtml, /The database is the demo\./);
-  for (const rendered of [html, playgroundHtml]) {
+  assert.match(chatLabHtml, /Same small model\. Different tool\./);
+  assert.match(agentLabHtml, /Let the model propose\. Let the gate show its work\./);
+  assert.match(agentGuideHtml, /Wire one narrow tool loop\./);
+  for (const labHtml of [chatLabHtml, agentLabHtml]) {
+    assert.doesNotMatch(
+      labHtml,
+      /lib-[A-Za-z0-9_-]+\.js/,
+      "the multi-megabyte WebLLM chunk must stay behind the explicit load action",
+    );
+  }
+  for (const rendered of [html, playgroundHtml, chatLabHtml, agentLabHtml, agentGuideHtml]) {
     assert.match(rendered, /href="\/_next\/static\/css\//);
     assert.match(rendered, /src="\/_next\/static\/chunks\//);
     assert.match(rendered, /https:\/\/remembero\.rahultrikha\.com\/og\.png/);

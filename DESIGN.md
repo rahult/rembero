@@ -170,6 +170,32 @@ The learning sequence is deliberately database-first:
 Advanced surfaces—SQL scratchpad, constraints, recursive examples, raw JSON, compiled
 SQL, and build hashes—remain available in-place but do not compete with the first proof.
 
+### Shipped developer-lab topology
+
+The labs are developer workbenches, not chat mockups. At ordinary laptop widths the
+user-facing result and the machinery that produced it remain visible together.
+
+The chat-memory workbench exposes two complete model tool loops over one browser-local
+SQLite database. Both lanes expose the same `Query({query})` interface. The data-only lane
+shows its SQL adapter, executed prepared SQL, and raw rows. The Remembero lane shows its
+Remembero adapter, executed Datalog, bindings, and proof. A shared-runtime column makes the single data
+authority explicit, while the contract column keeps both final raw outputs and proof visible.
+The tool ledgers precede the polished answers when the layout must stack.
+
+The grounded-agent workbench keeps four persistent columns: structured request, prompt-only
+proposal, memory-enriched proposal, and deterministic decision proof. The proof region shows
+the proposed-action fact, gate query, active rule, proof chain, and final authorization. It
+becomes the first workbench region at narrow widths. The model may propose an action, but
+only the proof-carrying gate may approve, block, or escalate it.
+
+Both labs label whether model prose came from a ready browser-local language model or the
+deterministic simulator. Developers can explicitly load the optional Hermes 2 Pro Mistral 7B
+WebLLM model; the chat lab uses native `tools` and forced `tool_choice`, then shows the
+validated call and tool result in the final synthesis prompt. Real
+SQLite, SQL, Remembero rule evaluation, and proof generation run in the browser. The SQLite playground shows current-browser timings beside the
+native runtime identity; those numbers are measurements of the active seeded case, not a
+cross-device benchmark.
+
 ## Elevation & Depth
 
 The system is flat by default. Hierarchy comes from tonal fields, 1px rules, typography,

@@ -1,0 +1,316 @@
+# Add Remembero to an agent harness
+
+This guide shows the narrow production pattern behind the browser lab:
+
+```text
+user question
+  -> model selects a bounded Query tool
+  -> harness validates the call
+  -> Remembero evaluates memory and rules
+  -> tool returns bindings, sources, and proof
+  -> harness gives only that result to the model
+  -> deterministic contract accepts, corrects, or blocks the answer
+```
+
+The model never receives the entire memory store and never receives mutation authority.
+
+## Choose an integration path
+
+| Path | Use it when | Remembero surface |
+| --- | --- | --- |
+| MCP server | Your harness already supports MCP tools | `remembero serve` |
+| Embedded Node.js | You own a TypeScript agent runtime | `MemoryStore`, `recallQuestion`, `explainKnowledge` |
+| SQLite adapter | Your application data already lives in SQLite | `openDatalogDatabase` or the SQLite extension |
+
+Start with MCP unless your runtime needs an in-process database lifecycle.
+
+## 1. Start the MCP server
+
+Install and start Remembero over stdio:
+
+```bash
+npm install -g remembero
+remembero serve
+```
+
+Equivalent harness configuration:
+
+```json
+{
+  "mcpServers": {
+    "remembero": {
+      "command": "npx",
+      "args": ["-y", "remembero", "serve"],
+      "env": {
+        "REMBERO_HOME": "/absolute/path/to/agent-memory"
+      }
+    }
+  }
+}
+```
+
+Raw tools such as `query`, `explain_query`, `assert_facts`, and
+`check_integrity` do not require an LLM API key. Natural-language tools such as
+`remember`, `recall`, and `recall_explain` require the configured LLM provider.
+
+## 2. Expose one bounded agent tool
+
+Keep the model-facing contract small and stable. A useful default is one semantic
+`Query` function:
+
+```ts
+export const queryTool = {
+  type: "function",
+  function: {
+    name: "Query",
+    description:
+      "Query governed long-term memory and return bindings, sources, and proof.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The user's memory question, unchanged",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+} as const;
+```
+
+Do not expose arbitrary SQL, filesystem paths, namespaces, integrity modes, or
+write operations through this read tool. The harness supplies those values from
+trusted application configuration.
+
+## 3. Add the tool-use prompt
+
+The prompt should describe tool policy, not memory content:
+
+```text
+Call the Query function exactly once with the user's question.
+Do not invent another function or write SQL or Datalog yourself.
+After the tool result is returned, answer using only that evidence.
+If the result is unsupported or empty, say so explicitly.
+```
+
+No facts, rules, database rows, or expected answer belong in this first prompt.
+
+## 4. Run the model -> tool -> model loop
+
+This example is deliberately framework-neutral. Map `model.complete` and
+`remembero.callTool` to your provider and MCP client.
+
+```ts
+type ToolCall = {
+  id: string;
+  name: string;
+  arguments: unknown;
+};
+
+type HarnessDeps = {
+  model: {
+    complete(input: {
+      messages: Array<Record<string, unknown>>;
+      tools?: readonly unknown[];
+      toolChoice?: unknown;
+    }): Promise<{ text?: string; toolCall?: ToolCall }>;
+  };
+  remembero: {
+    callTool(name: string, input: Record<string, unknown>): Promise<unknown>;
+  };
+};
+
+const MAX_QUERY_CHARS = 2_000;
+
+function validateQueryCall(call: ToolCall, question: string): string {
+  if (call.name.toLowerCase() !== "query") {
+    throw new Error("unexpected tool name");
+  }
+
+  const args = call.arguments as { query?: unknown };
+  if (typeof args.query !== "string" || args.query !== question) {
+    throw new Error("tool query must equal the user question");
+  }
+  if (args.query.length > MAX_QUERY_CHARS) {
+    throw new Error("tool query is too large");
+  }
+  return args.query;
+}
+
+export async function runRememberoAgent(
+  question: string,
+  deps: HarnessDeps,
+) {
+  const first = await deps.model.complete({
+    messages: [
+      {
+        role: "user",
+        content: [
+          "Call Query exactly once with the user's question.",
+          "Do not answer until the tool result is available.",
+          `Question: ${question}`,
+        ].join("\n"),
+      },
+    ],
+    tools: [queryTool],
+    toolChoice: { type: "function", function: { name: "Query" } },
+  });
+
+  if (!first.toolCall) throw new Error("model did not call Query");
+  const query = validateQueryCall(first.toolCall, question);
+
+  const toolResult = await deps.remembero.callTool("recall_explain", {
+    question: query,
+    namespaces: ["agent"],
+    answerMode: "evidence",
+    proofLimit: 4,
+  });
+
+  const final = await deps.model.complete({
+    messages: [
+      {
+        role: "system",
+        content:
+          "Answer using only TOOL_RESULT. Cite concrete bindings and sources. " +
+          "If status is not answered, return an explicit non-answer.",
+      },
+      {
+        role: "user",
+        content: [
+          `QUESTION: ${question}`,
+          `TOOL_CALL: ${JSON.stringify(first.toolCall)}`,
+          `TOOL_RESULT: ${JSON.stringify(toolResult)}`,
+        ].join("\n"),
+      },
+    ],
+  });
+
+  return {
+    answer: final.text ?? "",
+    toolCall: first.toolCall,
+    toolResult,
+  };
+}
+```
+
+The final prompt includes tool output because the model must phrase the result. It does
+not include a memory dump or facts that the tool did not return.
+
+## 5. Choose the Remembero read tool
+
+### General personal or project memory
+
+Use `recall_explain` when the tool receives natural-language questions:
+
+```ts
+await remembero.callTool("recall_explain", {
+  question,
+  namespaces: ["agent"],
+  answerMode: "evidence",
+  proofLimit: 4,
+});
+```
+
+The result includes an explicit status, generated query, bindings, deterministic proof,
+durable source statements, and a query-scoped graph.
+
+### Governed application workflows
+
+Use an allowlisted application router plus `explain_query` when the domain has known
+relations and rules:
+
+```ts
+const preparedQueries = {
+  "follow-up-maya": "needs_follow_up(maya, Project)",
+  "schedule-atlas": "schedule_review(atlas, Day, Window, Blocker)",
+} as const;
+
+const datalog = preparedQueries[trustedCaseId];
+const result = await remembero.callTool("explain_query", {
+  query: datalog,
+  namespaces: ["agent"],
+  proofLimit: 4,
+});
+```
+
+The model selects the semantic tool. Trusted application code selects the namespace,
+prepared relation, limits, and authority.
+
+## 6. Keep writes proposal-only
+
+Do not let a model call accepted-memory mutation tools directly. Use:
+
+```text
+model -> propose_memory -> typed human review -> apply_memory_proposal
+```
+
+Apply reviewed proposals with a caller-stable `opId` so retries are idempotent. Run
+integrity and knowledge checks before the commit. The agent proposes; deterministic
+validation and explicit review own mutation authority.
+
+## 7. Fail closed
+
+Reject or hand off when any of these are true:
+
+- tool name is not allowlisted;
+- arguments fail schema validation;
+- the model changes the user's query;
+- the requested namespace is outside the agent's scope;
+- recall status is `unanswerable`, `no_match`, or `schema_budget_exhausted`;
+- proof, source, or result limits are exceeded;
+- the answer contradicts bindings or omits required grounded values;
+- a write lacks review, integrity checks, or an idempotency key.
+
+Never silently replace a failed call with invented context.
+
+## 8. Instrument the harness
+
+Record these separately:
+
+```text
+model tool-call latency
+tool name + validated arguments
+Remembero/SQLite execution latency
+bounded tool result size
+final model latency
+answer-contract outcome
+handoff or mutation decision
+```
+
+Do not call end-to-end timings a model benchmark. Report the model, device, case, and
+whether weights were already cached.
+
+## 9. Test the boundary
+
+At minimum, automate these cases:
+
+1. valid call returns bindings and proof;
+2. wrong tool name is rejected;
+3. changed or oversized query is rejected;
+4. empty memory produces an explicit non-answer;
+5. contradictory answer fails the contract;
+6. model never sees rows before tool execution;
+7. unreviewed writes cannot mutate accepted memory;
+8. retries with the same `opId` do not duplicate a write.
+
+## System-prompt snippet
+
+```markdown
+## Remembero memory
+
+- Use Query before answering questions that may depend on prior decisions, preferences,
+  relationships, commitments, or governed application state.
+- Treat tool bindings, sources, and proof as evidence; never invent missing values.
+- If the tool returns a non-answer, say what is missing instead of guessing.
+- Never mutate accepted memory directly. Propose changes for review.
+```
+
+## See the complete trace
+
+The browser lab shows the prompt, native model tool call, SQL or Remembero execution,
+tool result, final prompt, raw answer, and deterministic contract side by side:
+
+<http://remembero.rahultrikha.com/labs/chat-memory>
+

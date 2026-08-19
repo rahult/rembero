@@ -84,6 +84,10 @@ natural-language `remember`/`recall` call the LLM.
 
 ## Use from Claude Code (MCP)
 
+For a framework-neutral model → tool → Remembero → model integration, including typed
+validation, proof handling, answer contracts, and proposal-only writes, see
+[Add Remembero to an agent harness](docs/AGENT-HARNESS.md).
+
 ```bash
 claude mcp add remembero --env LLM_API_KEY=sk-or-... -- npx -y remembero serve
 ```

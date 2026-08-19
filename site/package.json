@@ -16,6 +16,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.84",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
