@@ -15,6 +15,17 @@ Agent harnesses can call `semantic_search_knowledge` over MCP. The result return
 clauses, durable sources, the original lexical rank, cosine score, cache hits/misses, model,
 provider tokens, and provider-reported cost.
 
+After reviewed writes, move document work off the first user-facing search with:
+
+```bash
+remembero semantic-index --namespaces default --search-limit 100
+```
+
+Agent harnesses use `prepare_semantic_search`. Each call prepares at most 100 deterministic
+documents and returns `nextCursor` when more remain; pass that cursor back as `after` until
+status is `complete`. Re-running a prepared page reports cache hits and makes no provider
+call.
+
 Use this tool for recommendation/advice intent. Use `query`, `explain_query`,
 `recall_explain`, or evidence answer mode when the answer must be logically established.
 Similarity is retrieval evidence, never proof and never an abstention decision.
@@ -32,6 +43,10 @@ The semantic path:
 7. ranks by cosine similarity, breaking ties by lexical rank; and
 8. caches document vectors by model and content hash in memory and in a bounded derived
    cache under the memory root.
+
+Preparation uses the same redaction, allowlist, model/content key, cache, and source window
+as search. Documents sharing one provenance source are embedded once per batch. Preparation
+does not write memory, change trust, infer facts, or establish proof.
 
 The default model is `perplexity/pplx-embed-v1-0.6b` through the configured OpenAI-compatible
 embedding endpoint. Override it with `REMBERO_EMBEDDING_MODEL` and the endpoint with
@@ -67,6 +82,10 @@ A live MCP restart probe over two documents measured 744 ms on the initial reque
 hits; provider input fell from 32 to 9 tokens and charged cost from $0.000000128 to
 $0.000000036. These tiny timings are a boundary check, not a production latency claim.
 
+An explicit prewarm probe moved the two document embeddings into a 379 ms maintenance call.
+After closing and restarting the MCP server, the first semantic query took 376 ms, hit both
+document vectors, and sent only the 9-token question for $0.000000036.
+
 Run the reproducible live-provider evaluation after downloading LongMemEval-S:
 
 ```bash
@@ -85,7 +104,10 @@ OpenAI-compatible embeddings endpoint:
 - Held-out recall improved, but 53.3% still leaves meaningful preference misses.
 - Cold evaluation deliberately uses isolated corpora. MCP and CLI reuse the derived disk
   cache across processes, but first access still embeds shortlisted documents.
-- The cache is populated on search rather than incrementally at write time.
+- The cache is populated by explicit preparation or search, never automatically during a
+  memory mutation.
+- Preparation is explicit by design; harnesses that skip it still pay document embedding on
+  the first matching search.
 - A lexical miss outside the 100-candidate shortlist cannot be recovered semantically.
 - Embedding-provider pricing and routing can change; rely on returned usage, not this snapshot.
 - Providers can revise a model behind a stable ID; change `REMBERO_EMBEDDING_MODEL` (or clear

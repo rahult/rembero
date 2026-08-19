@@ -382,6 +382,9 @@ export {
 } from './knowledge/search.js';
 export {
   semanticSearchKnowledge,
+  prepareSemanticKnowledge,
+  semanticDocumentText,
+  semanticEmbeddingCacheKey,
   isRecommendationIntent,
   MemoryEmbeddingCache,
   FileEmbeddingCache,
@@ -392,7 +395,11 @@ export {
   DEFAULT_SEMANTIC_CACHE_ENTRIES,
   MAX_SEMANTIC_CACHE_ENTRY_BYTES,
   SEMANTIC_CACHE_VERSION,
+  DEFAULT_SEMANTIC_PREPARE_LIMIT,
+  MAX_SEMANTIC_PREPARE_LIMIT,
   type EmbeddingCache,
+  type PrepareSemanticKnowledgeOptions,
+  type PrepareSemanticKnowledgeResult,
   type SemanticKnowledgeSearchOptions,
   type SemanticKnowledgeSearchResult,
   type SemanticKnowledgeSearchResultItem,

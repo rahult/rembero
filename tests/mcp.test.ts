@@ -85,6 +85,7 @@ describe('MCP explanation surfaces', () => {
           'audit_rules',
           'search_knowledge',
           'semantic_search_knowledge',
+          'prepare_semantic_search',
           'browse_knowledge_graph',
           'connect_knowledge_graph',
           'export_knowledge_bundle',
@@ -324,6 +325,20 @@ describe('MCP explanation surfaces', () => {
         results: expect.arrayContaining([
           expect.objectContaining({ clause: 'pet(rahul, luna).' }),
         ]),
+      });
+
+      const prepared = await client.callTool({
+        name: 'prepare_semantic_search',
+        arguments: { namespaces: ['default'], kinds: ['fact'], limit: 2 },
+      });
+      const preparedText = prepared.content.find((item) => item.type === 'text');
+      expect(
+        JSON.parse(preparedText?.type === 'text' ? preparedText.text : '')
+      ).toMatchObject({
+        status: expect.stringMatching(/complete|more/),
+        selectedCount: 2,
+        cacheHits: expect.any(Number),
+        cacheMisses: expect.any(Number),
       });
 
       const browsed = await client.callTool({

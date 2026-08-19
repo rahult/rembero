@@ -19,8 +19,10 @@ import {
   LayeredEmbeddingCache,
   MemoryEmbeddingCache,
   semanticSearchKnowledge,
+  prepareSemanticKnowledge,
 } from '../src/knowledge/semantic-search.js';
 import { MemoryStore } from '../src/store/store.js';
+import { canonicalKey, parseProgram } from '../src/engine/index.js';
 import { semanticSearchKnowledgeTool } from '../src/mcp/tools.js';
 
 function store(label: string): MemoryStore {
@@ -173,6 +175,103 @@ describe('semantic knowledge search', () => {
       { model: 'model/b', inputs: 3 },
       { model: 'model/a', inputs: 2 },
     ]);
+  });
+
+  it('prepares deterministic resumable batches and skips cached documents', async () => {
+    const memory = store('prepare');
+    memory.assert('default', 'note(alpha).', { sourceText: 'Recommend alpha context.' });
+    memory.assert('default', 'note(beta).', { sourceText: 'Recommend beta context.' });
+    memory.assert('default', 'note(gamma).', { sourceText: 'Recommend gamma context.' });
+    const calls: number[] = [];
+    const embeddings: EmbeddingClient = {
+      model: 'test/prepare',
+      async embed(inputs) {
+        calls.push(inputs.length);
+        return {
+          model: this.model,
+          vectors: inputs.map((_, index) => [index + 1, 1]),
+          usage: { promptTokens: inputs.length, totalTokens: inputs.length, costUsd: 0 },
+        };
+      },
+    };
+    const cache = new MemoryEmbeddingCache();
+    const first = await prepareSemanticKnowledge(
+      memory.clausesFor(['default']),
+      memory.sourcesFor(['default']),
+      embeddings,
+      { cache, limit: 2, kinds: ['fact'] }
+    );
+    expect(first).toMatchObject({
+      status: 'more',
+      selectedCount: 2,
+      cacheHits: 0,
+      cacheMisses: 2,
+      nextCursor: expect.any(String),
+      results: [{ cache: 'written' }, { cache: 'written' }],
+    });
+    const second = await prepareSemanticKnowledge(
+      memory.clausesFor(['default']),
+      memory.sourcesFor(['default']),
+      embeddings,
+      { cache, limit: 2, after: first.nextCursor!, kinds: ['fact'] }
+    );
+    expect(second).toMatchObject({
+      status: 'complete',
+      selectedCount: 1,
+      cacheMisses: 1,
+      nextCursor: null,
+    });
+    const repeated = await prepareSemanticKnowledge(
+      memory.clausesFor(['default']),
+      memory.sourcesFor(['default']),
+      embeddings,
+      { cache, limit: 2, kinds: ['fact'] }
+    );
+    expect(repeated).toMatchObject({ cacheHits: 2, cacheMisses: 0 });
+    expect(calls).toEqual([2, 1]);
+  });
+
+  it('embeds shared provenance once per batch', async () => {
+    const memory = store('prepare-deduplicate');
+    memory.assert('default', 'note(alpha). note(beta).', {
+      sourceText: 'One shared recommendation source.',
+    });
+    const embed = vi.fn(async (inputs: string[]) => ({
+      model: 'test/deduplicate',
+      vectors: inputs.map(() => [1, 0]),
+      usage: { promptTokens: inputs.length, totalTokens: inputs.length, costUsd: 0 },
+    }));
+    const prepared = await prepareSemanticKnowledge(
+      memory.clausesFor(['default']),
+      memory.sourcesFor(['default']),
+      { model: 'test/deduplicate', embed },
+      { cache: new MemoryEmbeddingCache(), limit: 2 }
+    );
+    expect(prepared).toMatchObject({
+      selectedCount: 2,
+      cacheHits: 0,
+      cacheMisses: 1,
+      deduplicatedDocuments: 1,
+    });
+    expect(embed).toHaveBeenCalledWith(['One shared recommendation source.']);
+  });
+
+  it('blocks sensitive preparation before embedding', async () => {
+    const clauses = parseProgram('note(secret_record).');
+    const sources = new Map([[canonicalKey(clauses[0]!), [{
+      namespace: 'default',
+      opId: 'secret',
+      ts: new Date(0).toISOString(),
+      text: 'The API key is sk-example-secret-value.',
+    }]]]);
+    const embed = vi.fn();
+    await expect(prepareSemanticKnowledge(
+      clauses,
+      sources,
+      { model: 'test/embedding', embed },
+      { cache: new MemoryEmbeddingCache() }
+    )).rejects.toThrow(/sensitive/i);
+    expect(embed).not.toHaveBeenCalled();
   });
 
   it('validates provider vectors and preserves native usage', async () => {

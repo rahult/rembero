@@ -40,6 +40,8 @@ For fuzzy recommendations, the opt-in [`semantic_search_knowledge`](docs/SEMANTI
 tool reranks a bounded local shortlist, reports provider cost, and caches document vectors
 across process restarts without changing structured query or proof authority. The bounded
 `.semantic-embeddings/` directory is derived and can be deleted safely.
+Run `remembero semantic-index` or call `prepare_semantic_search` after reviewed writes to
+move document embedding out of the next user-facing query.
 
 ## Try the real web console
 
@@ -114,8 +116,9 @@ The raw Datalog tools (`assert`, `claims`, `accept`, `reject`, `supersede`, `que
 `profile_query`, `forget`, `list_memories`)
 work with no API key at all—only
 natural-language `remember`/`recall` call the LLM.
-Opt-in `semantic-search` / `semantic_search_knowledge` also requires the embedding provider
-key and reports its own usage and cost.
+Opt-in `semantic-search`, `semantic-index`, `semantic_search_knowledge`, and
+`prepare_semantic_search` also require the embedding provider key and report their own usage
+and cost.
 
 ## Use from Claude Code (MCP)
 
@@ -145,7 +148,7 @@ Tools exposed: `remember`, `propose_memory`, `apply_memory_proposal`, `recall`, 
 `query`, `explain_query`, `check_integrity`, `conflict_views`, `history`, `forget`,
 `what_if`, `apply_rule_change`, `why_not`, `knowledge_topology`, `diff_recorded_knowledge`,
 `plan_query_repair`, `audit_rules`, `knowledge_health`, `search_knowledge`,
-`semantic_search_knowledge`, `checkpoint_journal`,
+`semantic_search_knowledge`, `prepare_semantic_search`, `checkpoint_journal`,
 `browse_knowledge_graph`, `connect_knowledge_graph`, `export_knowledge_bundle`, `verify_knowledge_bundle`,
 `run_knowledge_checks`, `profile_query`, `list_checkpoints`, and `list_memories`.
 `remember`/`recall` take natural language; the raw query and integrity tools are direct

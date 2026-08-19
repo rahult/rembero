@@ -256,6 +256,7 @@ export default function AgentHarnessGuide() {
           <li>Bound namespaces, result size, proof depth, and execution time in trusted code.</li>
           <li>Check final prose against returned bindings and required grounded relationships.</li>
           <li>Use propose_memory, typed review, and apply_memory_proposal for accepted writes.</li>
+          <li>Call prepare_semantic_search after review; never make accepted writes depend on it.</li>
           <li>Attach a caller-stable opId to reviewed mutations so retries are idempotent.</li>
         </ul>
       </section>
@@ -299,6 +300,7 @@ export default function AgentHarnessGuide() {
           <strong><span>Held-out semantic MRR</span>45.6%</strong>
           <strong><span>Semantic route cost</span>$0.000364 avg</strong>
           <strong><span>Restart cache</span>32 → 9 tokens</strong>
+          <strong><span>Prewarmed first query</span>376 ms · 9 tokens</strong>
         </div>
         <CodeBlock>{"npm run bench:agent-db:check\nnpm run bench:agent-db:scale -- --check\nnpm run bench:agent-db:install:check\nnpm run bench:agent-db:million\nnpm run bench:agent-db:cost\nnpm run bench:longmemeval\nnpm run bench:longmemeval:semantic # live embedding cost\nnpm run bench:memory:external\nnpm run bench:memory:mem0 # live provider cost\nnpm run bench:memory:graphiti # live provider cost"}</CodeBlock>
         <a className={styles.scorecardLink} href={githubScorecard}>

@@ -51,5 +51,11 @@
     "cold": { "wallMs": 743.844333, "cacheHits": 0, "cacheMisses": 2, "promptTokens": 32, "costUsd": 1.28e-7 },
     "afterRestart": { "wallMs": 399.1964999999998, "cacheHits": 2, "cacheMisses": 0, "promptTokens": 9, "costUsd": 3.6e-8 },
     "cacheAuthority": "derived content-addressed vectors only; no source text; safe to delete"
+  },
+  "liveMcpPrewarmProbe": {
+    "documents": 2,
+    "prepare": { "wallMs": 378.71179100000006, "cacheMisses": 2, "promptTokens": 23, "costUsd": 9.2e-8 },
+    "firstSearchAfterRestart": { "wallMs": 375.5550830000001, "cacheHits": 2, "cacheMisses": 0, "promptTokens": 9, "costUsd": 3.6e-8 },
+    "mutationCoupling": "none; preparation is an explicit read-only maintenance operation"
   }
 }

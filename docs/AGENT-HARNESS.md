@@ -343,3 +343,6 @@ score, lexical rank, clause, and durable sources. Restrict exported namespaces w
 `REMBERO_LLM_ALLOWED_NAMESPACES`; detected secrets fail before the provider call.
 Document vectors are cached as bounded derived data across MCP restarts, so repeated agent
 sessions pay only for query embeddings. Deleting `.semantic-embeddings/` is always safe.
+After an accepted `apply_memory_proposal`, call `prepare_semantic_search` in bounded batches
+until it returns `status: "complete"`. This moves provider latency out of the next user turn
+without making mutation success depend on the embedding service.

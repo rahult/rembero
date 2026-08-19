@@ -51,11 +51,12 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Natural-language cost | Recall, Luna, 26 cases | $0.016735 total / $0.000644 avg | measured |
 | Natural-language cost | Extraction, Luna, 15 cases | $0.003306 total / $0.000220 avg | measured |
 | Ease | Setup commands | 2 | contract |
-| Ease | Discovered MCP tools | 35 | includes required read tools |
+| Ease | Discovered MCP tools | 36 | includes required read tools |
 | Preference retrieval | LongMemEval-S Recall@5 | 43.3% → 66.7% | measured semantic policy |
 | Preference retrieval | Held-out Recall@5 / MRR | 53.3% / 45.6% | measured |
 | Semantic cost | 22 routed questions | $0.007999824 | measured |
 | Semantic cost | Restart cache provider tokens | 32 → 9 | measured |
+| Semantic speed | Prewarm / first query after restart | 379 / 376 ms | measured |
 | Ease | Cold empty-cache npm install | 5.19 s | <= 120 s diagnostic gate |
 | Ease | First CLI write / proof query | 89.08 ms / 95.46 ms | <= 1,000 ms each |
 | Ease | Packed / installed size | 0.92 MiB / 3.81 MiB | diagnostic |

@@ -69,7 +69,9 @@ import {
 } from '../knowledge/search.js';
 import {
   semanticSearchKnowledge,
+  prepareSemanticKnowledge,
   type EmbeddingCache,
+  type PrepareSemanticKnowledgeResult,
   type SemanticKnowledgeSearchResult,
 } from '../knowledge/semantic-search.js';
 import type { EmbeddingClient } from '../llm/embeddings.js';
@@ -156,6 +158,24 @@ export interface SemanticSearchToolDeps extends StoreToolDeps {
   embeddings: EmbeddingClient;
   semanticCache?: EmbeddingCache;
   llmAllowedNamespaces?: ReadonlySet<string>;
+}
+
+export interface PrepareSemanticSearchToolDeps extends SemanticSearchToolDeps {
+  semanticCache: EmbeddingCache;
+}
+
+function assertLlmExportNamespacesAllowed(
+  deps: Pick<SemanticSearchToolDeps, 'store' | 'llmAllowedNamespaces'>,
+  namespaces: string[] | '*'
+): void {
+  if (deps.llmAllowedNamespaces === undefined) return;
+  const selected = namespaces === '*' ? deps.store.listNamespaces() : namespaces;
+  const denied = selected.find((namespace) => !deps.llmAllowedNamespaces!.has(namespace));
+  if (denied !== undefined) {
+    throw new Error(
+      `namespace '${denied}' is local-only under REMBERO_LLM_ALLOWED_NAMESPACES`
+    );
+  }
 }
 
 function configuredCheckEnforcement(
@@ -1011,13 +1031,7 @@ export async function semanticSearchKnowledgeTool(
 ): Promise<SemanticKnowledgeSearchResult & { recordedSnapshot?: RecordedSnapshotMetadata }> {
   assertBoundedInput(args.text, 'semantic knowledge search text');
   const namespaces = namespacesOrDefault(args.namespaces);
-  const selected = namespaces === '*' ? deps.store.listNamespaces() : namespaces;
-  const denied = selected.find((namespace) => !deps.llmAllowedNamespaces?.has(namespace));
-  if (deps.llmAllowedNamespaces !== undefined && denied !== undefined) {
-    throw new Error(
-      `namespace '${denied}' is local-only under REMBERO_LLM_ALLOWED_NAMESPACES`
-    );
-  }
+  assertLlmExportNamespacesAllowed(deps, namespaces);
   const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
   const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
   const trustMode = configuredTrustMode(deps, args.trustMode);
@@ -1033,6 +1047,46 @@ export async function semanticSearchKnowledgeTool(
       ...(entityIdentity === undefined ? {} : { entityIdentity }),
       ...(trustMode === 'accepted' ? {} : { trustMode }),
       ...(deps.semanticCache === undefined ? {} : { cache: deps.semanticCache }),
+    }
+  );
+  return {
+    ...result,
+    ...(recorded.recordedSnapshot === undefined
+      ? {}
+      : { recordedSnapshot: recorded.recordedSnapshot }),
+  };
+}
+
+export async function prepareSemanticKnowledgeTool(
+  deps: PrepareSemanticSearchToolDeps,
+  args: {
+    namespaces?: string[] | '*';
+    limit?: number;
+    after?: string;
+    kinds?: KnowledgeSearchClauseKind[];
+    entityIdentity?: EntityIdentityMode;
+    trustMode?: TrustViewMode;
+    recordedSequence?: number;
+  }
+): Promise<PrepareSemanticKnowledgeResult & { recordedSnapshot?: RecordedSnapshotMetadata }> {
+  const namespaces = namespacesOrDefault(args.namespaces);
+  assertLlmExportNamespacesAllowed(deps, namespaces);
+  const configuredIdentity = args.entityIdentity ?? deps.entityIdentity;
+  const entityIdentity = configuredIdentity === false ? undefined : configuredIdentity;
+  const trustMode = configuredTrustMode(deps, args.trustMode);
+  const recorded = recordedView(deps.store, namespaces, args.recordedSequence);
+  const view = entityIdentity === 'canonical'
+    ? canonicalizeKnowledge(recorded.clauses, recorded.sources, trustMode)
+    : literalKnowledge(recorded.clauses, recorded.sources, trustMode);
+  const result = await prepareSemanticKnowledge(
+    view.clauses,
+    view.sources,
+    deps.embeddings,
+    {
+      cache: deps.semanticCache,
+      ...(args.limit === undefined ? {} : { limit: args.limit }),
+      ...(args.after === undefined ? {} : { after: args.after }),
+      ...(args.kinds === undefined ? {} : { kinds: args.kinds }),
     }
   );
   return {

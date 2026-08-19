@@ -77,6 +77,7 @@ test("server-renders the agent harness integration guide", async () => {
   assert.match(html, /explain_query/);
   assert.match(html, /propose_memory/);
   assert.match(html, /apply_memory_proposal/);
+  assert.match(html, /prepare_semantic_search/);
   assert.match(html, /bench:agent-db:check/);
   assert.match(html, /Gate the database, not the marketing claim\./);
   assert.match(html, /100k facts/);
@@ -109,6 +110,8 @@ test("server-renders the agent harness integration guide", async () => {
   assert.match(html, /\$0\.000364 avg/);
   assert.match(html, /Restart cache/);
   assert.match(html, /32 → 9 tokens/);
+  assert.match(html, /Prewarmed first query/);
+  assert.match(html, /376 ms · 9 tokens/);
   assert.match(html, /\$0\.000644 avg/);
   assert.match(html, /href="\/labs\/chat-memory"/);
 });

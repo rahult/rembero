@@ -51,6 +51,7 @@ import {
   auditRulesTool,
   searchKnowledgeTool,
   semanticSearchKnowledgeTool,
+  prepareSemanticKnowledgeTool,
   browseKnowledgeGraphTool,
   connectKnowledgeGraphTool,
   exportKnowledgeBundleTool,
@@ -238,6 +239,12 @@ const knowledgeSearchKindsField = z
   .max(3)
   .optional()
   .describe('Optional fact, rule, or constraint filters');
+const semanticPrepareCursorField = z
+  .string()
+  .min(1)
+  .max(MAX_INPUT_BYTES)
+  .optional()
+  .describe('Opaque nextCursor from the previous preparation batch');
 const relatedKnowledgeField = z
   .boolean()
   .optional()
@@ -1147,7 +1154,7 @@ export function createServer(deps: PipelineDeps): McpServer {
     {
       title: 'Search recommendation and preference memory semantically',
       description:
-        'Rerank a bounded local lexical shortlist with an embedding provider. Use for recommendations, preferences, advice, and paraphrased prior context when exact lexical search is insufficient. This opt-in tool sends redacted source text only from LLM-allowed namespaces, reports provider tokens/cost, caches document vectors in the server process, and returns retrieval evidence—not proof or answer authority.',
+        'Rerank a bounded local lexical shortlist with an embedding provider. Use for recommendations, preferences, advice, and paraphrased prior context when exact lexical search is insufficient. This opt-in tool sends redacted source text only from LLM-allowed namespaces, reports provider tokens/cost, caches derived document vectors, and returns retrieval evidence—not proof or answer authority.',
       inputSchema: {
         text: boundedText(),
         namespaces: namespacesField,
@@ -1182,6 +1189,59 @@ export function createServer(deps: PipelineDeps): McpServer {
               text,
               namespaces,
               limit,
+              kinds,
+              entityIdentity,
+              trustMode,
+              recordedSequence,
+            }
+          )
+        );
+      } catch (e) {
+        return asError(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    'prepare_semantic_search',
+    {
+      title: 'Prepare semantic retrieval after reviewed writes',
+      description:
+        'Populate the bounded derived embedding cache before user-facing recommendation searches. This explicit, resumable maintenance tool reads only LLM-allowed namespaces, rejects detected secrets, reports provider usage/cost, stores no source text in the cache, and never mutates memory or establishes proof.',
+      inputSchema: {
+        namespaces: namespacesField,
+        limit: knowledgeSearchLimitField,
+        after: semanticPrepareCursorField,
+        kinds: knowledgeSearchKindsField,
+        entityIdentity: entityIdentityField,
+        trustMode: trustViewField,
+        recordedSequence: recordedSequenceField,
+      },
+    },
+    async ({
+      namespaces,
+      limit,
+      after,
+      kinds,
+      entityIdentity,
+      trustMode,
+      recordedSequence,
+    }) => {
+      try {
+        return asContent(
+          await prepareSemanticKnowledgeTool(
+            {
+              store: resolvedDeps.store,
+              embeddings,
+              semanticCache,
+              llmAllowedNamespaces: resolvedDeps.llmAllowedNamespaces,
+              entityIdentity: resolvedDeps.entityIdentity,
+              trustMode: resolvedDeps.trustMode,
+            },
+            {
+              namespaces,
+              limit,
+              after,
               kinds,
               entityIdentity,
               trustMode,

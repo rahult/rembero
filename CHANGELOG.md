@@ -27,6 +27,9 @@ and MCP tool rerank a bounded lexical shortlist, enforce namespace/secret export
 report embedding usage/cost, and cache document vectors without changing proof authority.
 The content-addressed derived cache now survives MCP and CLI restarts, is bounded to 2,000
 entries, stores no source text, validates entry digests, and recomputes corrupt entries.
+Adds explicit resumable semantic prewarming for post-review maintenance. It deduplicates
+shared provenance, reports provider cost, and moves document embedding out of the next user
+query without coupling mutation success to an external service.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

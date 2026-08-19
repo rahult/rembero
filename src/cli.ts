@@ -110,6 +110,7 @@ import {
   auditRulesTool,
   searchKnowledgeTool,
   semanticSearchKnowledgeTool,
+  prepareSemanticKnowledgeTool,
   browseKnowledgeGraphTool,
   connectKnowledgeGraphTool,
   exportKnowledgeBundleTool,
@@ -173,6 +174,7 @@ Usage:
   remembero health                         Inspect complete deterministic knowledge health
   remembero search <text>                  Search facts, rules, policies, and sources locally
   remembero semantic-search <text>         Provider-assisted search for preferences and advice
+  remembero semantic-index                 Prewarm derived vectors after reviewed writes
   remembero browse [entity]                Browse a bounded explicit personal graph
   remembero connect <from> <to>            Find bounded shortest explicit graph paths
   remembero bundle                         Export raw clauses and provenance with a digest
@@ -227,6 +229,7 @@ Options:
       --search-states <n> Repair search states (default: 128; max: ${MAX_REPAIR_SEARCH_STATES})
       --search-limit <n>  Search results (default: 20; max: ${MAX_KNOWLEDGE_SEARCH_LIMIT})
       --kind <kind>       Search kind: fact, rule, or constraint; repeatable
+      --after <cursor>    Resume semantic-index from a returned nextCursor
       --predicate <name>  Browse seed predicate name or name/arity
       --browse-depth <n>  Explicit graph depth (default: 1; max: ${MAX_BROWSE_GRAPH_DEPTH})
       --claim-limit <n>   Explicit graph claims (default: 100; max: ${MAX_BROWSE_GRAPH_CLAIMS})
@@ -304,6 +307,7 @@ interface ParsedArgs {
   searchStates?: string;
   searchLimit?: string;
   searchKinds: string[];
+  semanticAfter?: string;
   related: boolean;
   relatedLimit?: string;
   relatedKinds: string[];
@@ -463,6 +467,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === '--kind') {
       parsed.searchKinds.push(valueAfter(i, arg));
+      i += 1;
+    } else if (arg === '--after') {
+      parsed.semanticAfter = valueAfter(i, arg);
       i += 1;
     } else if (arg === '--predicate') {
       parsed.browsePredicate = valueAfter(i, arg);
@@ -943,9 +950,15 @@ async function main(): Promise<void> {
   if (
     (args.searchLimit !== undefined || args.searchKinds.length > 0) &&
     command !== 'search' &&
-    command !== 'semantic-search'
+    command !== 'semantic-search' &&
+    command !== 'semantic-index'
   ) {
-    throw new Error('search limits and kinds are available only for search or semantic-search');
+    throw new Error(
+      'search limits and kinds are available only for search, semantic-search, or semantic-index'
+    );
+  }
+  if (args.semanticAfter !== undefined && command !== 'semantic-index') {
+    throw new Error('--after is available only for semantic-index');
   }
   if (
     (args.related ||
@@ -1003,10 +1016,10 @@ async function main(): Promise<void> {
   }
   if (
     recordedSequence !== undefined &&
-    !['health', 'recall', 'recall-explain', 'query', 'explain', 'profile', 'what-if', 'why-not', 'topology', 'audit-rules', 'search', 'semantic-search', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
+    !['health', 'recall', 'recall-explain', 'query', 'explain', 'profile', 'what-if', 'why-not', 'topology', 'audit-rules', 'search', 'semantic-search', 'semantic-index', 'browse', 'connect', 'bundle', 'test-knowledge', 'check', 'conflicts', 'list'].includes(command ?? '')
   ) {
     throw new Error(
-      '--as-of-sequence is available for health, recall, recall-explain, query, explain, profile, what-if, why-not, topology, audit-rules, search, semantic-search, browse, connect, bundle, test-knowledge, check, conflicts, and list'
+      '--as-of-sequence is available for health, recall, recall-explain, query, explain, profile, what-if, why-not, topology, audit-rules, search, semantic-search, semantic-index, browse, connect, bundle, test-knowledge, check, conflicts, and list'
     );
   }
   const rawIntegritySetting = integrityEnforcementOption(
@@ -1657,6 +1670,39 @@ async function main(): Promise<void> {
                   'semantic search limit'
                 ),
               }),
+          ...(kinds === undefined ? {} : { kinds }),
+          ...(recordedSequence === undefined ? {} : { recordedSequence }),
+        }
+      );
+      console.log(stringifyBoundedResult(result, 'CLI result'));
+      return;
+    }
+    case 'semantic-index': {
+      const kinds = searchKindsOption(args.searchKinds);
+      const result = await prepareSemanticKnowledgeTool(
+        {
+          store,
+          embeddings: embeddingClientFromEnv(),
+          semanticCache: new LayeredEmbeddingCache(
+            new MemoryEmbeddingCache(),
+            new FileEmbeddingCache(store.semanticEmbeddingCacheRoot())
+          ),
+          llmAllowedNamespaces,
+          entityIdentity: entityIdentitySetting,
+          trustMode: trustViewOption(args.trust),
+        },
+        {
+          namespaces,
+          ...(args.searchLimit === undefined
+            ? {}
+            : {
+                limit: integerOption(
+                  args.searchLimit,
+                  0,
+                  'semantic prepare limit'
+                ),
+              }),
+          ...(args.semanticAfter === undefined ? {} : { after: args.semanticAfter }),
           ...(kinds === undefined ? {} : { kinds }),
           ...(recordedSequence === undefined ? {} : { recordedSequence }),
         }
