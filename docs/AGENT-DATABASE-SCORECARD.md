@@ -99,6 +99,9 @@ time is machine/network specific; the exact result is recorded in
 [`research/results/clean-install-v1-summary.json`](research/results/clean-install-v1-summary.json).
 The GitHub-hosted Ubuntu/Node 24 gate also passed: 3.00 s cold install, 210.71 ms first
 write, and 224.03 ms first proof query.
+The Windows/Node 24 gate passed the same complete web/package build and packed CLI flow:
+32.33 s cold install, 359.54 ms first write, and 353.19 ms first proof query. All remain
+inside the 120 s / 1 s cross-platform budgets.
 
 ### Accuracy
 
@@ -261,12 +264,13 @@ This scorecard does not yet prove:
 - managed-service availability or multi-tenant operations;
 - natural-language cost stability across provider revisions and workloads beyond the
   measured recall/extraction suites;
-- installation success on every supported OS and CPU architecture;
+- installation success on CPU architectures beyond the tested macOS arm64 and hosted
+  Linux/Windows x64 environments;
 - comparative results for Mem0, Graphiti/Zep, or Letta without executing pinned external
   adapters;
 - broader LangGraph conclusions beyond the executed in-memory retrieval-only configuration.
 - broader LlamaIndex conclusions beyond the executed VectorMemory retrieval-only configuration.
 
-The next gates should add a clean-install runner on Windows, cost-regression
-thresholds after more provider samples, scale sweeps above one million facts, and additional
-pinned external adapters.
+The next gates should add cost-regression thresholds after more provider samples, scale
+sweeps above one million facts, additional CPU architectures, and pinned Mem0, Graphiti/Zep,
+or Letta adapters.
