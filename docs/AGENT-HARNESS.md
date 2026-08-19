@@ -341,3 +341,5 @@ or `recall_explain` establishes the answer.
 The semantic result reports its model, provider tokens/cost, cache hits/misses, semantic
 score, lexical rank, clause, and durable sources. Restrict exported namespaces with
 `REMBERO_LLM_ALLOWED_NAMESPACES`; detected secrets fail before the provider call.
+Document vectors are cached as bounded derived data across MCP restarts, so repeated agent
+sessions pay only for query embeddings. Deleting `.semantic-embeddings/` is always safe.

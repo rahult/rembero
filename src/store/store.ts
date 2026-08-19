@@ -798,6 +798,10 @@ export class MemoryStore {
     return randomUUID();
   }
 
+  semanticEmbeddingCacheRoot(): string {
+    return join(this.root, '.semantic-embeddings');
+  }
+
   listJournalCheckpoints(): JournalCheckpointArtifact[] {
     return this.withLock('journal', () => {
       const segments = this.journalSegmentsUnlocked();

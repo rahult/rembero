@@ -25,6 +25,8 @@ explicit embedded-server shutdown contract.
 Adds opt-in semantic knowledge search for recommendation and preference retrieval. The CLI
 and MCP tool rerank a bounded lexical shortlist, enforce namespace/secret export policy,
 report embedding usage/cost, and cache document vectors without changing proof authority.
+The content-addressed derived cache now survives MCP and CLI restarts, is bounded to 2,000
+entries, stores no source text, validates entry digests, and recomputes corrupt entries.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

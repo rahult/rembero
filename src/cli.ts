@@ -120,7 +120,11 @@ import {
   supersedeFactsTool,
 } from './mcp/tools.js';
 import { embeddingClientFromEnv } from './llm/embeddings.js';
-import { MemoryEmbeddingCache } from './knowledge/semantic-search.js';
+import {
+  FileEmbeddingCache,
+  LayeredEmbeddingCache,
+  MemoryEmbeddingCache,
+} from './knowledge/semantic-search.js';
 import {
   MAX_HISTORY_EVENTS,
   MAX_OPERATION_ID_BYTES,
@@ -1633,7 +1637,10 @@ async function main(): Promise<void> {
         {
           store,
           embeddings: embeddingClientFromEnv(),
-          semanticCache: new MemoryEmbeddingCache(),
+          semanticCache: new LayeredEmbeddingCache(
+            new MemoryEmbeddingCache(),
+            new FileEmbeddingCache(store.semanticEmbeddingCacheRoot())
+          ),
           llmAllowedNamespaces,
           entityIdentity: entityIdentitySetting,
           trustMode: trustViewOption(args.trust),

@@ -1,6 +1,22 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  existsSync,
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
 import type { Clause } from '../engine/index.js';
-import type { EmbeddingClient, EmbeddingUsage } from '../llm/embeddings.js';
+import {
+  MAX_EMBEDDING_DIMENSIONS,
+  type EmbeddingClient,
+  type EmbeddingUsage,
+} from '../llm/embeddings.js';
 import { assertBoundedInput, assertSafeForExternalLlm } from '../safety.js';
 import type { MemorySource } from '../store/store.js';
 import {
@@ -14,6 +30,8 @@ export const DEFAULT_SEMANTIC_SEARCH_CANDIDATES = 100;
 export const MAX_SEMANTIC_SEARCH_CANDIDATES = 100;
 export const MAX_SEMANTIC_SOURCE_CHARS = 16_384;
 export const DEFAULT_SEMANTIC_CACHE_ENTRIES = 2_000;
+export const MAX_SEMANTIC_CACHE_ENTRY_BYTES = 256 * 1024;
+export const SEMANTIC_CACHE_VERSION = 'remembero.semantic-cache.v1' as const;
 
 const RECOMMENDATION_INTENT =
   /\b(recommend|suggest|suggestion|advice|tips|ideas?|should i|what should|decide|choose|looking for)\b/i;
@@ -22,7 +40,28 @@ export function isRecommendationIntent(text: string): boolean {
   return RECOMMENDATION_INTENT.test(text);
 }
 
-export class MemoryEmbeddingCache {
+export interface EmbeddingCache {
+  get(key: string): number[] | undefined;
+  set(key: string, vector: number[]): void;
+}
+
+function validateCacheKey(key: string): void {
+  if (!/^[a-f0-9]{64}$/.test(key)) {
+    throw new Error('embedding cache key must be a SHA-256 digest');
+  }
+}
+
+function validateCacheVector(vector: number[]): void {
+  if (
+    vector.length < 1 ||
+    vector.length > MAX_EMBEDDING_DIMENSIONS ||
+    vector.some((value) => !Number.isFinite(value))
+  ) {
+    throw new Error('embedding cache vector is invalid');
+  }
+}
+
+export class MemoryEmbeddingCache implements EmbeddingCache {
   private readonly values = new Map<string, number[]>();
 
   constructor(private readonly maxEntries = DEFAULT_SEMANTIC_CACHE_ENTRIES) {
@@ -32,6 +71,7 @@ export class MemoryEmbeddingCache {
   }
 
   get(key: string): number[] | undefined {
+    validateCacheKey(key);
     const value = this.values.get(key);
     if (value === undefined) return undefined;
     this.values.delete(key);
@@ -40,6 +80,8 @@ export class MemoryEmbeddingCache {
   }
 
   set(key: string, vector: number[]): void {
+    validateCacheKey(key);
+    validateCacheVector(vector);
     this.values.delete(key);
     this.values.set(key, [...vector]);
     while (this.values.size > this.maxEntries) {
@@ -51,6 +93,141 @@ export class MemoryEmbeddingCache {
 
   get size(): number {
     return this.values.size;
+  }
+}
+
+interface SemanticCacheEntry {
+  schemaVersion: typeof SEMANTIC_CACHE_VERSION;
+  key: string;
+  vector: number[];
+  digest: string;
+}
+
+function entryDigest(entry: Omit<SemanticCacheEntry, 'digest'>): string {
+  return createHash('sha256').update(JSON.stringify(entry)).digest('hex');
+}
+
+export class FileEmbeddingCache implements EmbeddingCache {
+  constructor(
+    private readonly root: string,
+    private readonly maxEntries = DEFAULT_SEMANTIC_CACHE_ENTRIES
+  ) {
+    if (!Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 10_000) {
+      throw new Error('embedding cache entries must be from 1 to 10000');
+    }
+  }
+
+  private ensureRoot(): void {
+    if (!existsSync(this.root)) {
+      mkdirSync(this.root, { recursive: true, mode: 0o700 });
+      return;
+    }
+    const stat = lstatSync(this.root);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error('semantic cache root must be a real directory');
+    }
+    if (process.platform !== 'win32' && (stat.mode & 0o777) !== 0o700) {
+      chmodSync(this.root, 0o700);
+    }
+  }
+
+  private path(key: string): string {
+    validateCacheKey(key);
+    return join(this.root, `${key}.json`);
+  }
+
+  get(key: string): number[] | undefined {
+    validateCacheKey(key);
+    if (!existsSync(this.root)) return undefined;
+    this.ensureRoot();
+    const path = this.path(key);
+    if (!existsSync(path)) return undefined;
+    try {
+      const stat = lstatSync(path);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_SEMANTIC_CACHE_ENTRY_BYTES) {
+        return undefined;
+      }
+      const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<SemanticCacheEntry>;
+      if (
+        parsed.schemaVersion !== SEMANTIC_CACHE_VERSION ||
+        parsed.key !== key ||
+        !Array.isArray(parsed.vector) ||
+        typeof parsed.digest !== 'string'
+      ) {
+        return undefined;
+      }
+      const core = { schemaVersion: SEMANTIC_CACHE_VERSION, key, vector: parsed.vector };
+      if (entryDigest(core) !== parsed.digest) return undefined;
+      validateCacheVector(parsed.vector);
+      return [...parsed.vector];
+    } catch {
+      return undefined;
+    }
+  }
+
+  set(key: string, vector: number[]): void {
+    validateCacheVector(vector);
+    this.ensureRoot();
+    const path = this.path(key);
+    const core = { schemaVersion: SEMANTIC_CACHE_VERSION, key, vector: [...vector] };
+    const entry: SemanticCacheEntry = { ...core, digest: entryDigest(core) };
+    const body = JSON.stringify(entry);
+    if (Buffer.byteLength(body) > MAX_SEMANTIC_CACHE_ENTRY_BYTES) {
+      throw new Error('embedding cache entry exceeds 256 KiB');
+    }
+    const temporary = join(this.root, `.${key}.${randomUUID()}.tmp`);
+    try {
+      writeFileSync(temporary, body, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+      if (existsSync(path)) unlinkSync(path);
+      renameSync(temporary, path);
+    } finally {
+      if (existsSync(temporary)) unlinkSync(temporary);
+    }
+    this.enforceBound();
+  }
+
+  private enforceBound(): void {
+    const names = readdirSync(this.root)
+      .filter((name) => /^[a-f0-9]{64}\.json$/.test(name));
+    if (names.length <= this.maxEntries) return;
+    const entries = names
+      .flatMap((name) => {
+        const path = join(this.root, name);
+        const stat = lstatSync(path);
+        return stat.isFile() && !stat.isSymbolicLink()
+          ? [{ name, mtimeMs: stat.mtimeMs }]
+          : [];
+      })
+      .sort((left, right) => left.mtimeMs - right.mtimeMs || left.name.localeCompare(right.name));
+    for (const entry of entries.slice(0, Math.max(0, entries.length - this.maxEntries))) {
+      unlinkSync(join(this.root, entry.name));
+    }
+  }
+
+  get size(): number {
+    if (!existsSync(this.root)) return 0;
+    this.ensureRoot();
+    return readdirSync(this.root).filter((name) => /^[a-f0-9]{64}\.json$/.test(name)).length;
+  }
+}
+
+export class LayeredEmbeddingCache implements EmbeddingCache {
+  constructor(
+    private readonly memory: MemoryEmbeddingCache,
+    private readonly file: FileEmbeddingCache
+  ) {}
+
+  get(key: string): number[] | undefined {
+    const memory = this.memory.get(key);
+    if (memory !== undefined) return memory;
+    const file = this.file.get(key);
+    if (file !== undefined) this.memory.set(key, file);
+    return file;
+  }
+
+  set(key: string, vector: number[]): void {
+    this.memory.set(key, vector);
+    this.file.set(key, vector);
   }
 }
 
@@ -76,7 +253,7 @@ export interface SemanticKnowledgeSearchResult {
 export interface SemanticKnowledgeSearchOptions extends Omit<KnowledgeSearchOptions, 'limit'> {
   limit?: number;
   candidateLimit?: number;
-  cache?: MemoryEmbeddingCache;
+  cache?: EmbeddingCache;
 }
 
 function rankingText(result: KnowledgeSearchResultItem): string {

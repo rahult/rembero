@@ -45,5 +45,11 @@
     "documents": 2,
     "cold": { "wallMs": 649.583375, "cacheHits": 0, "cacheMisses": 2, "promptTokens": 32, "costUsd": 1.28e-7 },
     "warm": { "wallMs": 277.47825, "cacheHits": 2, "cacheMisses": 0, "promptTokens": 9, "costUsd": 3.6e-8 }
+  },
+  "liveMcpRestartProbe": {
+    "documents": 2,
+    "cold": { "wallMs": 743.844333, "cacheHits": 0, "cacheMisses": 2, "promptTokens": 32, "costUsd": 1.28e-7 },
+    "afterRestart": { "wallMs": 399.1964999999998, "cacheHits": 2, "cacheMisses": 0, "promptTokens": 9, "costUsd": 3.6e-8 },
+    "cacheAuthority": "derived content-addressed vectors only; no source text; safe to delete"
   }
 }

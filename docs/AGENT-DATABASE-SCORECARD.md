@@ -55,6 +55,7 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Preference retrieval | LongMemEval-S Recall@5 | 43.3% → 66.7% | measured semantic policy |
 | Preference retrieval | Held-out Recall@5 / MRR | 53.3% / 45.6% | measured |
 | Semantic cost | 22 routed questions | $0.007999824 | measured |
+| Semantic cost | Restart cache provider tokens | 32 → 9 | measured |
 | Ease | Cold empty-cache npm install | 5.19 s | <= 120 s diagnostic gate |
 | Ease | First CLI write / proof query | 89.08 ms / 95.46 ms | <= 1,000 ms each |
 | Ease | Packed / installed size | 0.92 MiB / 3.81 MiB | diagnostic |

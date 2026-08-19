@@ -30,16 +30,21 @@ The semantic path:
 5. permits only namespaces allowed by `REMBERO_LLM_ALLOWED_NAMESPACES`;
 6. sends one bounded embedding batch;
 7. ranks by cosine similarity, breaking ties by lexical rank; and
-8. caches document vectors by model and content hash in the MCP process.
+8. caches document vectors by model and content hash in memory and in a bounded derived
+   cache under the memory root.
 
 The default model is `perplexity/pplx-embed-v1-0.6b` through the configured OpenAI-compatible
 embedding endpoint. Override it with `REMBERO_EMBEDDING_MODEL` and the endpoint with
 `REMBERO_EMBEDDING_BASE_URL`. `LLM_API_KEY` is used by default; `OPENROUTER_API_KEY` is an
 accepted fallback.
 
-The cache is intentionally process-local. It avoids repeat document cost without creating a
-second durable authority beside the journal. Restarting the server clears it; the source
-program and provenance remain authoritative.
+The first cache layer is a 2,000-entry in-process LRU. The second is
+`.semantic-embeddings/`, a restart-safe derived cache containing only vectors, content/model
+hashes, and integrity metadata—never source text. Files are written atomically with `0600`
+permissions in a real `0700` directory. Corrupt, oversized, symlinked, or digest-mismatched
+entries become misses and are recomputed. Changing source text or model changes the key.
+The directory is bounded to 2,000 entries and may be deleted at any time; the journal,
+program, and provenance remain the sole authority.
 
 ## Measured preference gate
 
@@ -57,10 +62,10 @@ Across all 30 preference questions, Recall@5 improves from 43.3% to 66.7% and MR
 23.3% to 56.8%. The 22 routed requests used 1,999,956 provider tokens and cost $0.007999824,
 or $0.000364 per routed question, while recomputing every candidate vector.
 
-A live repeated MCP query over two documents measured 650 ms cold and 277 ms with both
-document vectors cached. Provider input fell from 32 to 9 tokens and charged cost from
-$0.000000128 to $0.000000036. These tiny timings are a boundary check, not a production
-latency claim.
+A live MCP restart probe over two documents measured 744 ms on the initial request and
+399 ms after closing and restarting the server. Both document vectors survived as cache
+hits; provider input fell from 32 to 9 tokens and charged cost from $0.000000128 to
+$0.000000036. These tiny timings are a boundary check, not a production latency claim.
 
 Run the reproducible live-provider evaluation after downloading LongMemEval-S:
 
@@ -78,8 +83,10 @@ OpenAI-compatible embeddings endpoint:
 ## Remaining limits
 
 - Held-out recall improved, but 53.3% still leaves meaningful preference misses.
-- Cold evaluation re-embeds each question's isolated corpus; long-lived MCP use benefits
-  from cache reuse, while one-shot CLI use does not.
-- The cache is not yet durable or incrementally populated at write time.
+- Cold evaluation deliberately uses isolated corpora. MCP and CLI reuse the derived disk
+  cache across processes, but first access still embeds shortlisted documents.
+- The cache is populated on search rather than incrementally at write time.
 - A lexical miss outside the 100-candidate shortlist cannot be recovered semantically.
 - Embedding-provider pricing and routing can change; rely on returned usage, not this snapshot.
+- Providers can revise a model behind a stable ID; change `REMBERO_EMBEDDING_MODEL` (or clear
+  `.semantic-embeddings/`) before mixing vectors from a known model revision change.

@@ -298,6 +298,7 @@ export default function AgentHarnessGuide() {
           <strong><span>Preference Recall@5</span>43.3 → 66.7%</strong>
           <strong><span>Held-out semantic MRR</span>45.6%</strong>
           <strong><span>Semantic route cost</span>$0.000364 avg</strong>
+          <strong><span>Restart cache</span>32 → 9 tokens</strong>
         </div>
         <CodeBlock>{"npm run bench:agent-db:check\nnpm run bench:agent-db:scale -- --check\nnpm run bench:agent-db:install:check\nnpm run bench:agent-db:million\nnpm run bench:agent-db:cost\nnpm run bench:longmemeval\nnpm run bench:longmemeval:semantic # live embedding cost\nnpm run bench:memory:external\nnpm run bench:memory:mem0 # live provider cost\nnpm run bench:memory:graphiti # live provider cost"}</CodeBlock>
         <a className={styles.scorecardLink} href={githubScorecard}>

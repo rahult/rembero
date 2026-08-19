@@ -38,7 +38,8 @@ The pinned LongMemEval-S command runs all 500 cleaned questions as a retrieval-o
 zero-model-call gate; its [result and limitations](docs/research/LONGMEMEVAL.md) are public.
 For fuzzy recommendations, the opt-in [`semantic_search_knowledge`](docs/SEMANTIC-KNOWLEDGE-SEARCH.md)
 tool reranks a bounded local shortlist, reports provider cost, and caches document vectors
-without changing structured query or proof authority.
+across process restarts without changing structured query or proof authority. The bounded
+`.semantic-embeddings/` directory is derived and can be deleted safely.
 
 ## Try the real web console
 

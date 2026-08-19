@@ -59,7 +59,11 @@ import {
   profileKnowledgeTool,
 } from './tools.js';
 import { lazyEmbeddingClientFromEnv } from '../llm/embeddings.js';
-import { MemoryEmbeddingCache } from '../knowledge/semantic-search.js';
+import {
+  FileEmbeddingCache,
+  LayeredEmbeddingCache,
+  MemoryEmbeddingCache,
+} from '../knowledge/semantic-search.js';
 import {
   IncompleteHistoryError,
   MAX_HISTORY_EVENTS,
@@ -506,7 +510,10 @@ export function createServer(deps: PipelineDeps): McpServer {
     entityIdentity,
   };
   const embeddings = deps.embeddings ?? lazyEmbeddingClientFromEnv();
-  const semanticCache = deps.semanticCache ?? new MemoryEmbeddingCache();
+  const semanticCache = deps.semanticCache ?? new LayeredEmbeddingCache(
+    new MemoryEmbeddingCache(),
+    new FileEmbeddingCache(resolvedDeps.store.semanticEmbeddingCacheRoot())
+  );
   const server = new McpServer({ name: 'rembero', version: '0.54.0' });
 
   server.registerTool(

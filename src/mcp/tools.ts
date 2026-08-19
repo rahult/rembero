@@ -69,7 +69,7 @@ import {
 } from '../knowledge/search.js';
 import {
   semanticSearchKnowledge,
-  type MemoryEmbeddingCache,
+  type EmbeddingCache,
   type SemanticKnowledgeSearchResult,
 } from '../knowledge/semantic-search.js';
 import type { EmbeddingClient } from '../llm/embeddings.js';
@@ -154,7 +154,7 @@ export interface StoreToolDeps {
 
 export interface SemanticSearchToolDeps extends StoreToolDeps {
   embeddings: EmbeddingClient;
-  semanticCache?: MemoryEmbeddingCache;
+  semanticCache?: EmbeddingCache;
   llmAllowedNamespaces?: ReadonlySet<string>;
 }
 

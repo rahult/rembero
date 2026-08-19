@@ -31,7 +31,7 @@ import type {
 } from '../store/store.js';
 import type { ChatMessage, LlmClient } from './client.js';
 import type { EmbeddingClient } from './embeddings.js';
-import type { MemoryEmbeddingCache } from '../knowledge/semantic-search.js';
+import type { EmbeddingCache } from '../knowledge/semantic-search.js';
 import {
   explainKnowledge,
   type ExplainKnowledgeResult,
@@ -93,7 +93,7 @@ export interface PipelineDeps {
   /** Optional semantic-retrieval provider; structured reasoning never requires it. */
   embeddings?: EmbeddingClient;
   /** Optional process-local document-vector cache for semantic retrieval. */
-  semanticCache?: MemoryEmbeddingCache;
+  semanticCache?: EmbeddingCache;
   /** When set, natural-language operations may export only these namespaces to the LLM. */
   llmAllowedNamespaces?: ReadonlySet<string>;
   /** Default supersession policy for manual natural-language remember operations. */
