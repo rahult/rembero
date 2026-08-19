@@ -25,9 +25,20 @@ import type { TrustViewMode } from './trust.js';
 export const DEFAULT_KNOWLEDGE_SEARCH_LIMIT = 20;
 export const MAX_KNOWLEDGE_SEARCH_LIMIT = 100;
 export const MAX_KNOWLEDGE_SEARCH_CLAUSES = 100_000;
-export const MAX_KNOWLEDGE_SEARCH_SOURCE_CHARS = 4_096;
+export const DEFAULT_KNOWLEDGE_SEARCH_SOURCE_CHARS = 16_384;
+export const MAX_KNOWLEDGE_SEARCH_SOURCE_CHARS = 32_768;
+export const MAX_KNOWLEDGE_SEARCH_TOTAL_SOURCE_CHARS = 32 * 1_024 * 1_024;
 export const MAX_KNOWLEDGE_SEARCH_WORDS = 256;
 const MAX_FUZZY_WORD_CHARS = 64;
+const KNOWLEDGE_SEARCH_STOP_WORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'but', 'by',
+  'did', 'do', 'does', 'for', 'from', 'had', 'has', 'have', 'he',
+  'her', 'hers', 'him', 'his', 'how', 'i', 'if', 'in', 'into', 'is',
+  'it', 'its', 'me', 'my', 'of', 'on', 'or', 'our', 'ours', 'she',
+  'so', 'that', 'the', 'their', 'them', 'there', 'they', 'this', 'to',
+  'was', 'we', 'were', 'what', 'when', 'where', 'which', 'who', 'why',
+  'with', 'you', 'your',
+]);
 
 export type KnowledgeSearchClauseKind = 'fact' | 'rule' | 'constraint';
 export type KnowledgeSearchReasonKind =
@@ -88,6 +99,8 @@ export interface KnowledgeSearchGraph {
 
 export interface KnowledgeSearchOptions {
   limit?: number;
+  minimumScore?: number;
+  sourceCharacterLimit?: number;
   kinds?: KnowledgeSearchClauseKind[];
   entityIdentity?: EntityIdentityMode;
   trustMode?: TrustViewMode;
@@ -101,6 +114,9 @@ export interface KnowledgeSearchResult {
   matchCount: number;
   returnedCount: number;
   limit: number;
+  minimumScore: number;
+  sourceCharacterLimit: number;
+  effectiveSourceCharacterLimit: number;
   truncated: boolean;
   results: KnowledgeSearchResultItem[];
   graph: KnowledgeSearchGraph;
@@ -175,11 +191,11 @@ function predicateForGoal(goal: Goal): string | undefined {
   return predKey(isNegation(goal) ? goal.not : goal);
 }
 
-function sourceRankingText(sources: MemorySource[]): {
+function sourceRankingText(sources: MemorySource[], characterLimit: number): {
   text: string;
   truncated: boolean;
 } {
-  let remaining = MAX_KNOWLEDGE_SEARCH_SOURCE_CHARS;
+  let remaining = characterLimit;
   const values: string[] = [];
   let truncated = false;
   for (const source of sources) {
@@ -198,14 +214,15 @@ function sourceRankingText(sources: MemorySource[]): {
 
 function documentFor(
   clause: Clause,
-  sources: Map<string, MemorySource[]>
+  sources: Map<string, MemorySource[]>,
+  sourceCharacterLimit: number
 ): ClauseDocument {
   const key = canonicalKey(clause);
   const serialized = serializeClause(clause);
   const clauseSources = (sources.get(key) ?? []).map((source) =>
     structuredClone(source)
   );
-  const rankingSource = sourceRankingText(clauseSources);
+  const rankingSource = sourceRankingText(clauseSources, sourceCharacterLimit);
   const headPredicateWords = new Set<string>();
   if (!isIntegrityConstraint(clause)) {
     for (const word of recallWords(clause.head.predicate)) {
@@ -317,6 +334,10 @@ function scoreDocument(
   };
 }
 
+function searchableWords(text: string): string[] {
+  return recallWords(text).filter((word) => !KNOWLEDGE_SEARCH_STOP_WORDS.has(word));
+}
+
 function predicateParts(key: string): { predicate: string; arity: number } {
   const slash = key.lastIndexOf('/');
   return { predicate: key.slice(0, slash), arity: Number(key.slice(slash + 1)) };
@@ -420,7 +441,7 @@ export function searchKnowledge(
   options: KnowledgeSearchOptions = {}
 ): KnowledgeSearchResult {
   assertBoundedInput(text, 'knowledge search text');
-  const words = [...new Set(recallWords(text))];
+  const words = [...new Set(searchableWords(text))];
   if (words.length === 0) throw new Error('knowledge search text has no searchable words');
   if (words.length > MAX_KNOWLEDGE_SEARCH_WORDS) {
     throw new Error(
@@ -431,29 +452,61 @@ export function searchKnowledge(
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_KNOWLEDGE_SEARCH_LIMIT) {
     throw new Error(`knowledge search limit must be from 1 to ${MAX_KNOWLEDGE_SEARCH_LIMIT}`);
   }
+  const minimumScore = options.minimumScore ?? 1;
+  if (!Number.isSafeInteger(minimumScore) || minimumScore < 1 || minimumScore > 10_000) {
+    throw new Error('knowledge search minimumScore must be from 1 to 10000');
+  }
+  const sourceCharacterLimit =
+    options.sourceCharacterLimit ?? DEFAULT_KNOWLEDGE_SEARCH_SOURCE_CHARS;
+  if (
+    !Number.isSafeInteger(sourceCharacterLimit) ||
+    sourceCharacterLimit < 1 ||
+    sourceCharacterLimit > MAX_KNOWLEDGE_SEARCH_SOURCE_CHARS
+  ) {
+    throw new Error(
+      `knowledge search sourceCharacterLimit must be from 1 to ${MAX_KNOWLEDGE_SEARCH_SOURCE_CHARS}`
+    );
+  }
   const kinds = validatedKinds(options.kinds);
   const trustMode = options.trustMode ?? 'accepted';
   const view = options.entityIdentity === 'canonical'
     ? canonicalizeKnowledge(clauses, sourceIndex, trustMode)
     : literalKnowledge(clauses, sourceIndex, trustMode);
-  const documents: ClauseDocument[] = [];
+  const uniqueClauses: Clause[] = [];
   const seen = new Set<string>();
   for (const clause of view.clauses) {
     const key = canonicalKey(clause);
     if (seen.has(key)) continue;
     seen.add(key);
-    const document = documentFor(clause, view.sources);
-    if (!kinds.has(document.kind)) continue;
-    documents.push(document);
-    if (documents.length > MAX_KNOWLEDGE_SEARCH_CLAUSES) {
+    if (!kinds.has(clauseKind(clause))) continue;
+    uniqueClauses.push(clause);
+    if (uniqueClauses.length > MAX_KNOWLEDGE_SEARCH_CLAUSES) {
       throw new Error(
         `knowledge search exceeds ${MAX_KNOWLEDGE_SEARCH_CLAUSES} clauses`
       );
     }
   }
+  const effectiveSourceCharacterLimit = Math.min(
+    sourceCharacterLimit,
+    Math.max(
+      1,
+      Math.floor(
+        MAX_KNOWLEDGE_SEARCH_TOTAL_SOURCE_CHARS / Math.max(uniqueClauses.length, 1)
+      )
+    )
+  );
+  const documents: ClauseDocument[] = [];
+  for (const clause of uniqueClauses) {
+    const document = documentFor(
+      clause,
+      view.sources,
+      effectiveSourceCharacterLimit
+    );
+    documents.push(document);
+  }
   const matches = documents
     .map((document) => ({ document, ...scoreDocument(document, text, words) }))
-    .filter(({ score }) => score > 0)
+    .filter(({ score }) => score >= minimumScore)
     .sort(
       (left, right) =>
         right.score - left.score ||
@@ -488,6 +541,9 @@ export function searchKnowledge(
     matchCount: matches.length,
     returnedCount: returned.length,
     limit,
+    minimumScore,
+    sourceCharacterLimit,
+    effectiveSourceCharacterLimit,
     truncated: matches.length > returned.length,
     results: returned.map(({ result }) => result),
     graph: graphFor(text, words, returned),

@@ -98,7 +98,8 @@ describe('deterministic local knowledge search', () => {
     const result = searchKnowledge(
       store.clausesFor(['default']),
       'needle',
-      store.sourcesFor(['default'])
+      store.sourcesFor(['default']),
+      { sourceCharacterLimit: 4_096 }
     );
     expect(result.results[0]).toMatchObject({
       clause: 'note(atlas).',
@@ -108,6 +109,29 @@ describe('deterministic local knowledge search', () => {
         { kind: 'source_word', token: 'needle', points: 45 },
       ]),
     });
+  });
+
+  it('ignores conversational stopwords when ranking source evidence', () => {
+    const store = searchStore('stopwords');
+    store.assert('default', 'note(relevant).', {
+      opId: 'relevant',
+      sourceText: 'Maya accepted the Atlas fellowship at Acme.',
+    });
+    store.assert('default', 'note(distractor).', {
+      opId: 'distractor',
+      sourceText: 'What I did at the theater was take my seat.',
+    });
+    const result = searchKnowledge(
+      store.clausesFor(['default']),
+      'What fellowship did Maya accept?',
+      store.sourcesFor(['default'])
+    );
+    expect(result.words).toEqual(['fellowship', 'maya', 'accept']);
+    expect(result.results[0]?.sources[0]?.opId).toBe('relevant');
+    expect(result.results.map(({ sources }) => sources[0]?.opId)).not.toContain(
+      'distractor'
+    );
+    expect(() => searchKnowledge([], 'What did I do?')).toThrow(/no searchable words/i);
   });
 
   it('searches canonical identity and tentative trust views without exposing metadata', () => {
@@ -190,6 +214,20 @@ describe('deterministic local knowledge search', () => {
       reasons: [{ kind: 'fuzzy_predicate', token: 'collegue', points: 30 }],
     });
     expect(searchKnowledge(program, 'dentist').status).toBe('no_match');
+
+    const thresholded = searchKnowledge(program, 'item', new Map(), {
+      kinds: ['fact'],
+      minimumScore: 100,
+    });
+    expect(thresholded).toMatchObject({
+      status: 'matches',
+      minimumScore: 100,
+      matchCount: 3,
+    });
+    expect(searchKnowledge(program, 'item', new Map(), {
+      kinds: ['fact'],
+      minimumScore: 10_000,
+    }).status).toBe('no_match');
   });
 
   it('keeps recursive define and dependency edges distinct in the result graph', () => {
@@ -235,6 +273,14 @@ describe('deterministic local knowledge search', () => {
         limit: MAX_KNOWLEDGE_SEARCH_LIMIT + 1,
       })
     ).toThrow(/limit must be from 1 to 100/i);
+    expect(() =>
+      searchKnowledge([], 'item', new Map(), {
+        sourceCharacterLimit: 32_769,
+      })
+    ).toThrow(/sourceCharacterLimit must be from 1 to 32768/i);
+    expect(() =>
+      searchKnowledge([], 'item', new Map(), { minimumScore: 0 })
+    ).toThrow(/minimumScore must be from 1 to 10000/i);
     expect(() =>
       searchKnowledge(
         [],

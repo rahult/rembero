@@ -29,6 +29,24 @@ and fails above 3.0 s parse/query/proof or 2.5 GiB process max RSS. It is kept o
 
 See the [current scorecard, gates, and evidence boundary](AGENT-DATABASE-SCORECARD.md).
 
+## LongMemEval-S source retrieval
+
+The complete cleaned 500-question LongMemEval-S split is pinned by dataset commit and
+SHA-256. It evaluates whether local deterministic source search retrieves the labelled
+evidence sessions, with no model, embedding, remote call, or hidden answer data:
+
+```bash
+npm run bench:longmemeval:download
+npm run bench:longmemeval
+npm run bench:longmemeval -- --json
+```
+
+The current recall-first configuration achieves 83.27% Recall@5, 80.96% MRR, and 75.32%
+strict all-evidence coverage over 470 answerable questions at 10.78 ms p95 local search.
+Precision@5 is 30.72% and abstention empty rate is 0%, which remain explicit gaps rather
+than being hidden by answer generation. See the [full method, sweeps, and evidence
+boundary](research/LONGMEMEVAL.md).
+
 ## Structured-memory comparison
 
 The v0.54 benchmark separates exact answers, answerability, ranked evidence retrieval,

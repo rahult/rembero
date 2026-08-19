@@ -33,6 +33,8 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Accuracy | Retrieval Precision@k | 100.0% | 100% |
 | Accuracy | Citation recall | 100.0% | 100% |
 | Accuracy | Stale leakage | 0.0% | 0% |
+| Broad retrieval | LongMemEval-S Recall@5 / MRR | 83.27% / 80.96% | measured |
+| Broad retrieval | Strict all-evidence coverage | 75.32% | measured |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
 | Speed | MCP process startup | 93.74 ms | diagnostic |
@@ -254,6 +256,22 @@ LLM/embedder/vector-store composition and OpenRouter compatibility:
 <https://docs.mem0.ai/open-source/configuration>,
 <https://docs.mem0.ai/components/llms/models/openai>.
 
+## LongMemEval-S broad retrieval
+
+The pinned cleaned LongMemEval-S runner adds 500 public conversational-memory questions
+beyond the eight-question structured conformance suite. It ranks raw session transcripts as
+Remembero source provenance and scores the returned session IDs against published gold
+evidence. At top five, the recall-first configuration achieved 30.72% Precision@5, 83.27%
+Recall@5, 80.96% MRR, and 75.32% strict all-evidence coverage over 470 answerable questions.
+Local search p95 was 10.61–11.10 ms across three complete runs with zero model, embedding,
+or remote calls.
+
+This is retrieval-only, not an answer-accuracy or memory-formation result. The current
+0% abstention empty rate and 43.33% preference-question Recall@5 are published gaps. The
+[reproducible contract and complete result](research/LONGMEMEVAL.md) include dataset
+commit/hash validation, source-window and threshold sweeps, per-question-type metrics, and
+the exact evidence boundary.
+
 ## Release gates
 
 The scorecard fails when any of these regress:
@@ -276,7 +294,8 @@ structured-memory conformance gate.
 
 This scorecard does not yet prove:
 
-- statistical superiority on LoCoMo or LongMemEval;
+- LongMemEval answer accuracy, memory formation, or statistical superiority over another
+  system; the current LongMemEval result is source retrieval only;
 - repeated and memory-bounded performance beyond the current one-million-fact gate;
 - managed-service availability or multi-tenant operations;
 - natural-language cost stability across provider revisions and workloads beyond the

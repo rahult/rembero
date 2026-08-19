@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "remembero.longmemeval-retrieval.summary.v1",
+  "measuredAt": "2026-08-20T03:13:00+10:00",
+  "environment": {
+    "os": "macOS 26.5.2 arm64",
+    "cpu": "Apple M4",
+    "memoryBytes": 17179869184,
+    "node": "26.5.0"
+  },
+  "dataset": {
+    "id": "xiaowu0162/longmemeval-cleaned",
+    "split": "longmemeval_s_cleaned",
+    "commit": "98d7416c24c778c2fee6e6f3006e7a073259d48f",
+    "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+    "bytes": 277383467,
+    "questions": 500,
+    "answerableQuestions": 470,
+    "abstentionQuestions": 30
+  },
+  "method": {
+    "adapter": "remembero-source-search",
+    "adapterVersion": "1",
+    "topK": 5,
+    "sourceCharacterLimit": 16384,
+    "minimumScore": 1,
+    "modelCalls": 0,
+    "embeddingCalls": 0,
+    "remoteCalls": 0,
+    "timingBoundary": "searchKnowledge only; excludes dataset load and per-question source construction"
+  },
+  "result": {
+    "precisionAtK": 0.3072340425531918,
+    "recallAtK": 0.8327304964539008,
+    "meanReciprocalRank": 0.8095744680851062,
+    "strictEvidenceCoverageRate": 0.7531914893617021,
+    "abstentionEmptyRate": 0,
+    "medianWallMs": 9.903708000000051,
+    "p95WallMs": 10.780708000000232,
+    "repeatP95WallMs": [10.780708000000232, 11.103750000000218, 10.605499999999665]
+  },
+  "byQuestionType": {
+    "knowledge-update": { "questions": 78, "recallAtK": 0.9305555555555556, "strictEvidenceCoverageRate": 0.9027777777777778 },
+    "multi-session": { "questions": 133, "recallAtK": 0.7889807162534436, "strictEvidenceCoverageRate": 0.6115702479338843 },
+    "single-session-assistant": { "questions": 56, "recallAtK": 0.9285714285714286, "strictEvidenceCoverageRate": 0.9285714285714286 },
+    "single-session-preference": { "questions": 30, "recallAtK": 0.43333333333333335, "strictEvidenceCoverageRate": 0.43333333333333335 },
+    "single-session-user": { "questions": 70, "recallAtK": 0.953125, "strictEvidenceCoverageRate": 0.953125 },
+    "temporal-reasoning": { "questions": 133, "recallAtK": 0.8103674540682415, "strictEvidenceCoverageRate": 0.7007874015748031 }
+  },
+  "sourceWindowSweep": [
+    { "characters": 4096, "precisionAtK": 0.2920921985815607, "recallAtK": 0.7967375886524823, "meanReciprocalRank": 0.7809574468085106, "strictEvidenceCoverageRate": 0.7 },
+    { "characters": 8192, "precisionAtK": 0.30000000000000027, "recallAtK": 0.826985815602837, "meanReciprocalRank": 0.819609929078014, "strictEvidenceCoverageRate": 0.7425531914893617 },
+    { "characters": 16384, "precisionAtK": 0.3072340425531918, "recallAtK": 0.8327304964539008, "meanReciprocalRank": 0.8095744680851062, "strictEvidenceCoverageRate": 0.7531914893617021 },
+    { "characters": 32768, "precisionAtK": 0.30808510638297903, "recallAtK": 0.8333333333333334, "meanReciprocalRank": 0.8063120567375884, "strictEvidenceCoverageRate": 0.7531914893617021 }
+  ],
+  "thresholdSweep": [
+    { "minimumScore": 1, "precisionAtK": 0.3072340425531918, "recallAtK": 0.8327304964539008, "meanReciprocalRank": 0.8095744680851062, "strictEvidenceCoverageRate": 0.7531914893617021, "abstentionEmptyRate": 0 },
+    { "minimumScore": 90, "precisionAtK": 0.32673758865248265, "recallAtK": 0.8245744680851064, "meanReciprocalRank": 0.806737588652482, "strictEvidenceCoverageRate": 0.7446808510638298, "abstentionEmptyRate": 0.03333333333333333 },
+    { "minimumScore": 135, "precisionAtK": 0.3834397163120568, "recallAtK": 0.7879078014184399, "meanReciprocalRank": 0.7886170212765957, "strictEvidenceCoverageRate": 0.7063829787234043, "abstentionEmptyRate": 0.2 },
+    { "minimumScore": 180, "precisionAtK": 0.42460992907801365, "recallAtK": 0.7032624113475178, "meanReciprocalRank": 0.7244326241134752, "strictEvidenceCoverageRate": 0.6191489361702127, "abstentionEmptyRate": 0.36666666666666664 }
+  ]
+}

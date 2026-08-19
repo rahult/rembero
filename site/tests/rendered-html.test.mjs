@@ -93,6 +93,11 @@ test("server-renders the agent harness integration guide", async () => {
   assert.match(html, /88\.6% P@k/);
   assert.match(html, /\$0\.044 · 118 calls/);
   assert.match(html, /bench:memory:mem0/);
+  assert.match(html, /LongMemEval-S/);
+  assert.match(html, /500 questions/);
+  assert.match(html, /83\.27%/);
+  assert.match(html, /80\.96%/);
+  assert.match(html, /bench:longmemeval/);
   assert.match(html, /\$0\.000644 avg/);
   assert.match(html, /href="\/labs\/chat-memory"/);
 });

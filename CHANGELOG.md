@@ -25,6 +25,11 @@ proof-carrying query with model credentials scrubbed.
 Promotes the million-fact scale diagnostic into a separate repeated latency-and-memory gate.
 The benchmark releases its source corpus after parsing, reports process max RSS, requires
 indexed exact rows/proofs across three repetitions, and caps peak RSS at 2.5 GiB.
+Adds a commit/hash-pinned 500-question LongMemEval-S source-retrieval runner and publishes
+the full precision, recall, MRR, strict-coverage, abstention, latency, source-window, and
+threshold evidence boundary. Local search now ignores conversational stopwords, indexes a
+16 KiB source window by default, caps aggregate source ranking at 32 MiB, reports the
+effective window, and lets trusted library callers set a minimum relevance score.
 
 ## 0.55.0
 

@@ -19,6 +19,8 @@ npm run bench:agent-db:check
 npm run bench:agent-db:cost
 npm run bench:agent-db:install:check
 npm run bench:agent-db:million
+npm run bench:longmemeval:download
+npm run bench:longmemeval
 npm run bench:memory:external
 npm run bench:memory:mem0 # live OpenRouter extraction cost
 ```
@@ -27,6 +29,8 @@ The pinned external command runs the same hidden-label retrieval protocol agains
 and LlamaIndex without adding their Python packages to Remembero.
 The separate Mem0 OSS command requires `OPENROUTER_API_KEY` and records provider-native
 formation tokens and charged cost; it is never part of normal CI or prepublish.
+The pinned LongMemEval-S command runs all 500 cleaned questions as a retrieval-only,
+zero-model-call gate; its [result and limitations](docs/research/LONGMEMEVAL.md) are public.
 
 ## Try the real web console
 

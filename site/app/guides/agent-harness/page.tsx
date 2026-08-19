@@ -289,8 +289,12 @@ export default function AgentHarnessGuide() {
           <strong><span>Remembero precision</span>100% P@k</strong>
           <strong><span>Vector precision</span>88.6% P@k</strong>
           <strong><span>Mem0 formation</span>$0.044 · 118 calls</strong>
+          <strong><span>LongMemEval-S</span>500 questions</strong>
+          <strong><span>Broad Recall@5</span>83.27%</strong>
+          <strong><span>Broad MRR</span>80.96%</strong>
+          <strong><span>Broad retrieval p95</span>10.78 ms</strong>
         </div>
-        <CodeBlock>{"npm run bench:agent-db:check\nnpm run bench:agent-db:scale -- --check\nnpm run bench:agent-db:install:check\nnpm run bench:agent-db:million\nnpm run bench:agent-db:cost\nnpm run bench:memory:external\nnpm run bench:memory:mem0 # live provider cost"}</CodeBlock>
+        <CodeBlock>{"npm run bench:agent-db:check\nnpm run bench:agent-db:scale -- --check\nnpm run bench:agent-db:install:check\nnpm run bench:agent-db:million\nnpm run bench:agent-db:cost\nnpm run bench:longmemeval\nnpm run bench:memory:external\nnpm run bench:memory:mem0 # live provider cost"}</CodeBlock>
         <a className={styles.scorecardLink} href={githubScorecard}>
           Read the scorecard and evidence limits →
         </a>
