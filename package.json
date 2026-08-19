@@ -17,7 +17,10 @@
   "files": [
     "dist",
     "native",
+    "benchmarks",
     "docs/EVALS.md",
+    "docs/AGENT-DATABASE-SCORECARD.md",
+    "docs/AGENT-HARNESS.md",
     "docs/EXPLAINABLE-KNOWLEDGE-GRAPH.md",
     "docs/STRATIFIED-NEGATION.md",
     "docs/QUERY-AGGREGATION.md",
@@ -147,10 +150,18 @@
     "eval:recall": "npm run build && node dist/evals/run-recall.js",
     "bench:memory": "npm run build && node dist/evals/run-memory-stack.js",
     "bench:memory:check": "npm run build && node dist/evals/run-memory-stack.js --check",
+    "bench:memory:langgraph": "npm run build:core && node dist/evals/run-memory-stack.js --adapters rembero --external-manifest benchmarks/adapters/langgraph-fastembed/adapter.json",
+    "bench:agent-db": "npm run build && node dist/evals/run-agent-db-scorecard.js",
+    "bench:agent-db:check": "npm run build && node dist/evals/run-agent-db-scorecard.js --check",
+    "bench:agent-db:scale": "npm run build:core && node dist/evals/run-agent-db-scale.js",
+    "bench:agent-db:million": "npm run build:core && node --expose-gc --max-old-space-size=4096 dist/evals/run-agent-db-scale.js --facts 1000000 --repetitions 3 --check-million",
+    "bench:agent-db:cost": "npm run build && node dist/evals/run-recall.js --variants grounded",
+    "bench:agent-db:install": "npm run build:core && node dist/evals/run-agent-db-install.js",
+    "bench:agent-db:install:check": "npm run build:core && node dist/evals/run-agent-db-install.js --check",
     "bench:engine": "npm run build && node dist/evals/run-engine-benchmark.js",
     "test:watch": "vitest",
     "dev": "tsx src/cli.ts",
-    "prepublishOnly": "npm test && npm run bench:memory:check && npm run build"
+    "prepublishOnly": "npm test && npm run bench:memory:check && npm run bench:agent-db:check && npm run build"
   },
   "repository": {
     "type": "git",

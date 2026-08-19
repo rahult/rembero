@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "remembero.agent-db-install.summary.v1",
+  "measuredAt": "2026-08-20T01:14:21+10:00",
+  "environment": {
+    "os": "macOS 26.5.2 arm64",
+    "cpu": "Apple M4",
+    "memoryBytes": 17179869184,
+    "node": "26.5.0",
+    "npm": "11.17.0"
+  },
+  "method": {
+    "command": "npm run bench:agent-db:install:check",
+    "runs": 3,
+    "npmCache": "new empty temporary directory per run",
+    "install": "packed current tree; ignore lifecycle scripts; no audit or funding calls",
+    "query": "installed CLI writes two facts plus one rule, then explains collaborator(Person, atlas)",
+    "credentialBoundary": "LLM API keys are excluded from the CLI environment",
+    "notes": [
+      "Registry download latency is network and machine specific.",
+      "This proves the current macOS arm64 environment, not every supported OS or architecture."
+    ]
+  },
+  "package": {
+    "archiveBytes": 962855,
+    "installedBytes": 3986224
+  },
+  "runs": [
+    {
+      "coldInstallMs": 4736.819667,
+      "firstWriteMs": 90.19620799999939,
+      "firstProofQueryMs": 94.7430830000003,
+      "expectedAnswer": true,
+      "expectedSources": true
+    },
+    {
+      "coldInstallMs": 4840.33,
+      "firstWriteMs": 90.4,
+      "firstProofQueryMs": 97.5,
+      "expectedAnswer": true,
+      "expectedSources": true
+    },
+    {
+      "coldInstallMs": 4892.680083,
+      "firstWriteMs": 89.80541700000049,
+      "firstProofQueryMs": 98.33324999999968,
+      "expectedAnswer": true,
+      "expectedSources": true
+    }
+  ],
+  "boundary": {
+    "installLifecycleScripts": false,
+    "llmApiKeysPassedToCli": false,
+    "queryModelCalls": 0,
+    "queryEmbeddingCalls": 0,
+    "queryRemoteCalls": 0
+  },
+  "thresholds": {
+    "coldInstallMs": 120000,
+    "firstWriteMs": 1000,
+    "firstProofQueryMs": 1000
+  },
+  "passed": true
+}

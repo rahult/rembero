@@ -254,7 +254,8 @@ validation and explicit review own mutation authority.
 
 Reject or hand off when any of these are true:
 
-- tool name is not allowlisted;
+- tool name is not allowlisted (a provider label may be canonicalized only when the
+  request exposed exactly one forced tool and all arguments pass validation);
 - arguments fail schema validation;
 - the model changes the user's query;
 - the requested namespace is outside the agent's scope;
@@ -314,3 +315,17 @@ tool result, final prompt, raw answer, and deterministic contract side by side:
 
 <http://remembero.rahultrikha.com/labs/chat-memory>
 
+## Measure the database boundary
+
+Run the executable agent database gate after integrating:
+
+```bash
+npm run bench:agent-db:check
+npm run bench:agent-db:scale -- --check
+npm run bench:agent-db:cost
+```
+
+It verifies exact answers and citations, zero stale leakage, engine and real MCP latency,
+a 100,000-fact indexed query/proof sweep, zero model/embedding/API-key cost for structured
+queries, and provider-reported natural-language recall cost. See
+[the current scorecard](AGENT-DATABASE-SCORECARD.md) for measured results and limitations.

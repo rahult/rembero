@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serializeClause } from '../engine/index.js';
 import { loadEnv } from '../env.js';
-import { DEFAULT_MODEL, OpenRouterClient, type LlmClient } from '../llm/client.js';
+import {
+  DEFAULT_MODEL,
+  OpenRouterClient,
+  addLlmUsage,
+  emptyLlmUsageTotals,
+  type LlmClient,
+} from '../llm/client.js';
 import { rememberText } from '../llm/pipeline.js';
 import { MemoryStore } from '../store/store.js';
 import {
@@ -85,10 +91,13 @@ async function runConfiguration(
       store.importClauses('default', testCase.initialProgram);
     }
     let llmCalls = 0;
+    let usage = emptyLlmUsageTotals();
     const llm: LlmClient = {
-      complete(messages) {
+      async complete(messages) {
         llmCalls++;
-        return client.complete(messages);
+        const completion = await client.completeWithUsage(messages);
+        usage = addLlmUsage(usage, completion.usage);
+        return completion.content;
       },
     };
     const started = performance.now();
@@ -109,6 +118,7 @@ async function runConfiguration(
           duplicates: result.duplicates,
           retracted: result.retracted,
           llmCalls,
+          usage,
           durationMs: performance.now() - started,
         });
       } catch (error) {
@@ -127,6 +137,7 @@ async function runConfiguration(
           duplicates: 0,
           retracted: 0,
           llmCalls,
+          usage,
           durationMs: performance.now() - started,
           error: message,
         });
@@ -172,11 +183,15 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log('\nmodel | cases | accuracy | mutation precision | mutation recall | mutation F1 | safety | unexpected errors | seconds');
-  console.log('--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:');
+  console.log('\nmodel | cases | accuracy | mutation precision | mutation recall | mutation F1 | safety | errors | seconds | input tokens | output tokens | cost USD');
+  console.log('--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:');
   for (const run of runs) {
+    const cost =
+      run.score.costResponses === run.score.llmCalls
+        ? run.score.costUsd.toFixed(6)
+        : `${run.score.costUsd.toFixed(6)} partial`;
     console.log(
-      `${run.model} | ${run.score.cases} | ${percent(run.score.accuracy)} | ${percent(run.score.mutationPrecision)} | ${percent(run.score.mutationRecall)} | ${percent(run.score.mutationF1)} | ${percent(run.score.safetyAccuracy)} | ${run.score.unexpectedErrors} | ${(run.score.durationMs / 1000).toFixed(1)}`
+      `${run.model} | ${run.score.cases} | ${percent(run.score.accuracy)} | ${percent(run.score.mutationPrecision)} | ${percent(run.score.mutationRecall)} | ${percent(run.score.mutationF1)} | ${percent(run.score.safetyAccuracy)} | ${run.score.unexpectedErrors} | ${(run.score.durationMs / 1000).toFixed(1)} | ${run.score.promptTokens} | ${run.score.completionTokens} | ${cost}`
     );
   }
 

@@ -10,6 +10,7 @@ import {
 import type { QueryPromptVariant } from '../llm/prompts.js';
 import type { RecallStatus } from '../llm/pipeline.js';
 import type { TrustViewMode } from '../knowledge/trust.js';
+import type { LlmUsageTotals } from '../llm/client.js';
 
 export const RECALL_EVAL_DISTRACTOR_COUNT = 100;
 const RECALL_EVAL_DISTRACTORS = Array.from(
@@ -274,6 +275,8 @@ export interface RecallEvalObservation {
   status: RecallStatus;
   query: string | null;
   actualRows: string[][];
+  llmCalls: number;
+  usage: LlmUsageTotals;
   durationMs: number;
   error?: string;
 }
@@ -290,6 +293,15 @@ export interface RecallEvalScore {
   falseNegatives: number;
   errors: number;
   schemaBudgetExhaustions: number;
+  llmCalls: number;
+  usageResponses: number;
+  costResponses: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedPromptTokens: number;
+  reasoningTokens: number;
+  costUsd: number;
   durationMs: number;
 }
 
@@ -419,6 +431,39 @@ export function scoreRecallEval(observations: RecallEvalObservation[]): RecallEv
     schemaBudgetExhaustions: observations.filter(
       (observation) => observation.status === 'schema_budget_exhausted'
     ).length,
+    llmCalls: observations.reduce((total, observation) => total + observation.llmCalls, 0),
+    usageResponses: observations.reduce(
+      (total, observation) => total + observation.usage.usageResponses,
+      0
+    ),
+    costResponses: observations.reduce(
+      (total, observation) => total + observation.usage.costResponses,
+      0
+    ),
+    promptTokens: observations.reduce(
+      (total, observation) => total + observation.usage.promptTokens,
+      0
+    ),
+    completionTokens: observations.reduce(
+      (total, observation) => total + observation.usage.completionTokens,
+      0
+    ),
+    totalTokens: observations.reduce(
+      (total, observation) => total + observation.usage.totalTokens,
+      0
+    ),
+    cachedPromptTokens: observations.reduce(
+      (total, observation) => total + observation.usage.cachedPromptTokens,
+      0
+    ),
+    reasoningTokens: observations.reduce(
+      (total, observation) => total + observation.usage.reasoningTokens,
+      0
+    ),
+    costUsd: observations.reduce(
+      (total, observation) => total + observation.usage.costUsd,
+      0
+    ),
     durationMs: observations.reduce((total, observation) => total + observation.durationMs, 0),
   };
 }

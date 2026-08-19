@@ -7,6 +7,7 @@ import {
   createRemberoMemoryAdapter,
 } from './memory-stack-adapters.js';
 import type { MemoryStackAdapter } from './memory-stack-contract.js';
+import { loadExternalAdapterManifest } from './memory-stack-external.js';
 import {
   MEMORY_STACK_CASES,
   MEMORY_STACK_LABELS,
@@ -20,6 +21,7 @@ interface Args {
   json: boolean;
   check: boolean;
   external: Array<{ id: string; executable: string }>;
+  externalManifests: string[];
 }
 
 const USAGE = `Usage: npm run bench:memory -- [options]
@@ -28,6 +30,8 @@ Options:
   --adapters <list>       rembero,direct,lexical,recency (default: all)
   --cases <list>          Run selected case IDs
   --external <id>=<path>  Run an isolated v1 JSON adapter executable
+  --external-manifest <path>
+                          Run a pinned adapter with declared capabilities
   --json                  Print machine-readable output
   --check                 Require a perfect Remembero conformance run
 `;
@@ -45,6 +49,7 @@ function parseArgs(argv: string[]): Args {
     json: false,
     check: false,
     external: [],
+    externalManifests: [],
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -66,6 +71,9 @@ function parseArgs(argv: string[]): Args {
         id: specification.slice(0, separator),
         executable: specification.slice(separator + 1),
       });
+      index++;
+    } else if (arg === '--external-manifest') {
+      args.externalManifests.push(value(argv, index, arg));
       index++;
     } else if (arg === '--json') {
       args.json = true;
@@ -129,6 +137,16 @@ async function main(): Promise<void> {
         { executable: external.executable }
       )
     );
+  }
+  for (const manifestPath of args.externalManifests) {
+    const manifest = await loadExternalAdapterManifest(manifestPath);
+    adapters.push(
+      createExternalCommandAdapter(manifest.descriptor, manifest.command)
+    );
+  }
+  const adapterIds = adapters.map((adapter) => adapter.describe().id);
+  if (new Set(adapterIds).size !== adapterIds.length) {
+    throw new Error('adapter IDs must be unique');
   }
 
   const runs = [];

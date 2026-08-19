@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "rembero.memory-stack-adapter.v1",
+  "adapter": {
+    "id": "langgraph-inmemory-fastembed",
+    "version": "langgraph-1.2.10_fastembed-0.8.0_bge-small-en-v1.5",
+    "capabilities": {
+      "answerRows": false,
+      "rankedRetrieval": true,
+      "citations": false,
+      "rules": false,
+      "temporalUpdates": false,
+      "trustViews": true
+    },
+    "disclosures": {
+      "packages": {
+        "langgraph": "1.2.10",
+        "fastembed": "0.8.0"
+      },
+      "embeddingModel": "BAAI/bge-small-en-v1.5 (FastEmbed ONNX, 384 dimensions)",
+      "storage": "LangGraph InMemoryStore; fresh process and store per benchmark case",
+      "writePolicy": "Store each accepted event text under its fixture event ID; include tentative events only for an explicit tentative view",
+      "retrievalPolicy": "LangGraph vector search over the text field; question text as query; fixture topK or 5",
+      "providerCostBoundary": "Local CPU embeddings only; no LLM, API key, or remote inference provider",
+      "notes": [
+        "Retrieval-only adapter: it intentionally returns unsupported for typed answers and emits no proof citations.",
+        "First execution downloads the pinned 67 MB embedding model; benchmark wall time excludes model initialization and dependency startup."
+      ]
+    }
+  },
+  "command": {
+    "executable": "uv",
+    "args": ["run", "--script", "bridge.py"],
+    "workingDirectory": ".",
+    "timeoutMs": 120000,
+    "maxOutputBytes": 1000000
+  }
+}

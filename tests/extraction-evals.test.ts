@@ -7,6 +7,7 @@ import {
   scoreExtractionEval,
   type ExtractionEvalObservation,
 } from '../src/evals/extraction.js';
+import { emptyLlmUsageTotals } from '../src/llm/client.js';
 
 function caseById(id: string) {
   const testCase = EXTRACTION_EVAL_CASES.find((candidate) => candidate.id === id);
@@ -28,6 +29,7 @@ function observation(
     duplicates: testCase.expectedDuplicates,
     retracted: testCase.expectedRetractions,
     llmCalls: testCase.expectedLlmCalls ?? 1,
+    usage: emptyLlmUsageTotals(),
     durationMs: 10,
     ...overrides,
   };
@@ -86,6 +88,30 @@ describe('extraction eval corpus', () => {
 });
 
 describe('extraction eval metrics', () => {
+  it('aggregates provider-native usage without changing mutation scores', () => {
+    const tracked = observation('preference', {
+      usage: {
+        calls: 1,
+        usageResponses: 1,
+        costResponses: 1,
+        promptTokens: 80,
+        completionTokens: 8,
+        totalTokens: 88,
+        cachedPromptTokens: 0,
+        reasoningTokens: 0,
+        costUsd: 0.00008,
+      },
+    });
+    expect(scoreExtractionEval([tracked])).toMatchObject({
+      accuracy: 1,
+      llmCalls: 1,
+      promptTokens: 80,
+      completionTokens: 8,
+      totalTokens: 88,
+      costUsd: 0.00008,
+    });
+  });
+
   it('scores signed additions and removals without inflating from initial state', () => {
     const exact = observation('replace_current_fact');
     const wrong = observation('two_personal_facts', {

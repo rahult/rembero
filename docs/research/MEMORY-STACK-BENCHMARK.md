@@ -35,13 +35,24 @@ errors. Timings are diagnostic only; they are excluded from the semantic digest.
 | Direct fact scan | 100% | 50% | 42.9% | 42.9% | 50% |
 | Lexical overlap top-k | 0% | not applicable | 85.7% | 100% | not applicable |
 | Recency top-k | 0% | not applicable | 100% | 92.9% | not applicable |
+| LangGraph 1.2.10 + FastEmbed 0.8.0 | 0% | not applicable | 100% | 100% | not applicable |
 
 These are eight questions across seven small, public cases. They are a deterministic
 conformance result, not a statistically representative ranking of commercial memory
 systems. The lexical and recency baselines only retrieve; assigning them zero answer
 accuracy would be misleading, so answer metrics are reported as not applicable. The
-versioned machine-readable snapshot is in
+same rule applies to the LangGraph adapter: it is a real external vector-store run, but it
+does not claim typed-answer or proof-citation capabilities. Remembero also achieved 100%
+exact answers and citations in that run. On the current Apple M4 diagnostic, Remembero's
+query/proof p95 was 1.82 ms and LangGraph's local embedding ingest/search p95 was 232.66 ms;
+these paths return different capability sets and the timing is not a universal product
+benchmark. The external adapter excludes dependency/model initialization but includes fresh
+store creation, event embedding, and search per question.
+
+The versioned machine-readable snapshot is in
 [`results/structured-memory-v1-summary.json`](results/structured-memory-v1-summary.json).
+The pinned external result and disclosures are in
+[`results/langgraph-fastembed-v1-summary.json`](results/langgraph-fastembed-v1-summary.json).
 
 ## Case coverage
 
@@ -70,7 +81,25 @@ Run a bridge:
 
 ```bash
 npm run bench:memory -- --adapters remembero --external mem0=/absolute/path/to/mem0-bridge
+npm run bench:memory -- --adapters remembero --external-manifest /path/to/adapter.json
 ```
+
+Use `--external-manifest` for publishable comparisons. A manifest binds the adapter ID and
+capabilities to package/model pins, storage and write policy, retrieval policy, provider-cost
+boundary, working directory, process arguments, timeout, and output limit. The command is
+still spawned directly without a shell, labels remain private, and stderr remains suppressed.
+
+The checked-in example is reproducible with:
+
+```bash
+npm run bench:memory:langgraph
+```
+
+It uses LangGraph's documented `InMemoryStore` semantic-search interface with a custom
+embedding implementation and FastEmbed's documented 384-dimensional
+`BAAI/bge-small-en-v1.5` model. The bridge is isolated under
+`benchmarks/adapters/langgraph-fastembed/`; `uv` resolves its PEP 723 dependency pins and
+the first run downloads the 67 MB model. No LLM or remote inference provider participates.
 
 The request is:
 
@@ -151,8 +180,10 @@ open-source variants must be treated as different adapters.
 
 - Natural-language extraction quality or conversational answer fluency.
 - Performance over million-token histories.
-- General superiority over Mem0, Graphiti/Zep, Letta, LangGraph, or LlamaIndex before
-  those adapters are actually run.
+- General superiority over Mem0, Graphiti/Zep, Letta, or LlamaIndex before those adapters
+  are actually run.
+- General answer-system superiority over LangGraph; the executed LangGraph adapter measures
+  its retrieval store only and deliberately declares answers, rules, and citations unsupported.
 - Production latency from the single-process diagnostic timings.
 - Statistical significance from eight questions.
 

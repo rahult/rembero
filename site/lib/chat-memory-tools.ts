@@ -28,6 +28,8 @@ export interface ParsedChatToolCall {
   arguments: { query: string };
   lane: ChatToolLane;
   scenarioId: ChatMemoryScenarioId;
+  originalName: string;
+  normalizedName: boolean;
 }
 
 export interface ChatToolExecution {
@@ -39,18 +41,25 @@ export interface ChatToolExecution {
   durationMs: number;
 }
 
+export interface ChatMemorySeedVerification {
+  tableCount: number;
+  rowCount: number;
+}
+
 export const CHAT_MEMORY_SQLITE_SETUP = `
   DROP TABLE IF EXISTS status;
   DROP TABLE IF EXISTS blocker;
   DROP TABLE IF EXISTS prefers_meeting;
   DROP TABLE IF EXISTS promised_update;
   DROP TABLE IF EXISTS pending_meeting;
+  DROP TABLE IF EXISTS review_slot;
 
   CREATE TABLE status(project TEXT NOT NULL, state TEXT NOT NULL);
   CREATE TABLE blocker(project TEXT NOT NULL, blocker TEXT NOT NULL);
   CREATE TABLE prefers_meeting(person TEXT NOT NULL, window TEXT NOT NULL);
   CREATE TABLE promised_update(owner TEXT NOT NULL, person TEXT NOT NULL, project TEXT NOT NULL);
   CREATE TABLE pending_meeting(person TEXT NOT NULL, meeting TEXT NOT NULL);
+  CREATE TABLE review_slot(project TEXT NOT NULL, day TEXT NOT NULL, window TEXT NOT NULL);
 
   INSERT INTO status VALUES ('atlas', 'blocked'), ('orchard', 'active');
   INSERT INTO blocker VALUES ('atlas', 'vendor_security_review');
@@ -59,13 +68,51 @@ export const CHAT_MEMORY_SQLITE_SETUP = `
     ('rahul', 'maya', 'atlas'),
     ('rahul', 'liam', 'atlas');
   INSERT INTO pending_meeting VALUES ('jordan', 'roadmap_sync');
+  INSERT INTO review_slot VALUES ('atlas', 'tuesday', 'morning');
 `;
 
+export const CHAT_MEMORY_SQLITE_VERIFY = `SELECT
+  (SELECT COUNT(*)
+     FROM sqlite_schema
+    WHERE type = 'table'
+      AND name IN (
+        'status',
+        'blocker',
+        'prefers_meeting',
+        'promised_update',
+        'pending_meeting',
+        'review_slot'
+      )) AS tableCount,
+  (SELECT COUNT(*) FROM status)
+    + (SELECT COUNT(*) FROM blocker)
+    + (SELECT COUNT(*) FROM prefers_meeting)
+    + (SELECT COUNT(*) FROM promised_update)
+    + (SELECT COUNT(*) FROM pending_meeting)
+    + (SELECT COUNT(*) FROM review_slot) AS rowCount`;
+
+export async function verifyChatMemorySeed(
+  database: BrowserDatalogDatabase,
+): Promise<ChatMemorySeedVerification> {
+  const [row] = await database.exec(CHAT_MEMORY_SQLITE_VERIFY);
+  const tableCount = row?.tableCount;
+  const rowCount = row?.rowCount;
+  if (typeof tableCount !== "number" || typeof rowCount !== "number") {
+    throw new Error("SQLite seed verification returned no counts");
+  }
+  if (tableCount !== 6 || rowCount !== 9) {
+    throw new Error(
+      `SQLite seed verification expected 6 tables and 9 rows, received ${tableCount} tables and ${rowCount} rows`,
+    );
+  }
+  return { tableCount, rowCount };
+}
+
 const SQL_BY_CASE: Record<ChatMemoryScenarioId, string> = {
-  "schedule-review": `SELECT s.project, s.state, b.blocker, p.person, p.window
+  "schedule-review": `SELECT s.project, s.state, b.blocker, p.person, r.day, r.window
 FROM status AS s
 JOIN blocker AS b ON b.project = s.project
-JOIN prefers_meeting AS p ON p.person = 'maya'
+JOIN review_slot AS r ON r.project = s.project
+JOIN prefers_meeting AS p ON p.person = 'maya' AND p.window = r.window
 WHERE s.project = 'atlas'`,
   "follow-up-maya": `SELECT u.owner, u.person, u.project, s.state
 FROM promised_update AS u
@@ -78,10 +125,11 @@ WHERE m.person = 'jordan'`,
 };
 
 const DATALOG_BY_CASE: Record<ChatMemoryScenarioId, string> = {
-  "schedule-review": `schedule_review(Project, tuesday, morning, Blocker) :-
-  status(Project, blocked),
-  blocker(Project, Blocker),
-  prefers_meeting(maya, morning).`,
+  "schedule-review": `schedule_review_atlas(Day, Window, Blocker) :-
+  review_slot(atlas, Day, Window),
+  status(atlas, blocked),
+  blocker(atlas, Blocker),
+  prefers_meeting(maya, Window).`,
   "follow-up-maya": `needs_follow_up_maya(Project) :-
   promised_update(rahul, maya, Project),
   status(Project, blocked).`,
@@ -132,7 +180,7 @@ export function parseChatToolCall(
     }
     if (
       typeof name !== "string" ||
-      name.toLowerCase() !== expected.name.toLowerCase() ||
+      name.trim().length === 0 ||
       typeof argumentsValue !== "object" ||
       argumentsValue === null ||
       !("query" in argumentsValue) ||
@@ -145,6 +193,8 @@ export function parseChatToolCall(
       arguments: { query: question },
       lane,
       scenarioId,
+      originalName: name,
+      normalizedName: name.toLowerCase() !== expected.name.toLowerCase(),
     };
   } catch {
     return null;
@@ -162,6 +212,8 @@ export function simulatedChatToolCall(
     arguments: { query: question },
     lane,
     scenarioId,
+    originalName: definition.name,
+    normalizedName: false,
   };
 }
 

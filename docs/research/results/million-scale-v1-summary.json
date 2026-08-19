@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "remembero.agent-db-million.summary.v1",
+  "measuredAt": "2026-08-20T01:16:00+10:00",
+  "environment": {
+    "os": "macOS 26.5.2 arm64",
+    "cpu": "Apple M4",
+    "memoryBytes": 17179869184,
+    "node": "26.5.0",
+    "v8MaxOldSpaceMiB": 4096
+  },
+  "method": {
+    "command": "npm run bench:agent-db:million",
+    "facts": 1000000,
+    "programBytes": 34778635,
+    "repetitionsPerProcess": 3,
+    "freshProcesses": 2,
+    "sourceRetention": "text program released after parse; explicit collection before timed evaluation",
+    "limits": {
+      "parseMs": 2000,
+      "queryP95Ms": 2000,
+      "proofP95Ms": 2500,
+      "processMaxRssBytes": 2684354560,
+      "candidateFactsVisited": 10
+    }
+  },
+  "runs": [
+    {
+      "parseMs": 997.9,
+      "queryMedianMs": 1001.42,
+      "queryP95Ms": 1014.17,
+      "proofMedianMs": 1006.34,
+      "proofP95Ms": 1010.92,
+      "processMaxRssMiB": 2203.78,
+      "indexedRelationLookups": 2,
+      "candidateFactsVisited": 6,
+      "rowsAndProofsCorrect": true
+    },
+    {
+      "parseMs": 1043.86,
+      "queryMedianMs": 995.36,
+      "queryP95Ms": 1013.53,
+      "proofMedianMs": 1002.24,
+      "proofP95Ms": 1009.58,
+      "processMaxRssMiB": 2196.75,
+      "indexedRelationLookups": 2,
+      "candidateFactsVisited": 6,
+      "rowsAndProofsCorrect": true
+    }
+  ],
+  "passed": true
+}

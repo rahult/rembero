@@ -69,9 +69,14 @@ export {
   type ChatMessage,
   type LlmClient,
   type LlmConfig,
+  type LlmCompletion,
+  type LlmUsage,
+  type LlmUsageTotals,
   DEFAULT_MODEL,
   OpenRouterClient,
+  addLlmUsage,
   clientFromEnv,
+  emptyLlmUsageTotals,
   lazyClientFromEnv,
 } from './llm/client.js';
 export {
@@ -184,6 +189,16 @@ export {
   type TranscriptReadOptions,
 } from './autocapture/transcript.js';
 export { createServer, serveStdio } from './mcp/server.js';
+export {
+  AGENT_DB_SCORECARD_VERSION,
+  buildAgentDbScorecard,
+  type AgentDbScorecard,
+} from './evals/agent-db-scorecard.js';
+export {
+  runAgentDbScaleSweep,
+  type AgentDbScaleCase,
+  type AgentDbScaleSweep,
+} from './evals/agent-db-scale.js';
 export {
   RememberoWebService,
   RemberoWebService,

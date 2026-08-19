@@ -1,5 +1,34 @@
 # Evaluations
 
+## Agent database scorecard
+
+The top-level agent-facing release gate combines deterministic answer/proof conformance,
+repeated engine latency, a real compiled stdio MCP process round trip, zero-provider-cost
+structured query accounting, and the supported two-command setup contract:
+
+```bash
+npm run bench:agent-db
+npm run bench:agent-db:check
+npm run bench:agent-db -- --json --repetitions 20
+npm run bench:agent-db:scale -- --check
+npm run bench:agent-db:million
+npm run bench:agent-db:cost
+npm run bench:agent-db:install:check
+```
+
+The install check packs the current tree, uses a fresh directory and empty npm cache, disables
+install lifecycle scripts, withholds LLM credentials, and requires a real first CLI write plus
+proof query to return the expected answer and sources. It is intentionally not in
+`prepublishOnly`: the cold registry download is a network diagnostic, while package smoke
+remains the deterministic release gate.
+
+The million-fact command is a separate heavy gate. It runs with a 4 GiB V8 ceiling, drops
+the textual source corpus after parsing, performs three exact indexed query/proof repetitions,
+and fails above 2.0 s parse/query, 2.5 s proof, or 2.5 GiB process max RSS. It is kept out of
+`prepublishOnly` so normal package release checks remain practical.
+
+See the [current scorecard, gates, and evidence boundary](AGENT-DATABASE-SCORECARD.md).
+
 ## Structured-memory comparison
 
 The v0.54 benchmark separates exact answers, answerability, ranked evidence retrieval,
@@ -9,6 +38,7 @@ citations, trust views, and deterministic replay. It runs without a model or net
 npm run bench:memory
 npm run bench:memory:check
 npm run bench:memory -- --json
+npm run bench:memory:langgraph
 ```
 
 The public v1 suite contains eight questions over direct facts, 100 distractors, rule and
@@ -21,18 +51,32 @@ External memory stacks can run through a bounded, one-process-per-case JSON prot
 
 ```bash
 npm run bench:memory -- --adapters remembero --external mem0=/absolute/path/to/bridge
+npm run bench:memory -- --adapters remembero --external-manifest /path/to/adapter.json
 ```
+
+The manifest form is the publication path: it pins package/model versions, declares actual
+capabilities, records storage/write/retrieval/cost disclosures, and supplies a shell-free
+command plus timeout. The checked-in LangGraph manifest uses `InMemoryStore`, FastEmbed
+0.8.0, and `BAAI/bge-small-en-v1.5`; its first measured run achieved 100% Retrieval
+Recall@k and MRR with zero operational errors and zero provider calls. It is retrieval-only,
+so answer and citation metrics remain not applicable.
 
 See the [benchmark contract and current results](research/MEMORY-STACK-BENCHMARK.md), the
 [Medium draft](research/MEDIUM-DRAFT.md), and the [research paper](research/paper/paper.md).
-The current checked-in comparison has measured Remembero and transparent baselines only; it
-does not claim unexecuted results for Mem0, Graphiti/Zep, Letta, LangGraph, or LlamaIndex.
+The current checked-in comparison measures Remembero, transparent baselines, and the pinned
+LangGraph retrieval adapter. It does not claim unexecuted results for Mem0, Graphiti/Zep,
+Letta, or LlamaIndex.
 
 ## Natural-language extraction and recall
 
 Remembero measures both personal-knowledge extraction and recall at deterministic evidence
 boundaries. The extraction runner scores the exact store mutation after validation; the
 recall runner scores exact engine bindings before answer phrasing.
+
+Both live runners also aggregate OpenRouter's provider-native input/output tokens, cached
+and reasoning tokens, and charged cost from each response. Usage metadata is observational
+and never participates in answer authority. `npm run bench:agent-db:cost` runs the default
+grounded recall cost measurement.
 
 ## Extraction
 
@@ -137,6 +181,16 @@ GPT-5.4 Mini changed `dr_chen` to `chen` in the quoted-city case. The other thre
 models produced the exact expected mutations in this run.
 
 ### Recall
+
+Measured on 2026-08-20 AEST after reducing the default detailed schema slice from 32 to 8.
+All 26 Luna cases remained exact:
+
+| Model | Cases | Accuracy | Input tokens | Output tokens | Seconds | Charged cost | Average/query |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `openai/gpt-5.6-luna` | 26 | **100.0%** | 122,686 | 1,934 | 92.8 | $0.016735 | $0.000644 |
+
+The previous 32-predicate run cost $0.022549. The new default reduced charged cost by
+25.8% without changing accuracy, precision, recall, or answerability.
 
 Measured on 2026-08-17 AEST with the v0.47 grounded projection prompt and deterministic
 schema ranker. All 26 current cases ran among 100 distractor predicates with no schema-budget

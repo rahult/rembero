@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   createDirectFactAdapter,
   createExternalCommandAdapter,
@@ -17,6 +20,8 @@ import {
   MEMORY_STACK_SUITE,
 } from '../src/evals/memory-stack-fixtures.js';
 import { runMemoryStackBenchmark } from '../src/evals/memory-stack-score.js';
+import { buildAgentDbScorecard } from '../src/evals/agent-db-scorecard.js';
+import { loadExternalAdapterManifest } from '../src/evals/memory-stack-external.js';
 
 describe('memory-stack benchmark contract', () => {
   it('keeps fixture and label IDs unique and complete', () => {
@@ -61,6 +66,42 @@ describe('memory-stack benchmark contract', () => {
 });
 
 describe('memory-stack benchmark adapters and scoring', () => {
+  it('gates the agent database on accuracy, speed, zero-provider-cost queries, and real MCP proof', async () => {
+    const scorecard = await buildAgentDbScorecard({
+      repetitions: 2,
+      scaleFactCounts: [100, 1_000],
+      scaleRepetitions: 2,
+      generatedAt: '2026-08-20T00:00:00.000Z',
+    });
+    expect(scorecard.gates).toMatchObject({ passed: true, failures: [] });
+    expect(scorecard.accuracy).toMatchObject({
+      answerAccuracy: 1,
+      answerabilityAccuracy: 1,
+      citationPrecision: 1,
+      citationRecall: 1,
+      staleLeakageRate: 0,
+      operationalErrors: 0,
+    });
+    expect(scorecard.speed.engineP95Ms).toBeLessThanOrEqual(
+      scorecard.gates.thresholds.engineP95Ms
+    );
+    expect(scorecard.speed.scale.maxima.facts).toBe(1_000);
+    expect(scorecard.speed.scale.cases.every(({ rowsAndProofsCorrect }) => rowsAndProofsCorrect)).toBe(true);
+    expect(scorecard.cost).toMatchObject({
+      structuredQueryModelCalls: 0,
+      structuredQueryEmbeddingCalls: 0,
+      structuredQueryRemoteNetworkCalls: 0,
+      structuredQueryRequiredApiKeys: 0,
+      structuredQueryMarginalProviderCostUsd: 0,
+    });
+    expect(scorecard.ease).toMatchObject({
+      setupCommandCount: 2,
+      readTool: 'explain_query',
+      naturalLanguageReadTool: 'recall_explain',
+      proofRoundTripPassed: true,
+    });
+  });
+
   it('gates the Remembero engine on exact answers and proof citations', async () => {
     const first = await runMemoryStackBenchmark({
       suite: MEMORY_STACK_SUITE,
@@ -253,6 +294,53 @@ describe('external memory-stack adapter', () => {
     await expect(adapter.runCase(MEMORY_STACK_CASES[0])).resolves.toMatchObject({
       caseId: MEMORY_STACK_CASES[0].id,
     });
+  });
+
+  it('loads pinned adapter capabilities and resolves its working directory', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'remembero-adapter-manifest-'));
+    const manifestPath = join(directory, 'adapter.json');
+    try {
+      await writeFile(
+        manifestPath,
+        JSON.stringify({
+          schemaVersion: 'rembero.memory-stack-adapter.v1',
+          adapter: {
+            id: 'pinned-test',
+            version: 'package-1.2.3',
+            capabilities: descriptor.capabilities,
+            disclosures: {
+              packages: { package: '1.2.3' },
+              embeddingModel: 'none',
+              storage: 'memory',
+              writePolicy: 'fixture events',
+              retrievalPolicy: 'none',
+              providerCostBoundary: 'zero provider calls',
+            },
+          },
+          command: {
+            executable: process.execPath,
+            args: ['bridge.js'],
+            workingDirectory: '.',
+            timeoutMs: 2_000,
+          },
+        })
+      );
+      await expect(loadExternalAdapterManifest(manifestPath)).resolves.toMatchObject({
+        descriptor: {
+          id: 'pinned-test',
+          version: 'package-1.2.3',
+          disclosures: { packages: { package: '1.2.3' } },
+        },
+        command: {
+          executable: process.execPath,
+          args: ['bridge.js'],
+          workingDirectory: directory,
+          timeoutMs: 2_000,
+        },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('rejects malformed and oversized adapter output', async () => {

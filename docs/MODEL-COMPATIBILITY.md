@@ -46,6 +46,22 @@ change it, so it is not a release threshold.
   it remains below the combined recommendation because it changed `dr_chen` to `chen` in
   the separate extraction checkpoint and costs more than the default catalog snapshot.
 
+## Provider-reported recall cost
+
+Measured 20 August 2026 AEST over the same five representative recall cases with the
+grounded prompt and eight detailed predicates. These values come from each response's
+OpenRouter `usage.cost`, not catalog-price multiplication:
+
+| Model | Accuracy | Input / output tokens | Seconds | Total cost | Average/query |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `openai/gpt-5.6-luna` | 100% | 29,014 / 339 | 23.7 | $0.001004 | $0.000201 |
+| `google/gemini-3.7-flash` | 100% | 33,178 / 1,553 | 34.0 | $0.015354 | $0.003071 |
+| `openai/gpt-5.4-mini` | 100% | 26,816 / 127 | 11.2 | $0.016018 | $0.003204 |
+| `anthropic/claude-sonnet-5` | 100% | 40,109 / 156 | 32.9 | $0.081778 | $0.016356 |
+
+Luna was about 15x cheaper per query than the next-lowest charged result in this slice.
+Rerun `npm run bench:agent-db:cost` because provider routes and charges can change.
+
 The OpenRouter catalog snapshot observed during the same session listed these prices per
 million tokens:
 

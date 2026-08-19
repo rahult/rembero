@@ -54,11 +54,13 @@ export const CHAT_MEMORY_SCENARIOS: readonly ChatMemoryScenario[] = [
       status(atlas, blocked).
       blocker(atlas, vendor_security_review).
       prefers_meeting(maya, morning).
+      review_slot(atlas, tuesday, morning).
 
-      schedule_review(Project, tuesday, morning, Blocker) :-
+      schedule_review(Project, Day, Window, Blocker) :-
+        review_slot(Project, Day, Window),
         status(Project, blocked),
         blocker(Project, Blocker),
-        prefers_meeting(maya, morning).
+        prefers_meeting(maya, Window).
     `,
   },
   {

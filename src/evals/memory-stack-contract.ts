@@ -50,10 +50,21 @@ export interface MemoryStackCapabilities {
   trustViews: boolean;
 }
 
+export interface MemoryStackAdapterDisclosures {
+  packages: Record<string, string>;
+  embeddingModel: string;
+  storage: string;
+  writePolicy: string;
+  retrievalPolicy: string;
+  providerCostBoundary: string;
+  notes?: string[];
+}
+
 export interface MemoryStackAdapterDescriptor {
   id: string;
   version: string;
   capabilities: MemoryStackCapabilities;
+  disclosures?: MemoryStackAdapterDisclosures;
 }
 
 export interface RankedMemory {

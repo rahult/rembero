@@ -17,6 +17,7 @@
 .steps,
 .choices,
 .boundaries,
+.scorecard,
 .footerCta {
   width: min(1180px, 100%);
   margin-inline: auto;
@@ -158,6 +159,46 @@
 .boundaries {
   padding: 72px 0;
   border-top: 1px solid var(--line);
+}
+
+.scorecard {
+  padding: 72px 0;
+  border-top: 1px solid var(--line);
+}
+
+.scorecardGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 20px;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+
+.scorecardGrid strong {
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: 1.75rem;
+}
+
+.scorecardGrid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.scorecardLink {
+  display: inline-flex;
+  margin-top: 16px;
+  color: var(--blue);
+  font-weight: 720;
+  text-decoration: none;
 }
 
 .sectionHeading {
@@ -304,6 +345,10 @@
     grid-template-columns: 1fr;
   }
 
+  .scorecardGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .hero {
     gap: 40px;
     padding-top: 52px;
@@ -350,5 +395,8 @@
   .secondaryAction {
     width: 100%;
   }
-}
 
+  .scorecardGrid {
+    grid-template-columns: 1fr;
+  }
+}

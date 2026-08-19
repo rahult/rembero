@@ -50,6 +50,15 @@ The v0.17 development validation observed:
 | Selective join | 50,000 | 250 | 765.99 ms | 28.68 ms | 26.71x | 485.46x |
 | Recursive growth | 2,000 | 2,000 | 146.10 ms | 5.18 ms | 28.20x | 572.16x |
 
+The agent-database scorecard now adds a separate current-tree growth gate at 1,000,
+10,000, 50,000, and 100,000 facts. It measures parse/load, indexed query p50/p95, and
+proof p50/p95 while requiring correct rows/proofs, indexed lookup, and no more than ten
+candidate visits. Run `npm run bench:agent-db:scale -- --check`.
+
+The same runner accepts up to 1,000,000 facts. A one-repetition current-machine diagnostic
+completed with identical rows/proofs in 992.30 ms parse/load, 1,007.95 ms indexed query,
+and 1,107.51 ms proof. It remains diagnostic rather than a CI gate.
+
 Wall-clock values are machine-dependent; equality and deterministic work counters are
 the portable evidence.
 

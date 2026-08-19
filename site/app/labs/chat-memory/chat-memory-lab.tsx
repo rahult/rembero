@@ -22,10 +22,12 @@ import {
 } from "@/lib/browser-language-model";
 import {
   CHAT_MEMORY_SQLITE_SETUP,
+  CHAT_MEMORY_SQLITE_VERIFY,
   chatToolDefinition,
   executeChatTool,
   parseChatToolCall,
   simulatedChatToolCall,
+  verifyChatMemorySeed,
   type ChatToolDefinition,
   type ChatToolLane,
   type ParsedChatToolCall,
@@ -93,6 +95,10 @@ function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function describeError(value: unknown): string {
+  return value instanceof Error ? value.message : "Unknown tool-loop error";
+}
+
 function finalAnswerPrompt(
   question: string,
   call: ParsedChatToolCall,
@@ -119,7 +125,7 @@ function nativeToolPrompt(
 }
 
 function formatDuration(value: number | null): string {
-  if (value === null) return "measuring…";
+  if (value === null) return "not run";
   return `${Math.max(value, 0.001).toFixed(3)} ms`;
 }
 
@@ -138,7 +144,13 @@ function matchesAnswerContract(
   switch (scenarioId) {
     case "schedule-review":
       return (
-        includesAll("tuesday", "morning", "vendor security review") &&
+        includesAll(
+          "tuesday",
+          "morning",
+          "after",
+          "vendor security review",
+          "maya prefers",
+        ) &&
         !normalized.includes("before the vendor security review")
       );
     case "follow-up-maya":
@@ -216,6 +228,7 @@ export function ChatMemoryLab() {
     "Starting SQLite WebAssembly…",
   );
   const [databaseBootMs, setDatabaseBootMs] = useState<number | null>(null);
+  const [databaseSeedSummary, setDatabaseSeedSummary] = useState("not verified");
   const [baselineTrace, setBaselineTrace] = useState<LaneTrace>(emptyLaneTrace);
   const [memoryTrace, setMemoryTrace] = useState<LaneTrace>(emptyLaneTrace);
   const [answerContract, setAnswerContract] = useState("Awaiting model output");
@@ -249,19 +262,25 @@ export function ChatMemoryLab() {
         const started = performance.now();
         opened = await openBrowserDatalogDatabase();
         await opened.exec(CHAT_MEMORY_SQLITE_SETUP);
+        const seed = await verifyChatMemorySeed(opened);
         if (!active) {
           await opened.close();
           return;
         }
         databaseRef.current = opened;
         setDatabaseBootMs(performance.now() - started);
+        setDatabaseSeedSummary(
+          `${seed.tableCount} tables · ${seed.rowCount} rows verified`,
+        );
         setDatabaseDiagnostic(
-          `SQLite ${opened.runtime.sqliteVersion} · Remembero extension linked`,
+          `SQLite ${opened.runtime.sqliteVersion} · ${seed.tableCount} tables · ${seed.rowCount} rows verified · Remembero extension linked`,
         );
         setDatabaseStatus("ready");
-      } catch {
+      } catch (error) {
         if (!active) return;
-        setDatabaseDiagnostic("SQLite WebAssembly failed to start");
+        setDatabaseDiagnostic(
+          `SQLite WebAssembly failed to start: ${describeError(error)}`,
+        );
         setDatabaseStatus("error");
       }
     };
@@ -338,7 +357,29 @@ export function ChatMemoryLab() {
       };
     }
 
-    const execution = await executeChatTool(database, call);
+    let execution: Awaited<ReturnType<typeof executeChatTool>>;
+    try {
+      execution = await executeChatTool(database, call);
+    } catch (error) {
+      const message = describeError(error);
+      return {
+        trace: {
+          ...emptyLaneTrace(),
+          callRaw,
+          call,
+          callDurationMs:
+            callResult.status === "generated" ? callResult.durationMs : null,
+          command: "Tool execution failed closed",
+          result: message,
+          answerRaw: "No answer generated because the tool failed.",
+          finalPrompt: "Not sent because the tool did not return evidence.",
+          status: "error",
+        },
+        answer: `Tool execution failed: ${message}`,
+        diagnostic: message,
+        runtime: generatedCall ? "webllm" : "simulated",
+      };
+    }
     const resultText = prettyJson(execution.result);
     const finalUserPrompt = finalAnswerPrompt(scenario.question, call, resultText);
     const displayedFinalPrompt = `SYSTEM:\n${ANSWER_SYSTEM}\n\nUSER:\n${finalUserPrompt}`;
@@ -413,14 +454,14 @@ export function ChatMemoryLab() {
       setBaselineTrace(dataRun.trace);
       setMemoryTrace(rememberoRun.trace);
       setBaselineAnswer(
-        dataRun.trace.status === "invalid"
+        dataRun.trace.status === "invalid" || dataRun.trace.status === "error"
           ? dataRun.answer
           : baselinePassed
             ? dataRun.answer
             : comparison.answer,
       );
       setMemoryAnswer(
-        rememberoRun.trace.status === "invalid"
+        rememberoRun.trace.status === "invalid" || rememberoRun.trace.status === "error"
           ? rememberoRun.answer
           : memoryPassed
             ? rememberoRun.answer
@@ -429,7 +470,7 @@ export function ChatMemoryLab() {
       const contractLabel = (trace: LaneTrace, passed: boolean) =>
         trace.status === "simulated"
           ? "fixture"
-          : trace.status === "invalid"
+          : trace.status === "invalid" || trace.status === "error"
             ? "blocked"
             : passed
               ? "passed"
@@ -440,8 +481,19 @@ export function ChatMemoryLab() {
       setModelMode(rememberoRun.runtime);
       setModelDiagnostic(rememberoRun.diagnostic);
       setHasRun(true);
-    } catch {
-      setAnswerContract("Tool loop failed closed");
+    } catch (error) {
+      const message = describeError(error);
+      const trace = {
+        ...emptyLaneTrace(),
+        result: message,
+        answerRaw: "No answer generated because the tool loop failed.",
+        status: "error" as const,
+      };
+      setBaselineTrace(trace);
+      setMemoryTrace(trace);
+      setBaselineAnswer(`Tool loop failed: ${message}`);
+      setMemoryAnswer(`Tool loop failed: ${message}`);
+      setAnswerContract("Tool loop failed closed · inspect error trace");
     } finally {
       setRunning(false);
     }
@@ -637,12 +689,30 @@ export function ChatMemoryLab() {
               <dd>{baselineTrace.callRaw}</dd>
             </div>
             <div>
+              <dt>Validated call</dt>
+              <dd>
+                {baselineTrace.call === null
+                  ? "Not validated"
+                  : baselineTrace.call.normalizedName
+                    ? `Provider label “${baselineTrace.call.originalName}” canonicalized to the sole allowlisted Query tool`
+                    : "Query accepted without normalization"}
+              </dd>
+            </div>
+            <div>
               <dt>Executed SQL</dt>
-              <dd>{baselineTrace.command}</dd>
+              <dd>
+                {databaseStatus === "ready" && baselineTrace.command === "Not executed"
+                  ? "SQLite ready · waiting for the model tool call"
+                  : baselineTrace.command}
+              </dd>
             </div>
             <div>
               <dt>Tool result</dt>
-              <dd>{baselineTrace.result}</dd>
+              <dd>
+                {databaseStatus === "ready" && baselineTrace.result === "Not executed"
+                  ? "Seed data loaded · run the tool loop to query it"
+                  : baselineTrace.result}
+              </dd>
             </div>
             <div>
               <dt>Final answer prompt</dt>
@@ -662,12 +732,30 @@ export function ChatMemoryLab() {
               <dd>{memoryTrace.callRaw}</dd>
             </div>
             <div>
+              <dt>Validated call</dt>
+              <dd>
+                {memoryTrace.call === null
+                  ? "Not validated"
+                  : memoryTrace.call.normalizedName
+                    ? `Provider label “${memoryTrace.call.originalName}” canonicalized to the sole allowlisted Query tool`
+                    : "Query accepted without normalization"}
+              </dd>
+            </div>
+            <div>
               <dt>Executed Datalog</dt>
-              <dd>{memoryTrace.command}</dd>
+              <dd>
+                {databaseStatus === "ready" && memoryTrace.command === "Not executed"
+                  ? "Remembero ready · waiting for the model tool call"
+                  : memoryTrace.command}
+              </dd>
             </div>
             <div>
               <dt>Tool result</dt>
-              <dd>{memoryTrace.result}</dd>
+              <dd>
+                {databaseStatus === "ready" && memoryTrace.result === "Not executed"
+                  ? "Seed data loaded · run the tool loop to derive bindings and proof"
+                  : memoryTrace.result}
+              </dd>
             </div>
             <div>
               <dt>Final answer prompt</dt>
@@ -680,10 +768,12 @@ export function ChatMemoryLab() {
           <strong>{databaseDiagnostic}</strong>
           <ul className={styles.ledgerList}>
             <li>One in-memory SQLite database for both agents</li>
+            <li>Startup probe: {databaseSeedSummary}</li>
             <li>Data Query adapter returns prepared, read-only SQL rows</li>
             <li>Remembero Query adapter uses datalog_query + datalog_explain</li>
             <li>No database snapshot is pasted into either model prompt</li>
           </ul>
+          <pre className={styles.ledgerPacket}>{CHAT_MEMORY_SQLITE_VERIFY}</pre>
         </article>
         <article className={styles.ledgerCard}>
           <span>Answer + proof contract</span>

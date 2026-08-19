@@ -59,6 +59,7 @@ type WorkerPromiserFactory = (config: {
 }) => Promise<WorkerPromiser>;
 
 const EXTENSION_FUNCTIONS = ["datalog_explain", "datalog_query", "datalog_sql"];
+const WORKER_BOOT_TIMEOUT_MS = 15_000;
 
 function assetUrl(name: string): string {
   return new URL(`/sqlite-wasm/${name}`, window.location.origin).href;
@@ -77,6 +78,44 @@ function errorFromResponse(response: unknown): Error {
     );
   }
   return new Error(String(response));
+}
+
+async function waitForWorkerPromiser(
+  factory: WorkerPromiserFactory,
+  worker: Worker,
+): Promise<WorkerPromiser> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let rejectWorkerFailure: ((reason: Error) => void) | undefined;
+  const workerFailure = new Promise<never>((_, reject) => {
+    rejectWorkerFailure = reject;
+  });
+  const onError = (event: ErrorEvent) => {
+    rejectWorkerFailure?.(
+      new Error(
+        `SQLite worker failed to load${event.message ? `: ${event.message}` : ""}`,
+      ),
+    );
+  };
+  const onMessageError = () => {
+    rejectWorkerFailure?.(new Error("SQLite worker returned an unreadable message"));
+  };
+  worker.addEventListener("error", onError, { once: true });
+  worker.addEventListener("messageerror", onMessageError, { once: true });
+
+  const timedOut = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error("SQLite worker did not become ready within 15 seconds")),
+      WORKER_BOOT_TIMEOUT_MS,
+    );
+  });
+
+  try {
+    return await Promise.race([factory({ worker }), workerFailure, timedOut]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    worker.removeEventListener("error", onError);
+    worker.removeEventListener("messageerror", onMessageError);
+  }
 }
 
 function parseJsonArray<T>(value: SqliteScalar, label: string): T[] {
@@ -168,7 +207,7 @@ export async function openBrowserDatalogDatabase(): Promise<BrowserDatalogDataba
 
   const worker = new Worker(assetUrl("sqlite3-worker1.mjs"), { type: "module" });
   try {
-    const promiser = await module.default({ worker });
+    const promiser = await waitForWorkerPromiser(module.default, worker);
     await promiser("open", { filename: ":memory:" });
     const execWorker = async (sql: string): Promise<SqliteRow[]> => {
       const response = await promiser("exec", {

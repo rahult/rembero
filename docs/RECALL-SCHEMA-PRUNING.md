@@ -23,7 +23,7 @@ deterministic proof witness.
 
 ## First-pass selection
 
-The default first pass gives detailed context to 32 predicates under a 24 KiB schema
+The default first pass gives detailed context to 8 predicates under a 24 KiB schema
 budget. Ranking is local, deterministic, and requires no embedding service:
 
 1. exact normalized question-word overlap with predicate names;
@@ -120,3 +120,9 @@ same-anchor predicate competition or omitted named temporal context triggers one
 ordinary grounded answers remain one-call. This does not change schema selection or the
 honest-negative widening rules above. See
 [the non-empty recall disambiguation contract](RECALL-DISAMBIGUATION.md).
+
+The current default was reduced from 32 to 8 after the complete 26-case grounded recall
+suite retained 100% accuracy, precision, recall, and answerability while provider-reported
+cost fell from $0.022549 to $0.016735 (25.8%) and input tokens fell from 137,386 to
+122,686. The existing one-time widening path remains authoritative for negative results
+or dependency groups that do not fit the first pass.

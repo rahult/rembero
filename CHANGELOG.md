@@ -3,6 +3,24 @@
 Release notes previously embedded in the README are collected here in reverse
 chronological order. Only releases that had a standalone README note are listed.
 
+## Unreleased
+
+Adds an executable agent-database scorecard with real stdio MCP proof, structured-query
+cost boundaries, 100,000-fact scale gates, and a million-fact diagnostic. OpenRouter usage
+metadata now flows into recall and extraction evals. The default detailed recall schema
+slice is reduced from 32 to 8 after a complete live 26-case run preserved 100% correctness
+while lowering charged recall cost by 25.8%; honest-negative widening remains unchanged.
+Adds the first pinned external-stack comparison: LangGraph 1.2.10 with FastEmbed 0.8.0
+and BGE-small runs through a manifest-declared, process-isolated bridge. The measured
+retrieval-only adapter reaches 100% Recall@k/MRR without being misreported as an answer or
+proof system.
+Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
+disabled into a fresh directory and empty npm cache, then times a real first write and
+proof-carrying query with model credentials scrubbed.
+Promotes the million-fact scale diagnostic into a separate repeated latency-and-memory gate.
+The benchmark releases its source corpus after parsing, reports process max RSS, requires
+indexed exact rows/proofs across three repetitions, and caps peak RSS at 2.5 GiB.
+
 ## 0.55.0
 
 Renames the npm package and primary command-line tools to `remembero` and

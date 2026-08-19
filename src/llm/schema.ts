@@ -13,7 +13,7 @@ import type { MemorySource } from '../store/store.js';
 import { isEntityMetadataDeclaration } from '../knowledge/identity.js';
 import { serializePromptClause } from './prompts.js';
 
-export const DEFAULT_RECALL_SCHEMA_PREDICATES = 32;
+export const DEFAULT_RECALL_SCHEMA_PREDICATES = 8;
 export const MAX_RECALL_SCHEMA_PREDICATES = 256;
 export const DEFAULT_RECALL_SCHEMA_BYTES = 24 * 1024;
 export const MAX_RECALL_SCHEMA_BYTES = 48 * 1024;

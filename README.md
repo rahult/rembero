@@ -10,6 +10,21 @@ built-in, zero-dependency Datalog engine does the reasoning deterministically.
 
 Release history is maintained in [CHANGELOG.md](CHANGELOG.md).
 
+The executable [agent database scorecard](docs/AGENT-DATABASE-SCORECARD.md) gates exact
+answers, proof citations, stale leakage, engine latency, a real MCP round trip, and the
+zero-model/zero-embedding structured-query cost boundary:
+
+```bash
+npm run bench:agent-db:check
+npm run bench:agent-db:cost
+npm run bench:agent-db:install:check
+npm run bench:agent-db:million
+npm run bench:memory:langgraph
+```
+
+The pinned LangGraph/FastEmbed command runs the same hidden-label retrieval protocol
+against an externally maintained memory store without adding Python packages to Remembero.
+
 ## Try the real web console
 
 ```bash
@@ -59,7 +74,7 @@ Configuration is via environment variables (a `.env` file in the working directo
 | `REMBERO_AUTO_CAPTURE_DAILY_CAP` | no | `10` unique attempts per namespace/UTC day |
 | `REMBERO_AUTO_CAPTURE_TAIL_BYTES` | no | `24576` bytes (maximum `49152`) |
 | `REMBERO_VALID_TIME_MODE` | no | `delete`; set `archive_until` to preserve superseded facts |
-| `REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT` | no | `32` detailed predicates on the first recall pass (range: 1–256) |
+| `REMBERO_RECALL_SCHEMA_PREDICATE_LIMIT` | no | `8` detailed predicates on the first recall pass (range: 1–256) |
 | `REMBERO_RECALL_ANSWER_MODE` | no | `natural`; use `deterministic` bindings or compact `evidence` |
 | `REMBERO_INTEGRITY_MODE` | no | `off`; use `strict` or migration mode `no_new_violations` for atomic write rejection |
 | `REMBERO_INTEGRITY_NAMESPACES` | no | target namespace only; `*` or a comma-separated governed view when enforcement is active |

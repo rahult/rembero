@@ -191,7 +191,7 @@ Options:
   -n, --namespace <ns>     Namespace to write to / read from (default: "default")
       --namespaces <a,b|*> Namespaces to search for health/propose-memory/recall/query/profile/what-if/why-not/topology/diff/audit-rules/search/browse/connect/test-knowledge/check/conflicts/list/claims/history
       --valid-time-mode <mode>  Supersession: delete (default) or archive_until
-      --schema-predicate-limit <n>  Detailed recall predicates (default: 32; max: 256)
+      --schema-predicate-limit <n>  Detailed recall predicates (default: 8; max: 256)
       --proof-limit <n>    Proof witnesses per explain result (default: 1; max: ${MAX_PROOFS_PER_ROW})
       --max-violations <n> Maximum integrity violations (default: 1000; max: ${MAX_INTEGRITY_VIOLATIONS})
       --integrity-mode <mode>  Write guard: off, strict, or no_new_violations

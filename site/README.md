@@ -13,7 +13,8 @@ browser-contained proof playground at `/playground` for
 - `/playground` measures SQLite + Wasm boot, rule + proof, SQL, and insert operations in
   the current browser while keeping the extension build identity inspectable.
 - `/guides/agent-harness` turns the lab into a portable MCP and agent-harness integration
-  recipe with a bounded Query tool, validation, proof-aware synthesis, and review-gated writes.
+  recipe with a bounded Query tool, validation, proof-aware synthesis, review-gated writes,
+  and the executable agent database scorecard.
 
 The agent lab uses the browser-safe Remembero TypeScript engine. The chat lab and playground
 run SQLite 3.53.4 as WebAssembly with Remembero's C extension linked into the same binary. All three

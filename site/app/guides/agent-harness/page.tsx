@@ -5,6 +5,8 @@ import styles from "./guide.module.css";
 
 const githubGuide =
   "https://github.com/rahult/remembero/blob/main/docs/AGENT-HARNESS.md";
+const githubScorecard =
+  "https://github.com/rahult/remembero/blob/main/docs/AGENT-DATABASE-SCORECARD.md";
 const lab = "/labs/chat-memory";
 const playground = "/playground";
 
@@ -256,6 +258,39 @@ export default function AgentHarnessGuide() {
           <li>Use propose_memory, typed review, and apply_memory_proposal for accepted writes.</li>
           <li>Attach a caller-stable opId to reviewed mutations so retries are idempotent.</li>
         </ul>
+      </section>
+
+      <section className={styles.scorecard} aria-labelledby="scorecard-title">
+        <div className={styles.sectionHeading}>
+          <span>Executable evidence</span>
+          <h2 id="scorecard-title">Gate the database, not the marketing claim.</h2>
+          <p>
+            Run one command to verify structured accuracy, proof citations, stale leakage,
+            engine latency, a real stdio MCP round trip, clean installation, million-fact
+            memory use, and a pinned external retrieval comparison.
+          </p>
+        </div>
+        <div className={styles.scorecardGrid}>
+          <strong><span>Exact answers</span>100%</strong>
+          <strong><span>Citation recall</span>100%</strong>
+          <strong><span>Engine p95</span>0.54 ms</strong>
+          <strong><span>MCP explain</span>7.95 ms</strong>
+          <strong><span>Scale gate</span>100k facts</strong>
+          <strong><span>Scale query p95</span>81.70 ms</strong>
+          <strong><span>Million-fact gate</span>1.01 s · 2.15 GiB</strong>
+          <strong><span>Model calls</span>0</strong>
+          <strong><span>API keys</span>0</strong>
+          <strong><span>Natural recall</span>$0.000644 avg</strong>
+          <strong><span>Natural write</span>$0.000220 avg</strong>
+          <strong><span>Luna cost lead</span>about 15x</strong>
+          <strong><span>Cold npm install</span>4.89 s</strong>
+          <strong><span>First proof query</span>98.33 ms</strong>
+          <strong><span>LangGraph retrieval</span>100% Recall@k</strong>
+        </div>
+        <CodeBlock>{"npm run bench:agent-db:check\nnpm run bench:agent-db:scale -- --check\nnpm run bench:agent-db:install:check\nnpm run bench:agent-db:million\nnpm run bench:agent-db:cost\nnpm run bench:memory:langgraph"}</CodeBlock>
+        <a className={styles.scorecardLink} href={githubScorecard}>
+          Read the scorecard and evidence limits →
+        </a>
       </section>
 
       <section className={styles.footerCta}>

@@ -11,8 +11,13 @@ import {
   recallQuestion,
   retrieveQuestion,
 } from '../src/llm/pipeline.js';
-import type { ChatMessage, LlmClient } from '../src/llm/client.js';
-import { OpenRouterClient } from '../src/llm/client.js';
+import {
+  OpenRouterClient,
+  addLlmUsage,
+  emptyLlmUsageTotals,
+  type ChatMessage,
+  type LlmClient,
+} from '../src/llm/client.js';
 import { wrapTentativeFacts } from '../src/knowledge/trust.js';
 import { assertTentativeFacts } from '../src/knowledge/trust-store.js';
 import { searchKnowledge } from '../src/knowledge/search.js';
@@ -2008,6 +2013,51 @@ describe('recallQuestion', () => {
 });
 
 describe('OpenRouterClient', () => {
+  it('returns provider token, cache, reasoning, and charged-cost usage without a second request', async () => {
+    const fakeFetch: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          model: 'openai/gpt-5.6-luna',
+          choices: [{ message: { content: 'tracked' } }],
+          usage: {
+            prompt_tokens: 120,
+            completion_tokens: 8,
+            total_tokens: 128,
+            cost: 0.0000168,
+            prompt_tokens_details: { cached_tokens: 20 },
+            completion_tokens_details: { reasoning_tokens: 3 },
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    const client = new OpenRouterClient(
+      { apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', model: 'model' },
+      fakeFetch
+    );
+    const completion = await client.completeWithUsage([
+      { role: 'user', content: 'hello' },
+    ]);
+    expect(completion).toEqual({
+      content: 'tracked',
+      model: 'openai/gpt-5.6-luna',
+      usage: {
+        promptTokens: 120,
+        completionTokens: 8,
+        totalTokens: 128,
+        cachedPromptTokens: 20,
+        reasoningTokens: 3,
+        costUsd: 0.0000168,
+      },
+    });
+    expect(addLlmUsage(emptyLlmUsageTotals(), completion.usage)).toMatchObject({
+      calls: 1,
+      usageResponses: 1,
+      costResponses: 1,
+      totalTokens: 128,
+      costUsd: 0.0000168,
+    });
+  });
+
   it('sends an OpenAI-style chat request with auth header and retries on 5xx', async () => {
     const requests: { url: string; init: RequestInit }[] = [];
     let attempt = 0;

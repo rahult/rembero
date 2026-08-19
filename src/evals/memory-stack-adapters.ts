@@ -305,6 +305,7 @@ export function createRecencyAdapter(): MemoryStackAdapter {
 export interface ExternalCommandAdapterOptions {
   executable: string;
   args?: string[];
+  workingDirectory?: string;
   timeoutMs?: number;
   maxOutputBytes?: number;
   env?: Record<string, string>;
@@ -337,6 +338,7 @@ export function createExternalCommandAdapter(
         const child = spawn(options.executable, options.args ?? [], {
           shell: false,
           stdio: ['pipe', 'pipe', 'pipe'],
+          cwd: options.workingDirectory,
           env: {
             PATH: process.env.PATH ?? '/usr/bin:/bin',
             LANG: process.env.LANG ?? 'C.UTF-8',

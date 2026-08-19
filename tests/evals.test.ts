@@ -12,6 +12,7 @@ import {
   type RecallEvalObservation,
 } from '../src/evals/recall.js';
 import { selectRecallSchema } from '../src/llm/schema.js';
+import { emptyLlmUsageTotals } from '../src/llm/client.js';
 
 function testCase(
   id: string,
@@ -34,6 +35,8 @@ function observation(
       query === null ? 'unanswerable' : actualRows.length === 0 ? 'no_match' : 'answered',
     query,
     actualRows,
+    llmCalls: 0,
+    usage: emptyLlmUsageTotals(),
     durationMs: 10,
   };
 }
@@ -115,6 +118,37 @@ describe('recall eval corpus', () => {
 });
 
 describe('recall eval metrics', () => {
+  it('aggregates provider-native token and charged-cost usage', () => {
+    const tracked = observation(
+      testCase('tracked', [['acme']]),
+      'works_at(rahul, Company)',
+      [['acme']]
+    );
+    tracked.llmCalls = 1;
+    tracked.usage = {
+      calls: 1,
+      usageResponses: 1,
+      costResponses: 1,
+      promptTokens: 100,
+      completionTokens: 5,
+      totalTokens: 105,
+      cachedPromptTokens: 20,
+      reasoningTokens: 2,
+      costUsd: 0.0001,
+    };
+    expect(scoreRecallEval([tracked])).toMatchObject({
+      llmCalls: 1,
+      usageResponses: 1,
+      costResponses: 1,
+      promptTokens: 100,
+      completionTokens: 5,
+      totalTokens: 105,
+      cachedPromptTokens: 20,
+      reasoningTokens: 2,
+      costUsd: 0.0001,
+    });
+  });
+
   it('preserves semantic column order inside multi-column rows', () => {
     const ordered = observation(
       testCase('ordered', [['alice', 'bob']]),

@@ -1,4 +1,5 @@
 import { canonicalKey, parseProgram, serializeClause } from '../engine/index.js';
+import type { LlmUsageTotals } from '../llm/client.js';
 
 export const EXTRACTION_EVAL_DISTRACTOR_COUNT = 100;
 const EXTRACTION_EVAL_DISTRACTORS = Array.from(
@@ -189,6 +190,7 @@ export interface ExtractionEvalObservation {
   duplicates: number;
   retracted: number;
   llmCalls: number;
+  usage: LlmUsageTotals;
   durationMs: number;
   error?: string;
 }
@@ -205,6 +207,15 @@ export interface ExtractionEvalScore {
   safetyAccuracy: number;
   safetyCases: number;
   unexpectedErrors: number;
+  llmCalls: number;
+  usageResponses: number;
+  costResponses: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedPromptTokens: number;
+  reasoningTokens: number;
+  costUsd: number;
   durationMs: number;
 }
 
@@ -325,6 +336,39 @@ export function scoreExtractionEval(
     unexpectedErrors: observations.filter(
       (observation) => observation.outcome === 'error'
     ).length,
+    llmCalls: observations.reduce((total, observation) => total + observation.llmCalls, 0),
+    usageResponses: observations.reduce(
+      (total, observation) => total + observation.usage.usageResponses,
+      0
+    ),
+    costResponses: observations.reduce(
+      (total, observation) => total + observation.usage.costResponses,
+      0
+    ),
+    promptTokens: observations.reduce(
+      (total, observation) => total + observation.usage.promptTokens,
+      0
+    ),
+    completionTokens: observations.reduce(
+      (total, observation) => total + observation.usage.completionTokens,
+      0
+    ),
+    totalTokens: observations.reduce(
+      (total, observation) => total + observation.usage.totalTokens,
+      0
+    ),
+    cachedPromptTokens: observations.reduce(
+      (total, observation) => total + observation.usage.cachedPromptTokens,
+      0
+    ),
+    reasoningTokens: observations.reduce(
+      (total, observation) => total + observation.usage.reasoningTokens,
+      0
+    ),
+    costUsd: observations.reduce(
+      (total, observation) => total + observation.usage.costUsd,
+      0
+    ),
     durationMs: observations.reduce(
       (total, observation) => total + observation.durationMs,
       0

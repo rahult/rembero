@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "rembero.memory-stack.external-summary.v1",
+  "measuredAt": "2026-08-20T01:07:32+10:00",
+  "environment": {
+    "os": "macOS 26.5.2 arm64",
+    "cpu": "Apple M4",
+    "memoryBytes": 17179869184,
+    "node": "26.5.0",
+    "uv": "0.12.0"
+  },
+  "suite": {
+    "id": "rembero-structured-memory",
+    "version": "1.0.0",
+    "digest": "2a483f29d0123bea651a8f4a7eec0a7b5193e58667474b5e96bbe8319c131524",
+    "cases": 7,
+    "questions": 8
+  },
+  "method": {
+    "command": "npm run bench:memory:langgraph",
+    "repetitions": 1,
+    "timingStatus": "diagnostic-only",
+    "modelCache": "warm after initial 67 MB model download",
+    "notes": [
+      "Remembero wall time includes program construction, parsing, query evaluation, and proof collection per question.",
+      "LangGraph wall time includes fresh store creation, event embedding, and vector search per question.",
+      "LangGraph dependency startup and embedding-model initialization occur before question timing.",
+      "The LangGraph adapter is retrieval-only and is not assigned answer or citation accuracy."
+    ]
+  },
+  "runs": [
+    {
+      "adapter": {
+        "id": "rembero-engine",
+        "version": "1"
+      },
+      "capabilities": {
+        "answerRows": true,
+        "rankedRetrieval": true,
+        "citations": true,
+        "rules": true,
+        "temporalUpdates": true,
+        "trustViews": true
+      },
+      "summary": {
+        "operationalErrors": 0,
+        "answerCoverage": 1,
+        "answerAccuracy": 1,
+        "answerabilityAccuracy": 1,
+        "retrievalRecallAtK": 1,
+        "meanReciprocalRank": 1,
+        "citationRecall": 1,
+        "staleLeakageRate": 0,
+        "medianWallMs": 0.14420900000000003,
+        "p95WallMs": 1.8182909999999985
+      },
+      "semanticDigest": "8ca23aa43d8df715a14cf37ac534cee6febc75ed40a1c01a080f1a016eeea6cf"
+    },
+    {
+      "adapter": {
+        "id": "langgraph-inmemory-fastembed",
+        "version": "langgraph-1.2.10_fastembed-0.8.0_bge-small-en-v1.5"
+      },
+      "capabilities": {
+        "answerRows": false,
+        "rankedRetrieval": true,
+        "citations": false,
+        "rules": false,
+        "temporalUpdates": false,
+        "trustViews": true
+      },
+      "disclosures": {
+        "packages": {
+          "langgraph": "1.2.10",
+          "fastembed": "0.8.0"
+        },
+        "embeddingModel": "BAAI/bge-small-en-v1.5 (FastEmbed ONNX, 384 dimensions)",
+        "storage": "LangGraph InMemoryStore; fresh process and store per benchmark case",
+        "writePolicy": "Store each accepted event text under its fixture event ID; include tentative events only for an explicit tentative view",
+        "retrievalPolicy": "LangGraph vector search over the text field; question text as query; fixture topK or 5",
+        "providerCostBoundary": "Local CPU embeddings only; no LLM, API key, or remote inference provider"
+      },
+      "summary": {
+        "operationalErrors": 0,
+        "answerCoverage": 0,
+        "answerAccuracy": null,
+        "answerabilityAccuracy": null,
+        "retrievalRecallAtK": 1,
+        "meanReciprocalRank": 1,
+        "citationRecall": null,
+        "staleLeakageRate": 0,
+        "medianWallMs": 12.631457997485995,
+        "p95WallMs": 232.65612497925758
+      },
+      "semanticDigest": "fd1702eda0a59e9124e1f0f7c697c64b41a094acc1d6ed35645ea3a143f84f59"
+    }
+  ]
+}
