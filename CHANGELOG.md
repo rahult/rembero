@@ -30,6 +30,9 @@ entries, stores no source text, validates entry digests, and recomputes corrupt 
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.
+Bundles the three production dependencies into the published tarball, replacing
+registry-dependent first installs with one deterministic download. The archive grows to
+3.80 MiB while the measured empty-cache install falls to 1.76 seconds.
 Promotes the million-fact scale diagnostic into a separate repeated latency-and-memory gate.
 The benchmark releases its source corpus after parsing, reports process max RSS, requires
 indexed exact rows/proofs across three repetitions, and caps peak RSS at 2.5 GiB.

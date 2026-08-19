@@ -78,6 +78,9 @@ Facts nobody ever stated directly (like `colleague(rahul, mira)`) are *derived*,
 npm install -g remembero        # or run ad hoc with: npx -y remembero
 ```
 
+The 3.80 MiB package bundles its production dependencies so first install is one download;
+the current fresh empty-cache diagnostic is 1.76 seconds.
+
 Configuration is via environment variables (a `.env` file in the working directory also works):
 
 | Variable | Required | Default |

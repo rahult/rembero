@@ -1,6 +1,6 @@
 {
   "schemaVersion": "remembero.agent-db-install.summary.v1",
-  "measuredAt": "2026-08-20T01:14:21+10:00",
+  "measuredAt": "2026-08-20T04:54:30+10:00",
   "environment": {
     "os": "macOS 26.5.2 arm64",
     "cpu": "Apple M4",
@@ -10,19 +10,21 @@
   },
   "method": {
     "command": "npm run bench:agent-db:install:check",
-    "runs": 6,
+    "runs": 7,
     "npmCache": "new empty temporary directory per run",
-    "install": "packed current tree; ignore lifecycle scripts; no audit or funding calls",
+    "install": "packed current tree with production dependencies bundled; ignore lifecycle scripts; no audit or funding calls",
     "query": "installed CLI writes two facts plus one rule, then explains collaborator(Person, atlas)",
     "credentialBoundary": "LLM API keys are excluded from the CLI environment",
     "notes": [
-      "Registry download latency is network and machine specific.",
+      "Bundling replaces dependency registry fetches with one larger package download.",
+      "A pre-bundle GitHub Windows run took 198.94 seconds only in dependency installation while write and proof remained correct.",
       "This proves the current macOS arm64 environment, not every supported OS or architecture."
     ]
   },
   "package": {
-    "archiveBytes": 965040,
-    "installedBytes": 3998916
+    "archiveBytes": 3987587,
+    "installedBytes": 19610202,
+    "bundledProductionDependencies": true
   },
   "runs": [
     {
@@ -68,6 +70,16 @@
       "coldInstallMs": 5190.963416,
       "firstWriteMs": 89.07574999999997,
       "firstProofQueryMs": 95.46016599999984,
+      "expectedAnswer": true,
+      "expectedSources": true
+    },
+    {
+      "environment": "macOS arm64 with bundled production dependencies",
+      "coldInstallMs": 1760.117958,
+      "firstWriteMs": 91.63149999999996,
+      "firstProofQueryMs": 95.80745900000011,
+      "archiveBytes": 3987587,
+      "installedBytes": 19610202,
       "expectedAnswer": true,
       "expectedSources": true
     }
