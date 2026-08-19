@@ -60,6 +60,7 @@ npm run bench:memory:langgraph
 npm run bench:memory:llamaindex
 npm run bench:memory:external
 npm run bench:memory:mem0
+npm run bench:memory:graphiti
 ```
 
 The public v1 suite contains eight questions over direct facts, 100 distractors, rule and
@@ -93,11 +94,16 @@ runs native Mem0 inference on every event, and records OpenRouter-native calls, 
 tokens, and charged cost. It is deliberately excluded from CI and prepublish because the
 full 118-call run consumes live provider budget and takes several minutes.
 
+`bench:memory:graphiti` is another live-provider measurement. It pins Graphiti OSS 0.29.3,
+uses native bulk episode formation and hybrid edge search, embeds locally with FastEmbed,
+and creates a fresh embedded FalkorDBLite graph per question. The measured full run used
+275 model calls and $0.037854 provider cost. It is excluded from CI and prepublish.
+
 See the [benchmark contract and current results](research/MEMORY-STACK-BENCHMARK.md), the
 [Medium draft](research/MEDIUM-DRAFT.md), and the [research paper](research/paper/paper.md).
 The current checked-in comparison measures Remembero, transparent baselines, and pinned
-LangGraph and LlamaIndex retrieval adapters. It does not claim unexecuted results for Mem0,
-Graphiti/Zep, or Letta.
+LangGraph, LlamaIndex, Mem0 OSS, and Graphiti OSS adapters. It does not claim an unexecuted
+result for Letta or managed Zep.
 
 ## Natural-language extraction and recall
 

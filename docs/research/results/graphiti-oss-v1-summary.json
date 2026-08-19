@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "rembero.memory-stack.graphiti-summary.v1",
+  "measuredAt": "2026-08-20T03:43:19+10:00",
+  "environment": {
+    "os": "macOS 26.5.2 arm64",
+    "cpu": "Apple M4",
+    "memoryBytes": 17179869184,
+    "uv": "0.12.0",
+    "python": "3.12"
+  },
+  "suite": {
+    "id": "rembero-structured-memory",
+    "version": "1.0.0",
+    "digest": "2a483f29d0123bea651a8f4a7eec0a7b5193e58667474b5e96bbe8319c131524",
+    "cases": 7,
+    "questions": 8
+  },
+  "adapter": {
+    "id": "graphiti-oss-openrouter-fastembed",
+    "version": "graphiti-core-0.29.3_luna_fastembed-0.8.0_bge-small-en-v1.5_falkordblite",
+    "resolvedPackages": {
+      "falkordblite": "0.10.0",
+      "httpx": "0.28.1",
+      "openai": "3.3.1",
+      "redis": "8.1.0"
+    },
+    "llm": "openai/gpt-5.6-luna via OpenRouter, temperature 0, JSON-object fallback",
+    "embedding": "BAAI/bge-small-en-v1.5, FastEmbed 0.8.0, local CPU",
+    "storage": "fresh embedded FalkorDBLite graph per question",
+    "telemetry": "disabled",
+    "answerReader": "none; retrieval-only scoring"
+  },
+  "method": {
+    "command": "npm run bench:memory:graphiti",
+    "eventPolicy": "native Graphiti add_episode_bulk over every allowed event with source identity mapped from returned episode objects",
+    "trustPolicy": "accepted-only unless the public question requests tentative inclusion",
+    "retrievalPolicy": "Graphiti basic hybrid edge search; flatten and deduplicate native edge episode UUIDs to the published event top-k",
+    "timingBoundary": "includes embedded graph startup, native formation, provider latency, local embedding, persistence, and search; excludes dependency and embedding-model initialization",
+    "comparisonBoundary": "Remembero consumes supplied clauses in this suite; Graphiti forms an entity-edge graph from event text, so formation latency is not a structured-query speed ratio",
+    "lifecycle": "explicitly await embedded FalkorDB shutdown before client close"
+  },
+  "summary": {
+    "questions": 8,
+    "operationalErrors": 0,
+    "answerCoverage": 0,
+    "answerAccuracy": null,
+    "retrievalCoverage": 0.875,
+    "retrievalPrecisionAtK": 0.5714285714285714,
+    "retrievalRecallAtK": 0.4404761904761904,
+    "meanReciprocalRank": 0.5714285714285714,
+    "citationRecall": null,
+    "staleLeakageRate": 0,
+    "medianWallMs": 9940.000749949832,
+    "p95WallMs": 33149.196499958634
+  },
+  "providerUsage": {
+    "modelCalls": 275,
+    "inputTokens": 395591,
+    "outputTokens": 15620,
+    "totalTokens": 411211,
+    "costUsd": 0.03785447,
+    "averageCostPerCallUsd": 0.0001376526,
+    "costVarianceNote": "Provider-reported cost varied materially; routing and cache effects were not isolated",
+    "separateDirectCaseRun": {
+      "modelCalls": 231,
+      "inputTokens": 335762,
+      "outputTokens": 11830,
+      "costUsd": 0.096913,
+      "wallMs": 39615.98
+    }
+  },
+  "cases": [
+    {
+      "id": "direct_fact_at_scale",
+      "modelCalls": 229,
+      "inputTokens": 334135,
+      "outputTokens": 11889,
+      "costUsd": 0.02980527,
+      "wallMs": 33149.196499958634,
+      "retrieved": ["direct-employer"],
+      "retrievalRecallAtK": 1
+    },
+    {
+      "id": "multi_hop_rule",
+      "modelCalls": 8,
+      "costUsd": 0.00133612,
+      "wallMs": 11184.252000006381,
+      "retrieved": ["atlas-contributor", "atlas-owner"],
+      "retrievalRecallAtK": 0.6666666666666666
+    },
+    {
+      "id": "recursive_reasoning",
+      "modelCalls": 11,
+      "costUsd": 0.00222997,
+      "wallMs": 9622.5832090131,
+      "retrieved": ["parent-alice-bob", "parent-carol-dan", "parent-bob-carol"],
+      "retrievalRecallAtK": 0.75
+    },
+    {
+      "id": "temporal_update",
+      "modelCalls": 10,
+      "costUsd": 0.00188526,
+      "wallMs": 14291.99941601837,
+      "retrieved": ["employment-new", "employment-old"],
+      "retrievalRecallAtK": 0.6666666666666666
+    },
+    {
+      "id": "honest_abstention",
+      "modelCalls": 2,
+      "costUsd": 0.00011752,
+      "wallMs": 3625.9322919650003,
+      "retrieved": []
+    },
+    {
+      "id": "explicit_trust",
+      "modelCalls": 8,
+      "costUsd": 0.00171757,
+      "wallMs": [7352.518125029746, 8585.9268749482],
+      "retrieved": [[], []],
+      "retrievalRecallAtK": [0, 0]
+    },
+    {
+      "id": "integrity_conflict",
+      "modelCalls": 7,
+      "costUsd": 0.00076276,
+      "wallMs": 9940.000749949832,
+      "retrieved": [],
+      "retrievalRecallAtK": 0
+    }
+  ]
+}

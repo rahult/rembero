@@ -19,6 +19,9 @@ FastEmbed model and capability disclosures, enabling a controlled three-way loca
 Adds a full Mem0 OSS 2.0.14 formation-and-retrieval adapter with native OpenRouter usage
 accounting, plus Retrieval Precision@k so distractor-heavy top-k results cannot hide behind
 perfect recall and MRR.
+Adds a pinned Graphiti OSS 0.29.3 native bulk-formation and hybrid-retrieval adapter using
+Luna, local FastEmbed, and embedded FalkorDBLite, including provider-native cost and an
+explicit embedded-server shutdown contract.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

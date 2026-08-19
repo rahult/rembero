@@ -115,10 +115,11 @@ First, the retrieval-only baselines are not assigned zero answer accuracy. They 
 produce answers, so the metric is not applicable. Treating “unsupported capability” as
 “wrong answer” would make the chart look better while making the science worse.
 
-Second, this is not yet a measured claim that Remembero beats Mem0, Graphiti, Letta,
-LangGraph, or LlamaIndex. No external vendor adapter was executed in this snapshot. The
-suite now includes an isolated JSON adapter protocol so those runs can be added without
-bringing vendor dependencies or secrets into Remembero itself.
+Second, this table is the benchmark's initial local-baseline snapshot, not a claim that
+Remembero beats external systems. The repository has since executed pinned LangGraph,
+LlamaIndex, Mem0 OSS, and Graphiti OSS adapters through the isolated JSON protocol. Their
+current results and capability limits live in the scorecard; Letta and managed Zep remain
+unexecuted.
 
 ## What the first result actually shows
 
@@ -187,9 +188,10 @@ Most importantly, I want “the system retrieved relevant text” and “the ans
 to remain different claims.
 
 Remembero’s first suite is not large enough to settle the agent-memory market. It is large
-enough to make our own standard falsifiable. The next milestone is to run pinned external
-adapters on this conformance suite and on cleaned LongMemEval, then publish the complete
-artifacts whether the results flatter Remembero or not.
+enough to make our own standard falsifiable. Pinned external adapters and a cleaned
+LongMemEval-S retrieval run are now published; the next milestone is a common end-to-end
+answer reader plus Letta or managed Zep, with formation, retrieval, and answer failures
+still reported separately.
 
 That is the point of proof-carrying memory: the answer should not get special treatment
 because it is ours.
@@ -197,8 +199,9 @@ because it is ours.
 ---
 
 **Disclosure:** Rahul Trikha is the creator of Remembero. The benchmark and article are
-vendor-authored. Current results cover Remembero and transparent local baselines only. No
-external commercial system was measured in this snapshot.
+vendor-authored. Current repository results include pinned open-source LangGraph,
+LlamaIndex, Mem0, and Graphiti configurations; they do not measure managed commercial
+services or establish general product superiority.
 
 **Suggested Medium tags:** Artificial Intelligence, AI Agents, Databases, Open Source,
 Retrieval-Augmented Generation

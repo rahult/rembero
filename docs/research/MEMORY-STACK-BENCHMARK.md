@@ -38,23 +38,26 @@ errors. Timings are diagnostic only; they are excluded from the semantic digest.
 | LangGraph 1.2.10 + FastEmbed 0.8.0 | 0% | not applicable | 88.6% | 100% | 100% | not applicable |
 | LlamaIndex VectorMemory 0.14.23 + FastEmbed 0.8.0 | 0% | not applicable | 88.6% | 100% | 100% | not applicable |
 | Mem0 OSS 2.0.14 + Luna + FastEmbed 0.8.0 | 0% | not applicable | 88.6% | 100% | 100% | not applicable |
+| Graphiti OSS 0.29.3 + Luna + FastEmbed 0.8.0 | 0% | not applicable | 57.1% | 44.0% | 57.1% | not applicable |
 
 These are eight questions across seven small, public cases. They are a deterministic
 conformance result, not a statistically representative ranking of commercial memory
 systems. The lexical and recency baselines only retrieve; assigning them zero answer
 accuracy would be misleading, so answer metrics are reported as not applicable. The
-same rule applies to the LangGraph and LlamaIndex adapters: they are real external vector
-memory runs, but do not claim typed-answer or proof-citation capabilities. Remembero also achieved 100%
-exact answers and citations in that run. On the current Apple M4 diagnostic, Remembero's
+same rule applies to all four executed external adapters: they are real external memory
+runs, but do not claim typed-answer or proof-citation capabilities. Remembero also achieved
+100% exact answers and citations in that run. On the current Apple M4 diagnostic, Remembero's
 query/proof p95 was 1.82 ms and LangGraph's local embedding ingest/search p95 was 232.66 ms;
 these paths return different capability sets and the timing is not a universal product
 benchmark. The external adapter excludes dependency/model initialization but includes fresh
 store creation, event embedding, and search per question.
 
-Precision@k is reported separately because every vector adapter found the relevant direct
-fact at rank one but also returned four distractors in its top five. Recall and MRR therefore
-remain 100%, while context precision is 88.6% over the seven answerable retrieval questions.
-Remembero returned only proof-supporting events and retained 100% precision.
+Precision@k is reported separately because the LangGraph, LlamaIndex, and Mem0 adapters
+found the relevant direct fact at rank one but also returned four distractors in their top
+five. Recall and MRR therefore remain 100%, while context precision is 88.6% over the seven
+answerable retrieval questions. Graphiti returned precise evidence when it found any, but
+missed complete evidence on several rule-oriented cases. Remembero returned only
+proof-supporting events and retained 100% precision.
 
 The versioned machine-readable snapshot is in
 [`results/structured-memory-v1-summary.json`](results/structured-memory-v1-summary.json).
@@ -64,6 +67,8 @@ The combined two-adapter result is in
 [`results/external-adapters-v1-summary.json`](results/external-adapters-v1-summary.json).
 The live Mem0 formation/retrieval result is in
 [`results/mem0-oss-v1-summary.json`](results/mem0-oss-v1-summary.json).
+The live Graphiti formation/retrieval result is in
+[`results/graphiti-oss-v1-summary.json`](results/graphiti-oss-v1-summary.json).
 
 ## Case coverage
 
@@ -107,6 +112,7 @@ npm run bench:memory:langgraph
 npm run bench:memory:llamaindex
 npm run bench:memory:external
 npm run bench:memory:mem0
+npm run bench:memory:graphiti
 ```
 
 It uses LangGraph's documented `InMemoryStore` semantic-search interface with a custom
@@ -129,6 +135,21 @@ usage is captured from Mem0's native response callback. Two full runs used 118 m
 approximately 0.95 million tokens, cost $0.0440–$0.0445, and took 323–350 seconds p95.
 This formation latency is not directly comparable to Remembero's structured-query latency;
 it is published as a product-ingestion diagnostic.
+
+The Graphiti bridge pins Graphiti OSS 0.29.3 and uses its documented `add_episode_bulk`
+formation path, basic hybrid edge search, and native edge-to-episode provenance. Luna forms
+the entity graph through OpenRouter; FastEmbed and embedded FalkorDBLite remain local.
+The complete run achieved 57.1% Precision@k, 44.0% Recall@k, and 57.1% MRR with no
+operational errors. It used 275 model calls, 411,211 tokens, cost $0.037854, and took
+33.15 seconds p95. Graphiti found the direct fact among 100 distractors, but omitted rule
+episodes and returned no relevant evidence for this suite's explicit trust or integrity
+questions. The adapter adds no answer reader and does not treat graph facts as Datalog rules.
+OpenRouter's provider-reported cost varied materially: a separate direct-case run cost
+$0.096913 versus $0.029805 for the same case inside the recorded full run. Routing and cache
+effects were not isolated, so reruns are required for billing decisions. Graphiti's tagged
+source and FalkorDB quickstart document the pinned package and embedded-driver path:
+<https://github.com/getzep/graphiti/tree/v0.29.3>,
+<https://github.com/getzep/graphiti/blob/v0.29.3/examples/quickstart/quickstart_falkordb.py>.
 
 The request is:
 
@@ -191,8 +212,9 @@ The protocol deliberately avoids requiring any vendor package in Remembero:
 
 - **Mem0:** add each event as a memory, search with the question, map returned memory IDs
   to event IDs, and return answer rows only if the bridge also runs a disclosed reader.
-- **Graphiti/Zep:** add events as episodes with their timestamps, use hybrid search, and
-  map episode provenance to event IDs. Declare whether invalidated facts are included.
+- **Graphiti/Zep:** the checked-in OSS adapter adds events as timestamped episodes, uses
+  hybrid edge search, and maps native episode provenance to event IDs. Managed Zep remains
+  a distinct, unexecuted product boundary.
 - **Letta:** place event text in memory blocks or archival memory, then record which blocks
   or passages were surfaced to the agent.
 - **LangGraph:** store namespaced event documents, optionally enable semantic search, and
@@ -209,13 +231,15 @@ open-source variants must be treated as different adapters.
 
 - Natural-language extraction quality or conversational answer fluency.
 - Performance over million-token histories.
-- General superiority over Graphiti/Zep or Letta before those adapters are actually run.
+- General superiority over managed Zep or Letta before those adapters are actually run.
 - General answer-system superiority over LangGraph; the executed LangGraph adapter measures
   its retrieval store only and deliberately declares answers, rules, and citations unsupported.
 - General answer-system superiority over LlamaIndex; the executed VectorMemory adapter has
   the same retrieval-only boundary.
 - General answer-system superiority over Mem0; the executed adapter measures native memory
   formation and retrieval but deliberately adds no downstream answer reader.
+- General answer-system superiority over Graphiti; the executed adapter measures native
+  graph formation and retrieval but deliberately adds no downstream answer reader.
 - Production latency from the single-process diagnostic timings.
 - Statistical significance from eight questions.
 

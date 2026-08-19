@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "rembero.memory-stack-adapter.v1",
+  "adapter": {
+    "id": "graphiti-oss-openrouter-fastembed",
+    "version": "graphiti-core-0.29.3_luna_fastembed-0.8.0_bge-small-en-v1.5_falkordblite",
+    "capabilities": {
+      "answerRows": false,
+      "rankedRetrieval": true,
+      "citations": false,
+      "rules": false,
+      "temporalUpdates": true,
+      "trustViews": true
+    },
+    "disclosures": {
+      "packages": {
+        "graphiti-core": "0.29.3",
+        "fastembed": "0.8.0",
+        "falkordblite": "0.10.0",
+        "httpx": "0.28.1",
+        "openai": "3.3.1",
+        "redis": "8.1.0"
+      },
+      "llmModel": "openai/gpt-5.6-luna via OpenRouter OpenAI-compatible chat completions, temperature 0, Graphiti JSON-object fallback with schema in prompt",
+      "embeddingModel": "BAAI/bge-small-en-v1.5 through a local Graphiti EmbedderClient, 384 dimensions, CPU",
+      "storage": "Graphiti OSS with a fresh embedded FalkorDBLite graph per benchmark question",
+      "writePolicy": "Use Graphiti add_episode_bulk for every allowed event, preserving event-to-episode identity from the returned native episode objects; accepted-only by default and include tentative events only for an explicit tentative view",
+      "retrievalPolicy": "Graphiti basic hybrid edge search with question text, isolated group ID, fixture topK or 5, then flatten and deduplicate each ranked edge's native episode UUIDs into fixture event IDs",
+      "providerCostBoundary": "Graphiti entity/edge extraction calls are provider-charged and reported from OpenRouter-native response usage; embeddings, hybrid retrieval, and graph storage are local",
+      "notes": [
+        "Graphiti telemetry is disabled and the embedded graph is deleted after each question.",
+        "Bulk ingestion is Graphiti's documented efficient multi-episode path; the timing still includes complete native formation, local embedding, storage, and retrieval.",
+        "Retrieval-only scoring: no separate answer reader is added, Datalog rules remain unsupported, and Graphiti facts are mapped back to their native source episodes rather than guessed from text.",
+        "A no-op cross-encoder is supplied because the basic RRF search path does not use cross-encoder reranking; this prevents an unmeasured extra provider client."
+      ]
+    }
+  },
+  "command": {
+    "executable": "uv",
+    "args": ["run", "--script", "bridge.py"],
+    "workingDirectory": ".",
+    "requiredEnvironment": ["OPENROUTER_API_KEY"],
+    "timeoutMs": 900000,
+    "maxOutputBytes": 1000000
+  }
+}

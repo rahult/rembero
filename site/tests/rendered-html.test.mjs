@@ -87,12 +87,16 @@ test("server-renders the agent harness integration guide", async () => {
   assert.match(html, /bench:agent-db:million/);
   assert.match(html, /bench:agent-db:cost/);
   assert.match(html, /bench:memory:external/);
-  assert.match(html, /External retrieval/);
-  assert.match(html, /3 stacks · 100% R@k/);
+  assert.match(html, /Top retrieval group/);
+  assert.match(html, /4 stacks · 100% R@k/);
   assert.match(html, /100% P@k/);
   assert.match(html, /88\.6% P@k/);
   assert.match(html, /\$0\.044 · 118 calls/);
   assert.match(html, /bench:memory:mem0/);
+  assert.match(html, /Graphiti retrieval/);
+  assert.match(html, /44\.0% R@k/);
+  assert.match(html, /\$0\.0379 · 275 calls/);
+  assert.match(html, /bench:memory:graphiti/);
   assert.match(html, /LongMemEval-S/);
   assert.match(html, /500 questions/);
   assert.match(html, /83\.27%/);

@@ -227,11 +227,14 @@ Measured 20 August 2026 AEST on Apple M4 / 16 GiB, after the 67 MB model was cac
 | LangGraph `InMemoryStore` + FastEmbed | 88.6% | 100% | 100% | not applicable | not applicable | 254.04 ms | 0 / $0 |
 | LlamaIndex `VectorMemory` + FastEmbed | 88.6% | 100% | 100% | not applicable | not applicable | 299.87 ms | 0 / $0 |
 | Mem0 OSS + Luna + FastEmbed | 88.6% | 100% | 100% | not applicable | not applicable | 322.89 s | 118 / $0.044034 |
+| Graphiti OSS + Luna + FastEmbed | 57.1% | 44.0% | 57.1% | not applicable | not applicable | 33.15 s | 275 / $0.037854 |
 
-Remembero matched the external adapters' retrieval result while also returning exact typed
-answers and proof citations. It also returned only relevant evidence; each vector adapter
-returned four distractors beside the target in the direct fact top-five, reducing mean
-Precision@k to 88.6%. The timing paths are disclosed rather than treated as identical:
+Remembero matched LangGraph, LlamaIndex, and Mem0's retrieval result while also returning
+exact typed answers and proof citations. It also returned only relevant evidence; those
+three vector-store adapters returned four distractors beside the target in the direct fact
+top-five, reducing mean Precision@k to 88.6%. Graphiti's separately formed graph retrieved
+less complete evidence, as detailed below. The timing paths are disclosed rather than
+treated as identical:
 Remembero parses/evaluates/proves the structured question, while LangGraph creates a fresh
 store, embeds all case events, and runs vector search; dependency/model initialization is
 excluded from its `wallMs`. This is a real external result, not a general framework or
@@ -255,6 +258,20 @@ ingestion diagnostic—not a direct structured-query speed ratio. Mem0 documents
 LLM/embedder/vector-store composition and OpenRouter compatibility:
 <https://docs.mem0.ai/open-source/configuration>,
 <https://docs.mem0.ai/components/llms/models/openai>.
+
+The Graphiti result uses native `add_episode_bulk`, hybrid edge search, and native
+edge-to-episode provenance with Graphiti OSS 0.29.3. Luna forms the graph through
+OpenRouter; FastEmbed and a fresh embedded FalkorDBLite graph stay local. The complete run
+used 275 model calls, 395,591 input and 15,620 output tokens, cost $0.037854, and achieved
+57.1% Precision@k, 44.0% Recall@k, and 57.1% MRR. It found the direct fact among 100
+distractors, but omitted policy/rule episodes and returned no relevant evidence on the
+explicit trust and integrity cases. The 33.15-second p95 includes native formation,
+provider latency, local embedding, graph persistence, and retrieval—not just search.
+The exact result and a materially higher-cost direct-case rerun are published in
+[`research/results/graphiti-oss-v1-summary.json`](research/results/graphiti-oss-v1-summary.json).
+The pinned Graphiti source and official FalkorDB quickstart expose the APIs used by the
+bridge: <https://github.com/getzep/graphiti/tree/v0.29.3>,
+<https://github.com/getzep/graphiti/blob/v0.29.3/examples/quickstart/quickstart_falkordb.py>.
 
 ## LongMemEval-S broad retrieval
 
@@ -302,12 +319,13 @@ This scorecard does not yet prove:
   measured recall/extraction suites;
 - installation success on CPU architectures beyond the tested macOS arm64 and hosted
   Linux/Windows x64 environments;
-- comparative results for Graphiti/Zep or Letta without executing pinned external
-  adapters;
+- comparative results for managed Zep or Letta without executing pinned external adapters;
 - broader LangGraph conclusions beyond the executed in-memory retrieval-only configuration.
 - broader LlamaIndex conclusions beyond the executed VectorMemory retrieval-only configuration.
 - broader Mem0 conclusions beyond the executed OSS/Luna/FastEmbed/Qdrant configuration.
+- broader Graphiti conclusions beyond the executed OSS/Luna/FastEmbed/FalkorDBLite
+  configuration.
 
 The next gates should add cost-regression thresholds after more provider samples, scale
-sweeps above one million facts, additional CPU architectures, and pinned Graphiti/Zep or
-Letta adapters.
+sweeps above one million facts, additional CPU architectures, and a pinned Letta or managed
+Zep adapter.
