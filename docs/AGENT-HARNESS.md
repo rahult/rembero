@@ -341,6 +341,9 @@ or `recall_explain` establishes the answer.
 The semantic result reports its model, provider tokens/cost, cache hits/misses, semantic
 score, lexical rank, clause, and durable sources. Restrict exported namespaces with
 `REMBERO_LLM_ALLOWED_NAMESPACES`; detected secrets fail before the provider call.
+Long sources are scored by their best bounded chunk. A high-confidence lexical leader is
+retained only at the published absolute-score and margin gate, which is reported in the
+tool result as `lexicalGuardApplied`.
 Document vectors are cached as bounded derived data across MCP restarts, so repeated agent
 sessions pay only for query embeddings. Deleting `.semantic-embeddings/` is always safe.
 After an accepted `apply_memory_proposal`, call `prepare_semantic_search` in bounded batches

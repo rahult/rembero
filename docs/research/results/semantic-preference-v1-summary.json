@@ -14,6 +14,12 @@
     "semanticTopK": 5,
     "lexicalCandidateLimit": 100,
     "sourceCharacterLimit": 16384,
+    "chunkCharacters": 2048,
+    "chunkOverlap": 256,
+    "maxChunksPerDocument": 10,
+    "maxProviderBatch": 100,
+    "lexicalGuardMinimumScore": 120,
+    "lexicalGuardRatio": 1.5,
     "model": "perplexity/pplx-embed-v1-0.6b",
     "abstentionAuthority": "none; embeddings retrieve only",
     "sourceSafety": "store-equivalent credential redaction plus fail-closed secret scan before export"
@@ -23,23 +29,23 @@
     "preferenceQuestions": 15,
     "routedQuestions": 11,
     "lexical": { "precisionAtK": 0.08, "recallAtK": 0.4, "meanReciprocalRank": 0.3055555555555555 },
-    "semanticPolicy": { "precisionAtK": 0.16, "recallAtK": 0.8, "meanReciprocalRank": 0.6799999999999999 },
-    "providerUsage": { "calls": 11, "promptTokens": 988932, "totalTokens": 988932, "costUsd": 0.003955728 },
-    "coldSemanticP95Ms": 8502.563375
+    "semanticPolicy": { "precisionAtK": 0.17333333333333334, "recallAtK": 0.8666666666666667, "meanReciprocalRank": 0.75 },
+    "providerUsage": { "calls": 32, "promptTokens": 1121159, "totalTokens": 1121159, "costResponses": 32, "costUsd": 0.004484636 },
+    "coldSemanticP95Ms": 9179.485875
   },
   "heldOut": {
     "questions": 239,
     "preferenceQuestions": 15,
     "routedQuestions": 11,
     "lexical": { "precisionAtK": 0.09333333333333332, "recallAtK": 0.4666666666666667, "meanReciprocalRank": 0.16111111111111112 },
-    "semanticPolicy": { "precisionAtK": 0.10666666666666666, "recallAtK": 0.5333333333333333, "meanReciprocalRank": 0.45555555555555555 },
-    "providerUsage": { "calls": 11, "promptTokens": 1011024, "totalTokens": 1011024, "costUsd": 0.004044096 },
-    "coldSemanticP95Ms": 6317.284125000006
+    "semanticPolicy": { "precisionAtK": 0.11999999999999998, "recallAtK": 0.6, "meanReciprocalRank": 0.4722222222222222 },
+    "providerUsage": { "calls": 33, "promptTokens": 1144891, "totalTokens": 1144891, "costResponses": 33, "costUsd": 0.004579564 },
+    "coldSemanticP95Ms": 9508.300249999986
   },
   "combinedPreference": {
     "lexical": { "precisionAtK": 0.08666666666666667, "recallAtK": 0.43333333333333335, "meanReciprocalRank": 0.2333333333333333 },
-    "semanticPolicy": { "precisionAtK": 0.13333333333333333, "recallAtK": 0.6666666666666666, "meanReciprocalRank": 0.5677777777777777 },
-    "providerUsage": { "calls": 22, "promptTokens": 1999956, "totalTokens": 1999956, "costUsd": 0.007999824, "averageCostPerRoutedQuestionUsd": 0.00036362836363636366 }
+    "semanticPolicy": { "precisionAtK": 0.14666666666666667, "recallAtK": 0.7333333333333333, "meanReciprocalRank": 0.611111111111111 },
+    "providerUsage": { "calls": 65, "promptTokens": 2266050, "totalTokens": 2266050, "costResponses": 65, "costUsd": 0.0090642, "averageCostPerRoutedQuestionUsd": 0.0004120090909090909 }
   },
   "liveMcpCacheProbe": {
     "documents": 2,
@@ -57,5 +63,12 @@
     "prepare": { "wallMs": 378.71179100000006, "cacheMisses": 2, "promptTokens": 23, "costUsd": 9.2e-8 },
     "firstSearchAfterRestart": { "wallMs": 375.5550830000001, "cacheHits": 2, "cacheMisses": 0, "promptTokens": 9, "costUsd": 3.6e-8 },
     "mutationCoupling": "none; preparation is an explicit read-only maintenance operation"
+  },
+  "liveMcpChunkedPrewarmProbe": {
+    "documents": 2,
+    "chunks": 10,
+    "prepare": { "wallMs": 994.3057910000001, "providerCalls": 1, "promptTokens": 1964, "costUsd": 0.000007856 },
+    "firstSearchAfterRestart": { "wallMs": 411.68220799999995, "cacheHits": 10, "cacheMisses": 0, "providerCalls": 1, "promptTokens": 9, "costUsd": 3.6e-8, "lexicalGuardApplied": true },
+    "expectedTopResult": "preference(rahul, sony_camera_accessories)."
   }
 }

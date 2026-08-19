@@ -50,7 +50,7 @@ boundary](research/LONGMEMEVAL.md).
 
 The live semantic policy benchmark uses a deterministic SHA-256 development/held-out split
 and routes only explicit recommendation/advice intent. On 15 held-out preference questions,
-Recall@5 improved from 46.7% to 53.3% and MRR from 16.1% to 45.6%. It requires an embedding
+Recall@5 improved from 46.7% to 60.0% and MRR from 16.1% to 47.2%. It requires an embedding
 provider and stays outside CI/prepublish. See the [semantic search contract and cost
 evidence](SEMANTIC-KNOWLEDGE-SEARCH.md).
 

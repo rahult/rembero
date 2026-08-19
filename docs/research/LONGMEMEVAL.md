@@ -101,8 +101,8 @@ semantic retrieval or a purpose-built preference index a concrete next experimen
 than an unmeasured feature claim.
 
 That experiment is now measured. A locked recommendation-intent policy using the opt-in
-semantic tool raises all-preference Recall@5 to 66.67% and held-out Recall@5 from 46.67% to
-53.33%. It does not change the recall-first lexical default or use similarity for
+semantic tool raises all-preference Recall@5 to 73.33% and held-out Recall@5 from 46.67% to
+60.00%. It does not change the recall-first lexical default or use similarity for
 abstention. See [semantic knowledge search](../SEMANTIC-KNOWLEDGE-SEARCH.md) for the split,
 cost, cache, and export-safety boundary.
 

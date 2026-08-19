@@ -30,6 +30,11 @@ entries, stores no source text, validates entry digests, and recomputes corrupt 
 Adds explicit resumable semantic prewarming for post-review maintenance. It deduplicates
 shared provenance, reports provider cost, and moves document embedding out of the next user
 query without coupling mutation success to an external service.
+Semantic ranking now scores bounded overlapping source chunks instead of one diluted
+whole-session vector, improving all-preference LongMemEval Recall@5 from 66.7% to 73.3%
+with a 13.3% increase in routed provider cost.
+A conservative lexical score/margin guard prevents an obvious exact preference from being
+demoted by max-chunk similarity without changing the benchmark rankings.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

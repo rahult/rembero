@@ -36,17 +36,23 @@ The semantic path:
 
 1. runs deterministic local search first;
 2. selects at most 100 candidates;
-3. uses at most 16,384 source characters per candidate;
+3. uses at most 16,384 source characters per candidate, split into at most ten overlapping
+   2,048-character chunks;
 4. rejects detected secrets before any network call;
 5. permits only namespaces allowed by `REMBERO_LLM_ALLOWED_NAMESPACES`;
-6. sends one bounded embedding batch;
-7. ranks by cosine similarity, breaking ties by lexical rank; and
-8. caches document vectors by model and content hash in memory and in a bounded derived
+6. sends bounded batches of at most 100 document chunks;
+7. ranks each candidate by its best chunk cosine similarity, breaking ties by lexical rank;
+8. preserves a lexical leader only when it scores at least 120 and has a 1.5x margin; and
+9. caches document vectors by model and content hash in memory and in a bounded derived
    cache under the memory root.
 
-Preparation uses the same redaction, allowlist, model/content key, cache, and source window
+Preparation uses the same redaction, allowlist, model/content/chunk key, cache, and source window
 as search. Documents sharing one provenance source are embedded once per batch. Preparation
 does not write memory, change trust, infer facts, or establish proof.
+
+The lexical guard prevents max-chunk overconfidence from demoting an unusually strong exact
+match. It changed none of the LongMemEval development or held-out rankings, while preserving
+an explicit Sony accessory preference over a semantically tempting camera-cake distractor.
 
 The default model is `perplexity/pplx-embed-v1-0.6b` through the configured OpenAI-compatible
 embedding endpoint. Override it with `REMBERO_EMBEDDING_MODEL` and the endpoint with
@@ -69,22 +75,23 @@ are split deterministically by SHA-256 before policy selection.
 
 | Preference metric | Development lexical | Development policy | Held-out lexical | Held-out policy |
 | --- | ---: | ---: | ---: | ---: |
-| Precision@5 | 8.0% | 16.0% | 9.3% | 10.7% |
-| Recall@5 | 40.0% | 80.0% | 46.7% | 53.3% |
-| MRR | 30.6% | 68.0% | 16.1% | 45.6% |
+| Precision@5 | 8.0% | 17.3% | 9.3% | 12.0% |
+| Recall@5 | 40.0% | 86.7% | 46.7% | 60.0% |
+| MRR | 30.6% | 75.0% | 16.1% | 47.2% |
 
-Across all 30 preference questions, Recall@5 improves from 43.3% to 66.7% and MRR from
-23.3% to 56.8%. The 22 routed requests used 1,999,956 provider tokens and cost $0.007999824,
-or $0.000364 per routed question, while recomputing every candidate vector.
+Across all 30 preference questions, Recall@5 improves from 43.3% to 73.3% and MRR from
+23.3% to 61.1%. The 22 routed requests used 2,266,050 provider tokens and cost $0.0090642,
+or $0.000412 per routed question, while recomputing every candidate chunk vector.
 
 A live MCP restart probe over two documents measured 744 ms on the initial request and
 399 ms after closing and restarting the server. Both document vectors survived as cache
 hits; provider input fell from 32 to 9 tokens and charged cost from $0.000000128 to
 $0.000000036. These tiny timings are a boundary check, not a production latency claim.
 
-An explicit prewarm probe moved the two document embeddings into a 379 ms maintenance call.
-After closing and restarting the MCP server, the first semantic query took 376 ms, hit both
-document vectors, and sent only the 9-token question for $0.000000036.
+An adversarial prewarm probe split a long preference into ten cached chunks during a 994 ms
+maintenance call. After closing and restarting the MCP server, the first semantic query took
+412 ms, hit all ten vectors, sent only the 9-token question for $0.000000036, and retained
+the correct lexical leader over a semantically tempting distractor.
 
 Run the reproducible live-provider evaluation after downloading LongMemEval-S:
 
@@ -101,7 +108,7 @@ OpenAI-compatible embeddings endpoint:
 
 ## Remaining limits
 
-- Held-out recall improved, but 53.3% still leaves meaningful preference misses.
+- Held-out recall improved, but 60.0% still leaves meaningful preference misses.
 - Cold evaluation deliberately uses isolated corpora. MCP and CLI reuse the derived disk
   cache across processes, but first access still embeds shortlisted documents.
 - The cache is populated by explicit preparation or search, never automatically during a

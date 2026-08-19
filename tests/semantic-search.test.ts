@@ -20,6 +20,7 @@ import {
   MemoryEmbeddingCache,
   semanticSearchKnowledge,
   prepareSemanticKnowledge,
+  semanticDocumentChunks,
 } from '../src/knowledge/semantic-search.js';
 import { MemoryStore } from '../src/store/store.js';
 import { canonicalKey, parseProgram } from '../src/engine/index.js';
@@ -251,9 +252,98 @@ describe('semantic knowledge search', () => {
       selectedCount: 2,
       cacheHits: 0,
       cacheMisses: 1,
-      deduplicatedDocuments: 1,
+      deduplicatedChunks: 1,
     });
     expect(embed).toHaveBeenCalledWith(['One shared recommendation source.']);
+  });
+
+  it('uses the best bounded source chunk for semantic ranking', async () => {
+    const memory = store('chunk-ranking');
+    memory.assert('default', 'note(relevant).', {
+      opId: 'relevant',
+      sourceText: `Sony A7R IV accessories fit this camera setup. ${'unrelated context '.repeat(900)}`,
+    });
+    memory.assert('default', 'note(other).', {
+      opId: 'other',
+      sourceText: 'Camera-shaped cake decorations for a party.',
+    });
+    const embeddings: EmbeddingClient = {
+      model: 'test/chunks',
+      async embed(inputs) {
+        return {
+          model: this.model,
+          vectors: inputs.map((input, index) =>
+            index === 0 || input.includes('cake decorations') ? [1, 0] : [0, 1]
+          ),
+          usage: { promptTokens: inputs.length, totalTokens: inputs.length, costUsd: 0 },
+        };
+      },
+    };
+    const result = await semanticSearchKnowledge(
+      memory.clausesFor(['default']),
+      'Recommend accessories for my camera setup',
+      memory.sourcesFor(['default']),
+      embeddings,
+      { limit: 2, cache: new MemoryEmbeddingCache() }
+    );
+    expect(result).toMatchObject({
+      providerCalls: 1,
+      lexicalGuardApplied: true,
+      results: [
+        {
+          sources: [{ opId: 'relevant' }],
+          semanticChunkIndex: 0,
+          semanticChunkCount: 10,
+        },
+        { sources: [{ opId: 'other' }], semanticChunkCount: 1 },
+      ],
+    });
+    expect(semanticDocumentChunks('fallback.', [{
+      namespace: 'default',
+      opId: 'long',
+      ts: new Date(0).toISOString(),
+      text: 'x'.repeat(20_000),
+    }])).toHaveLength(10);
+  });
+
+  it('batches large preparation sets at the provider boundary', async () => {
+    const clauses = parseProgram(
+      Array.from({ length: 11 }, (_, index) => `note(item_${index}).`).join('\n')
+    );
+    const sources = new Map(clauses.map((clause, index) => [canonicalKey(clause), [{
+      namespace: 'default',
+      opId: `source-${index}`,
+      ts: new Date(0).toISOString(),
+      text: Array.from(
+        { length: 10 },
+        (_, chunk) => `document-${index}-chunk-${chunk}:` +
+          String.fromCharCode(65 + chunk).repeat(2_000)
+      ).join(''),
+    }]]));
+    const calls: number[] = [];
+    const result = await prepareSemanticKnowledge(
+      clauses,
+      sources,
+      {
+        model: 'test/batches',
+        async embed(inputs) {
+          calls.push(inputs.length);
+          return {
+            model: this.model,
+            vectors: inputs.map(() => [1, 0]),
+            usage: { promptTokens: inputs.length, totalTokens: inputs.length, costUsd: 0 },
+          };
+        },
+      },
+      { cache: new MemoryEmbeddingCache(), limit: 11 }
+    );
+    expect(result).toMatchObject({
+      selectedCount: 11,
+      chunkCount: 110,
+      cacheMisses: 110,
+      providerCalls: 2,
+    });
+    expect(calls).toEqual([100, 10]);
   });
 
   it('blocks sensitive preparation before embedding', async () => {

@@ -120,11 +120,11 @@ export async function runLongMemEvalSemanticPolicy(
     );
     routed.push(scored);
     byQuestion.set(instance.question_id, scored);
-    usage.calls++;
+    usage.calls += search.providerCalls;
     usage.promptTokens += search.providerUsage.promptTokens ?? 0;
     usage.totalTokens += search.providerUsage.totalTokens ?? 0;
     if (search.providerUsage.costUsd !== null) {
-      usage.costResponses++;
+      usage.costResponses += search.providerCalls;
       usage.costUsd += search.providerUsage.costUsd;
     }
   }

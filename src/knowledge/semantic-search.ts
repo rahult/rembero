@@ -39,6 +39,12 @@ export const MAX_SEMANTIC_CACHE_ENTRY_BYTES = 256 * 1024;
 export const SEMANTIC_CACHE_VERSION = 'remembero.semantic-cache.v1' as const;
 export const DEFAULT_SEMANTIC_PREPARE_LIMIT = 100;
 export const MAX_SEMANTIC_PREPARE_LIMIT = 100;
+export const SEMANTIC_CHUNK_CHARACTERS = 2_048;
+export const SEMANTIC_CHUNK_OVERLAP = 256;
+export const MAX_SEMANTIC_CHUNKS_PER_DOCUMENT = 10;
+export const SEMANTIC_LEXICAL_GUARD_RATIO = 1.5;
+export const SEMANTIC_LEXICAL_GUARD_MIN_SCORE = 120;
+const MAX_SEMANTIC_EMBEDDING_BATCH = 100;
 
 const RECOMMENDATION_INTENT =
   /\b(recommend|suggest|suggestion|advice|tips|ideas?|should i|what should|decide|choose|looking for)\b/i;
@@ -241,6 +247,8 @@ export class LayeredEmbeddingCache implements EmbeddingCache {
 export interface SemanticKnowledgeSearchResultItem extends KnowledgeSearchResultItem {
   semanticScore: number;
   lexicalRank: number;
+  semanticChunkIndex: number;
+  semanticChunkCount: number;
 }
 
 export interface SemanticKnowledgeSearchResult {
@@ -253,7 +261,10 @@ export interface SemanticKnowledgeSearchResult {
   limit: number;
   cacheHits: number;
   cacheMisses: number;
-  deduplicatedDocuments: number;
+  deduplicatedChunks: number;
+  chunkCount: number;
+  providerCalls: number;
+  lexicalGuardApplied: boolean;
   providerUsage: EmbeddingUsage;
   results: SemanticKnowledgeSearchResultItem[];
 }
@@ -272,6 +283,24 @@ export function semanticDocumentText(
     .flatMap(({ text }) => text === undefined ? [] : [text])
     .join('\n');
   return (source === '' ? clause : source).slice(0, MAX_SEMANTIC_SOURCE_CHARS);
+}
+
+export function semanticDocumentChunks(
+  clause: string,
+  sources: readonly MemorySource[]
+): string[] {
+  const text = semanticDocumentText(clause, sources);
+  if (text.length <= SEMANTIC_CHUNK_CHARACTERS) return [text];
+  const chunks: string[] = [];
+  const step = SEMANTIC_CHUNK_CHARACTERS - SEMANTIC_CHUNK_OVERLAP;
+  for (
+    let start = 0;
+    start < text.length && chunks.length < MAX_SEMANTIC_CHUNKS_PER_DOCUMENT;
+    start += step
+  ) {
+    chunks.push(text.slice(start, start + SEMANTIC_CHUNK_CHARACTERS));
+  }
+  return chunks;
 }
 
 export function semanticEmbeddingCacheKey(model: string, text: string): string {
@@ -296,7 +325,9 @@ export interface PrepareSemanticKnowledgeResult {
   selectedCount: number;
   cacheHits: number;
   cacheMisses: number;
-  deduplicatedDocuments: number;
+  deduplicatedChunks: number;
+  chunkCount: number;
+  providerCalls: number;
   nextCursor: string | null;
   providerUsage: EmbeddingUsage;
   results: Array<{
@@ -306,6 +337,19 @@ export interface PrepareSemanticKnowledgeResult {
     sourceCount: number;
     cache: 'hit' | 'written';
   }>;
+}
+
+function addEmbeddingUsage(
+  left: EmbeddingUsage,
+  right: EmbeddingUsage
+): EmbeddingUsage {
+  const add = (a: number | null, b: number | null) =>
+    a === null && b === null ? null : (a ?? 0) + (b ?? 0);
+  return {
+    promptTokens: add(left.promptTokens, right.promptTokens),
+    totalTokens: add(left.totalTokens, right.totalTokens),
+    costUsd: add(left.costUsd, right.costUsd),
+  };
 }
 
 export async function prepareSemanticKnowledge(
@@ -328,7 +372,7 @@ export async function prepareSemanticKnowledge(
     clause: string;
     kind: KnowledgeSearchResultItem['kind'];
     sources: MemorySource[];
-    text: string;
+    chunks: string[];
   }>();
   for (const clause of clauses) {
     const kind = clauseKind(clause);
@@ -340,25 +384,29 @@ export async function prepareSemanticKnowledge(
       clause: serializeClause(clause),
       kind,
       sources: clauseSources,
-      text: semanticDocumentText(serializeClause(clause), clauseSources),
+      chunks: semanticDocumentChunks(serializeClause(clause), clauseSources),
     });
   }
   const remaining = [...documents.entries()]
     .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
     .filter(([key]) => options.after === undefined || key > options.after);
   const selected = remaining.slice(0, limit);
-  const documentKeys = selected.map(([, document]) =>
-    semanticEmbeddingCacheKey(embeddings.model, document.text)
+  const chunkReferences = selected.flatMap(([, document], documentIndex) =>
+    document.chunks.map((text, chunkIndex) => ({ documentIndex, chunkIndex, text }))
   );
-  const vectors = documentKeys.map((key) => options.cache.get(key));
+  const chunkKeys = chunkReferences.map(({ text }) =>
+    semanticEmbeddingCacheKey(embeddings.model, text)
+  );
+  const vectors = chunkKeys.map((key) => options.cache.get(key));
   const initialCacheHits = vectors.filter((vector) => vector !== undefined).length;
+  const initialCacheMisses = vectors.length - initialCacheHits;
   const missing = new Map<string, { text: string; indexes: number[] }>();
   for (const [index, vector] of vectors.entries()) {
     if (vector !== undefined) continue;
-    const key = documentKeys[index]!;
+    const key = chunkKeys[index]!;
     const existing = missing.get(key);
     if (existing === undefined) {
-      missing.set(key, { text: selected[index]![1].text, indexes: [index] });
+      missing.set(key, { text: chunkReferences[index]!.text, indexes: [index] });
     } else {
       existing.indexes.push(index);
     }
@@ -367,34 +415,46 @@ export async function prepareSemanticKnowledge(
   for (const [, document] of missingDocuments) {
     assertSafeForExternalLlm(document.text, 'semantic knowledge source');
   }
-  const embedded = missingDocuments.length === 0
-    ? undefined
-    : await embeddings.embed(missingDocuments.map(([, document]) => document.text));
-  for (const [position, [key, document]] of missingDocuments.entries()) {
-    const vector = embedded!.vectors[position]!;
-    options.cache.set(key, vector);
-    for (const index of document.indexes) vectors[index] = vector;
+  let model = embeddings.model;
+  let providerCalls = 0;
+  let providerUsage: EmbeddingUsage = {
+    promptTokens: null,
+    totalTokens: null,
+    costUsd: null,
+  };
+  for (let start = 0; start < missingDocuments.length; start += MAX_SEMANTIC_EMBEDDING_BATCH) {
+    const batch = missingDocuments.slice(start, start + MAX_SEMANTIC_EMBEDDING_BATCH);
+    const embedded = await embeddings.embed(batch.map(([, document]) => document.text));
+    providerCalls++;
+    model = embedded.model;
+    providerUsage = addEmbeddingUsage(providerUsage, embedded.usage);
+    for (const [position, [key, document]] of batch.entries()) {
+      const vector = embedded.vectors[position]!;
+      options.cache.set(key, vector);
+      for (const index of document.indexes) vectors[index] = vector;
+    }
   }
   const more = remaining.length > selected.length;
   return {
     status: more ? 'more' : 'complete',
-    model: embedded?.model ?? embeddings.model,
+    model,
     selectedCount: selected.length,
     cacheHits: initialCacheHits,
     cacheMisses: missingDocuments.length,
-    deduplicatedDocuments: selected.length - initialCacheHits - missingDocuments.length,
+    deduplicatedChunks: initialCacheMisses - missingDocuments.length,
+    chunkCount: chunkReferences.length,
+    providerCalls,
     nextCursor: more ? selected.at(-1)?.[0] ?? null : null,
-    providerUsage: embedded?.usage ?? {
-      promptTokens: null,
-      totalTokens: null,
-      costUsd: null,
-    },
-    results: selected.map(([key, document], index) => ({
+    providerUsage,
+    results: selected.map(([key, document], documentIndex) => ({
       key,
       clause: document.clause,
       kind: document.kind,
       sourceCount: document.sources.length,
-      cache: missing.has(documentKeys[index]!) ? 'written' : 'hit',
+      cache: chunkReferences.some(
+        (reference, index) =>
+          reference.documentIndex === documentIndex && missing.has(chunkKeys[index]!)
+      ) ? 'written' : 'hit',
     })),
   };
 }
@@ -466,73 +526,139 @@ export async function semanticSearchKnowledge(
       limit,
       cacheHits: 0,
       cacheMisses: 0,
-      deduplicatedDocuments: 0,
+      deduplicatedChunks: 0,
+      chunkCount: 0,
+      providerCalls: 0,
+      lexicalGuardApplied: false,
       providerUsage: { promptTokens: null, totalTokens: null, costUsd: null },
       results: [],
     };
   }
-  const documents = lexical.results.map((result) =>
-    semanticDocumentText(result.clause, result.sources)
+  const documentChunks = lexical.results.map((result) =>
+    semanticDocumentChunks(result.clause, result.sources)
   );
-  for (const document of documents) {
-    assertSafeForExternalLlm(document, 'semantic knowledge source');
+  const chunkReferences = documentChunks.flatMap((chunks, documentIndex) =>
+    chunks.map((chunk, chunkIndex) => ({ documentIndex, chunkIndex, text: chunk }))
+  );
+  for (const chunk of chunkReferences) {
+    assertSafeForExternalLlm(chunk.text, 'semantic knowledge source');
   }
   const cache = options.cache;
-  const documentKeys = documents.map((document) =>
-    semanticEmbeddingCacheKey(embeddings.model, document)
+  const chunkKeys = chunkReferences.map((chunk) =>
+    semanticEmbeddingCacheKey(embeddings.model, chunk.text)
   );
-  const cachedVectors = documentKeys.map((key) => cache?.get(key));
+  const cachedVectors = chunkKeys.map((key) => cache?.get(key));
   const initialCacheHits = cachedVectors.filter((vector) => vector !== undefined).length;
+  const initialCacheMisses = cachedVectors.length - initialCacheHits;
   const missing = new Map<string, { text: string; indexes: number[] }>();
   for (const [index, vector] of cachedVectors.entries()) {
     if (vector !== undefined) continue;
-    const key = documentKeys[index]!;
+    const key = chunkKeys[index]!;
     const existing = missing.get(key);
     if (existing === undefined) {
-      missing.set(key, { text: documents[index]!, indexes: [index] });
+      missing.set(key, { text: chunkReferences[index]!.text, indexes: [index] });
     } else {
       existing.indexes.push(index);
     }
   }
   const missingDocuments = [...missing.entries()];
-  const embedded = await embeddings.embed([
+  let model = embeddings.model;
+  let providerCalls = 0;
+  let providerUsage: EmbeddingUsage = {
+    promptTokens: null,
+    totalTokens: null,
+    costUsd: null,
+  };
+  const firstBatch = missingDocuments.slice(0, MAX_SEMANTIC_EMBEDDING_BATCH);
+  const firstEmbedded = await embeddings.embed([
     text,
-    ...missingDocuments.map(([, document]) => document.text),
+    ...firstBatch.map(([, document]) => document.text),
   ]);
-  const queryVector = embedded.vectors[0]!;
-  for (const [position, [key, document]] of missingDocuments.entries()) {
-    const vector = embedded.vectors[position + 1]!;
+  providerCalls++;
+  model = firstEmbedded.model;
+  providerUsage = addEmbeddingUsage(providerUsage, firstEmbedded.usage);
+  const queryVector = firstEmbedded.vectors[0]!;
+  for (const [position, [key, document]] of firstBatch.entries()) {
+    const vector = firstEmbedded.vectors[position + 1]!;
     cache?.set(key, vector);
     for (const index of document.indexes) cachedVectors[index] = vector;
   }
-  const ranked = lexical.results
+  for (
+    let start = MAX_SEMANTIC_EMBEDDING_BATCH;
+    start < missingDocuments.length;
+    start += MAX_SEMANTIC_EMBEDDING_BATCH
+  ) {
+    const batch = missingDocuments.slice(start, start + MAX_SEMANTIC_EMBEDDING_BATCH);
+    const embedded = await embeddings.embed(batch.map(([, document]) => document.text));
+    providerCalls++;
+    model = embedded.model;
+    providerUsage = addEmbeddingUsage(providerUsage, embedded.usage);
+    for (const [position, [key, document]] of batch.entries()) {
+      const vector = embedded.vectors[position]!;
+      cache?.set(key, vector);
+      for (const index of document.indexes) cachedVectors[index] = vector;
+    }
+  }
+  const bestChunks = lexical.results.map(() => ({ score: -Infinity, index: 0 }));
+  for (const [index, reference] of chunkReferences.entries()) {
+    const score = cosineSimilarity(queryVector, cachedVectors[index]!);
+    if (score > bestChunks[reference.documentIndex]!.score) {
+      bestChunks[reference.documentIndex] = { score, index: reference.chunkIndex };
+    }
+  }
+  let ranked = lexical.results
     .map((result, index) => ({
       result,
       lexicalRank: result.rank,
-      semanticScore: cosineSimilarity(queryVector, cachedVectors[index]!),
+      semanticScore: bestChunks[index]!.score,
+      semanticChunkIndex: bestChunks[index]!.index,
+      semanticChunkCount: documentChunks[index]!.length,
     }))
     .sort(
       (left, right) =>
         right.semanticScore - left.semanticScore || left.lexicalRank - right.lexicalRank
-    )
-    .slice(0, limit);
+    );
+  let lexicalGuardApplied = false;
+  if (
+    ranked.length > 1 &&
+    lexical.results[0]!.score >= SEMANTIC_LEXICAL_GUARD_MIN_SCORE &&
+    lexical.results[0]!.score >= SEMANTIC_LEXICAL_GUARD_RATIO * lexical.results[1]!.score
+  ) {
+    const lexicalLeader = ranked.find(({ lexicalRank }) => lexicalRank === 1)!;
+    if (ranked[0] !== lexicalLeader) {
+      ranked = [lexicalLeader, ...ranked.filter((item) => item !== lexicalLeader)];
+      lexicalGuardApplied = true;
+    }
+  }
+  ranked = ranked.slice(0, limit);
   return {
     status: ranked.length === 0 ? 'no_match' : 'matches',
     text,
     route: 'semantic',
-    model: embedded.model,
+    model,
     candidateCount: lexical.results.length,
     returnedCount: ranked.length,
     limit,
     cacheHits: initialCacheHits,
     cacheMisses: missingDocuments.length,
-    deduplicatedDocuments: documents.length - initialCacheHits - missingDocuments.length,
-    providerUsage: embedded.usage,
-    results: ranked.map(({ result, lexicalRank, semanticScore }, index) => ({
+    deduplicatedChunks: initialCacheMisses - missingDocuments.length,
+    chunkCount: chunkReferences.length,
+    providerCalls,
+    lexicalGuardApplied,
+    providerUsage,
+    results: ranked.map(({
+      result,
+      lexicalRank,
+      semanticScore,
+      semanticChunkIndex,
+      semanticChunkCount,
+    }, index) => ({
       ...result,
       rank: index + 1,
       lexicalRank,
       semanticScore,
+      semanticChunkIndex,
+      semanticChunkCount,
     })),
   };
 }

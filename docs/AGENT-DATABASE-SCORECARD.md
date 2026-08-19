@@ -52,11 +52,11 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Natural-language cost | Extraction, Luna, 15 cases | $0.003306 total / $0.000220 avg | measured |
 | Ease | Setup commands | 2 | contract |
 | Ease | Discovered MCP tools | 36 | includes required read tools |
-| Preference retrieval | LongMemEval-S Recall@5 | 43.3% → 66.7% | measured semantic policy |
-| Preference retrieval | Held-out Recall@5 / MRR | 53.3% / 45.6% | measured |
-| Semantic cost | 22 routed questions | $0.007999824 | measured |
+| Preference retrieval | LongMemEval-S Recall@5 | 43.3% → 73.3% | measured semantic policy |
+| Preference retrieval | Held-out Recall@5 / MRR | 60.0% / 47.2% | measured |
+| Semantic cost | 22 routed questions | $0.0090642 | measured |
 | Semantic cost | Restart cache provider tokens | 32 → 9 | measured |
-| Semantic speed | Prewarm / first query after restart | 379 / 376 ms | measured |
+| Semantic speed | Long-source prewarm / first query after restart | 994 / 412 ms | measured |
 | Ease | Cold empty-cache npm install | 5.19 s | <= 120 s diagnostic gate |
 | Ease | First CLI write / proof query | 89.08 ms / 95.46 ms | <= 1,000 ms each |
 | Ease | Packed / installed size | 0.92 MiB / 3.81 MiB | diagnostic |
@@ -304,10 +304,10 @@ the exact evidence boundary.
 The opt-in semantic policy addresses the largest measured subtype gap without changing the
 default structured path. It routes explicit recommendation/advice intent through
 `semantic_search_knowledge`, which reranks at most 100 locally shortlisted sources and
-caches document vectors. Across all 30 preference questions, Recall@5 improved from 43.3%
-to 66.7% and MRR from 23.3% to 56.8%. On the locked held-out half, Recall@5 improved from
-46.7% to 53.3% and MRR from 16.1% to 45.6%. The 22 routed calls cost $0.007999824 while
-recomputing every isolated corpus. Embeddings remain retrieval-only and are never used to
+caches bounded source-chunk vectors. Across all 30 preference questions, Recall@5 improved
+from 43.3% to 73.3% and MRR from 23.3% to 61.1%. On the locked held-out half, Recall@5
+improved from 46.7% to 60.0% and MRR from 16.1% to 47.2%. The 22 routed calls cost
+$0.0090642 while recomputing every isolated corpus. Embeddings remain retrieval-only and are never used to
 declare absence or proof. See the [semantic search contract](SEMANTIC-KNOWLEDGE-SEARCH.md).
 
 ## Release gates

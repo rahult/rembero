@@ -105,13 +105,13 @@ test("server-renders the agent harness integration guide", async () => {
   assert.match(html, /bench:longmemeval/);
   assert.match(html, /bench:longmemeval:semantic/);
   assert.match(html, /Preference Recall@5/);
-  assert.match(html, /43\.3 → 66\.7%/);
-  assert.match(html, /45\.6%/);
-  assert.match(html, /\$0\.000364 avg/);
+  assert.match(html, /43\.3 → 73\.3%/);
+  assert.match(html, /47\.2%/);
+  assert.match(html, /\$0\.000412 avg/);
   assert.match(html, /Restart cache/);
   assert.match(html, /32 → 9 tokens/);
   assert.match(html, /Prewarmed first query/);
-  assert.match(html, /376 ms · 9 tokens/);
+  assert.match(html, /412 ms · 9 tokens/);
   assert.match(html, /\$0\.000644 avg/);
   assert.match(html, /href="\/labs\/chat-memory"/);
 });
