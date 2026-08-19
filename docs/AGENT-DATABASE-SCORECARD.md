@@ -49,8 +49,8 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Natural-language cost | Extraction, Luna, 15 cases | $0.003306 total / $0.000220 avg | measured |
 | Ease | Setup commands | 2 | contract |
 | Ease | Discovered MCP tools | 34 | includes required read tools |
-| Ease | Cold empty-cache npm install | 4.89 s | <= 120 s diagnostic gate |
-| Ease | First CLI write / proof query | 89.81 ms / 98.33 ms | <= 1,000 ms each |
+| Ease | Cold empty-cache npm install | 5.19 s | <= 120 s diagnostic gate |
+| Ease | First CLI write / proof query | 89.08 ms / 95.46 ms | <= 1,000 ms each |
 | Ease | Packed / installed size | 0.92 MiB / 3.79 MiB | diagnostic |
 
 Semantic evidence digest:
@@ -92,9 +92,10 @@ and first `explain` query must return Maya/Atlas plus `project_owner` and
 `project_contributor` support. The benchmark passes only if install, write, and query remain
 inside generous diagnostic limits and it passes no LLM credentials to the CLI.
 
-Measured three times on Apple M4 / 16 GiB with Node 26.5 and npm 11.17, cold install completed
-in 4.74–4.89 s, first write in 89.81–90.40 ms, and first proof query in 94.74–98.33 ms. The
-current packed artifact was 0.92 MiB and the installed package was 3.80 MiB. npm registry download
+Across four recorded Apple M4 / 16 GiB runs with Node 26.5 and npm 11.17, cold install
+completed in 4.74–5.19 s, first write in 89.08–90.40 ms, and first proof query in
+94.74–98.33 ms. The
+latest packed artifact was 0.92 MiB and the installed package was 3.81 MiB. npm registry download
 time is machine/network specific; the exact result is recorded in
 [`research/results/clean-install-v1-summary.json`](research/results/clean-install-v1-summary.json).
 The GitHub-hosted Ubuntu/Node 24 gate also passed: 3.00 s cold install, 210.71 ms first

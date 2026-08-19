@@ -10,7 +10,7 @@
   },
   "method": {
     "command": "npm run bench:agent-db:install:check",
-    "runs": 5,
+    "runs": 6,
     "npmCache": "new empty temporary directory per run",
     "install": "packed current tree; ignore lifecycle scripts; no audit or funding calls",
     "query": "installed CLI writes two facts plus one rule, then explains collaborator(Person, atlas)",
@@ -21,8 +21,8 @@
     ]
   },
   "package": {
-    "archiveBytes": 962855,
-    "installedBytes": 3986224
+    "archiveBytes": 965040,
+    "installedBytes": 3998916
   },
   "runs": [
     {
@@ -60,6 +60,14 @@
       "firstWriteMs": 359.54,
       "firstProofQueryMs": 353.19,
       "installedBytes": 2831155,
+      "expectedAnswer": true,
+      "expectedSources": true
+    },
+    {
+      "environment": "macOS arm64 after both external adapters were packaged",
+      "coldInstallMs": 5190.963416,
+      "firstWriteMs": 89.07574999999997,
+      "firstProofQueryMs": 95.46016599999984,
       "expectedAnswer": true,
       "expectedSources": true
     }

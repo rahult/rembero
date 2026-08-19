@@ -283,8 +283,8 @@ export default function AgentHarnessGuide() {
           <strong><span>Natural recall</span>$0.000644 avg</strong>
           <strong><span>Natural write</span>$0.000220 avg</strong>
           <strong><span>Luna cost lead</span>about 15x</strong>
-          <strong><span>Cold npm install</span>4.89 s</strong>
-          <strong><span>First proof query</span>98.33 ms</strong>
+          <strong><span>Cold npm install</span>5.19 s</strong>
+          <strong><span>First proof query</span>95.46 ms</strong>
           <strong><span>External retrieval</span>2 stacks · 100% R@k</strong>
         </div>
         <CodeBlock>{"npm run bench:agent-db:check\nnpm run bench:agent-db:scale -- --check\nnpm run bench:agent-db:install:check\nnpm run bench:agent-db:million\nnpm run bench:agent-db:cost\nnpm run bench:memory:external"}</CodeBlock>
