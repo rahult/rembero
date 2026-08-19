@@ -48,8 +48,14 @@ function instance(overrides: Partial<LongMemEvalInstance> = {}): LongMemEvalInst
     haystack_session_ids: ['noise', 'evidence'],
     haystack_dates: ['2024/01/01 (Mon) 09:00', '2024/01/02 (Tue) 09:00'],
     haystack_sessions: [
-      [{ role: 'user', content: 'Compare credit card rewards for travel.' }],
-      [{ role: 'user', content: 'My degree was in Business Administration.', has_answer: true }],
+      [
+        { role: 'user', content: 'Compare credit card rewards for travel.' },
+        { role: 'assistant', content: 'Long generic reward-card explanation.' },
+      ],
+      [
+        { role: 'user', content: 'My degree was in Business Administration.', has_answer: true },
+        { role: 'assistant', content: 'Long generic graduation explanation.' },
+      ],
     ],
     answer_session_ids: ['evidence'],
     ...overrides,
@@ -113,6 +119,8 @@ describe('LongMemEval end-to-end answer evaluation', () => {
     expect(observation.context?.recallAtK).toBe(1);
     expect(reader.calls[0]?.maxTokens).toBe(4_096);
     expect(reader.calls[0]?.messages.at(-1)?.content).not.toContain('has_answer');
+    expect(reader.calls[0]?.messages.at(-1)?.content).not.toContain('generic graduation');
+    expect(observation.contextRoles).toBe('user');
     expect(judge.calls[0]?.maxTokens).toBe(16);
     const summary = summarizeLongMemEvalAnswers([observation]);
     expect(summary).toMatchObject({
@@ -141,6 +149,92 @@ describe('LongMemEval end-to-end answer evaluation', () => {
     );
     expect(observation.status).toBe('judged');
     expect(observation.error).toBeUndefined();
+  });
+
+  it('retains assistant turns for assistant-memory questions', async () => {
+    const reader = new ScriptedCompletionClient('reader', ['graduation explanation']);
+    const judge = new ScriptedCompletionClient('judge', ['yes']);
+    const observation = await evaluateLongMemEvalAnswerInstance(
+      instance({ question_type: 'single-session-assistant' }),
+      reader,
+      judge,
+      { topK: 1, contextBytes: 4_096 }
+    );
+    expect(observation.contextRoles).toBe('all');
+    expect(reader.calls[0]?.messages.at(-1)?.content).toContain(
+      'Long generic graduation explanation.'
+    );
+  });
+
+  it('uses semantic retrieval for low-confidence multi-session questions', async () => {
+    const reader = new ScriptedCompletionClient('reader', ['Business Administration']);
+    const judge = new ScriptedCompletionClient('judge', ['yes']);
+    const observation = await evaluateLongMemEvalAnswerInstance(
+      instance({ question_type: 'multi-session' }),
+      reader,
+      judge,
+      {
+        topK: 1,
+        contextBytes: 4_096,
+        semanticQuestionTypes: new Set(['multi-session']),
+        embeddings: {
+          model: 'embedding',
+          async embed(inputs) {
+            return {
+              model: this.model,
+              vectors: inputs.map((input, index) =>
+                index === 0 || input.includes('Business Administration')
+                  ? [1, 0]
+                  : [0, 1]
+              ),
+              usage: {
+                promptTokens: inputs.length,
+                totalTokens: inputs.length,
+                costUsd: 0.001,
+              },
+            };
+          },
+        },
+      }
+    );
+    expect(observation).toMatchObject({
+      status: 'judged',
+      correct: true,
+      retrievalRoute: 'semantic',
+      embeddingModel: 'embedding',
+      embeddingCalls: 1,
+      retrievedSessionIds: ['evidence'],
+    });
+  });
+
+  it('keeps high-confidence multi-session matches local', async () => {
+    const reader = new ScriptedCompletionClient('reader', ['Business Administration']);
+    const judge = new ScriptedCompletionClient('judge', ['yes']);
+    const observation = await evaluateLongMemEvalAnswerInstance(
+      instance({
+        question_type: 'multi-session',
+        question: 'My degree was in Business Administration.',
+      }),
+      reader,
+      judge,
+      {
+        topK: 1,
+        contextBytes: 4_096,
+        semanticQuestionTypes: new Set(['multi-session']),
+        embeddings: {
+          model: 'embedding',
+          async embed() {
+            throw new Error('high-confidence local result must not call embeddings');
+          },
+        },
+      }
+    );
+    expect(observation).toMatchObject({
+      status: 'judged',
+      correct: true,
+      retrievalRoute: 'local',
+      embeddingCalls: 0,
+    });
   });
 
   it('uses task-specific judge contracts and rejects ambiguous labels', () => {
@@ -175,6 +269,7 @@ describe('LongMemEval end-to-end answer evaluation', () => {
       correct: null,
       retrievedSessionIds: [],
       contextSessionIds: [],
+      contextRoles: 'user' as const,
       redactedRetrievedSessions: 0,
       retrieval: null,
       context: null,

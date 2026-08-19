@@ -37,6 +37,10 @@ export const DEFAULT_LONGMEMEVAL_ANSWER_TOP_K = 4;
 export const DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES = 56 * 1024;
 export const MAX_LONGMEMEVAL_ANSWER_CONTEXT_BYTES = 60 * 1024;
 export const LONGMEMEVAL_ANSWER_SOURCE_CHARACTERS = 16_384;
+export const LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE = 135;
+export const DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES = new Set([
+  'single-session-preference',
+]);
 
 export interface LongMemEvalCompletionClient {
   readonly model: string;
@@ -54,6 +58,7 @@ export interface LongMemEvalAnswerObservation {
   correct: boolean | null;
   retrievedSessionIds: string[];
   contextSessionIds: string[];
+  contextRoles: 'all' | 'user';
   redactedRetrievedSessions: number;
   retrievalRoute: 'local' | 'semantic';
   embeddingModel: string | null;
@@ -123,6 +128,9 @@ export interface LongMemEvalAnswerRun {
   judgeProtocol: 'longmemeval-official-compatible-v1';
   formation: 'durable-raw-session-facts';
   retrieval: 'remembero-local-source-search' | 'remembero-adaptive-source-search';
+  answerContextPolicy: 'user-turns-except-assistant-memory';
+  semanticQuestionTypes: string[];
+  multiSessionSemanticMaximumLexicalScore: number;
   topK: number;
   sourceCharacters: number;
   contextBytes: number;
@@ -307,7 +315,12 @@ export async function evaluateLongMemEvalAnswerInstance(
   instance: LongMemEvalInstance,
   reader: LongMemEvalCompletionClient,
   judge: LongMemEvalCompletionClient,
-  options: { topK?: number; contextBytes?: number; embeddings?: EmbeddingClient } = {}
+  options: {
+    topK?: number;
+    contextBytes?: number;
+    embeddings?: EmbeddingClient;
+    semanticQuestionTypes?: ReadonlySet<string>;
+  } = {}
 ): Promise<LongMemEvalAnswerObservation> {
   const topK = options.topK ?? DEFAULT_LONGMEMEVAL_ANSWER_TOP_K;
   const contextBytes = options.contextBytes ?? DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES;
@@ -320,6 +333,9 @@ export async function evaluateLongMemEvalAnswerInstance(
   let judgeMs = 0;
   let retrievedSessionIds: string[] = [];
   let contextSessionIds: string[] = [];
+  const contextRoles = instance.question_type === 'single-session-assistant'
+    ? 'all' as const
+    : 'user' as const;
   let redactedRetrievedSessions = 0;
   let retrievalRoute: 'local' | 'semantic' = 'local';
   let embeddingModel: string | null = null;
@@ -335,9 +351,17 @@ export async function evaluateLongMemEvalAnswerInstance(
     const store = new MemoryStore(root);
     const formationStarted = performance.now();
     const sourceSessionIds = new Map<string, string>();
+    const userSourceText = new Map<string, string>();
     for (const [index, session] of instance.haystack_sessions.entries()) {
       const operationId = `longmemeval:${index}:${instance.haystack_session_ids[index]!}`;
       sourceSessionIds.set(operationId, instance.haystack_session_ids[index]!);
+      const userText = longMemEvalSessionText(
+        session.filter(({ role }) => role === 'user')
+      );
+      userSourceText.set(
+        operationId,
+        userText === '' ? longMemEvalSessionText(session) : userText
+      );
       store.assert(
         'longmemeval',
         `longmem_session(session_${index}).`,
@@ -351,10 +375,29 @@ export async function evaluateLongMemEvalAnswerInstance(
     formationMs = performance.now() - formationStarted;
     const snapshot = store.knowledgeSnapshot(['longmemeval']);
     const retrievalStarted = performance.now();
+    const semanticQuestionTypes =
+      options.semanticQuestionTypes ?? DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES;
+    const lexical = searchKnowledge(
+      snapshot.clauses,
+      instance.question,
+      snapshot.sources,
+      {
+        limit: topK,
+        minimumScore: 1,
+        kinds: ['fact'],
+        sourceCharacterLimit: LONGMEMEVAL_ANSWER_SOURCE_CHARACTERS,
+      }
+    );
     const useSemantic =
       options.embeddings !== undefined &&
-      instance.question_type === 'single-session-preference' &&
-      isRecommendationIntent(instance.question);
+      semanticQuestionTypes.has(instance.question_type) &&
+      (
+        (instance.question_type === 'single-session-preference' &&
+          isRecommendationIntent(instance.question)) ||
+        (instance.question_type === 'multi-session' &&
+          (lexical.results[0]?.score ?? 0) <=
+            LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE)
+      );
     let search: KnowledgeSearchResult | SemanticKnowledgeSearchResult;
     if (useSemantic) {
       const semantic = await semanticSearchKnowledge(
@@ -375,12 +418,7 @@ export async function evaluateLongMemEvalAnswerInstance(
       embeddingUsage = semantic.providerUsage;
       search = semantic;
     } else {
-      search = searchKnowledge(snapshot.clauses, instance.question, snapshot.sources, {
-          limit: topK,
-          minimumScore: 1,
-          kinds: ['fact'],
-          sourceCharacterLimit: LONGMEMEVAL_ANSWER_SOURCE_CHARACTERS,
-      });
+      search = lexical;
     }
     retrievalMs = performance.now() - retrievalStarted;
     const rankedSources = search.results.flatMap((result) => {
@@ -390,7 +428,9 @@ export async function evaluateLongMemEvalAnswerInstance(
         : [{
             opId: sourceSessionIds.get(source.opId) ?? source.opId,
             ts: source.ts,
-            text: source.text,
+            text: contextRoles === 'user'
+              ? userSourceText.get(source.opId) ?? source.text
+              : source.text,
             ...('semanticChunkIndex' in result
               ? {
                   focusCharacterOffset:
@@ -445,6 +485,7 @@ export async function evaluateLongMemEvalAnswerInstance(
       correct: parseLongMemEvalJudgeLabel(judgeResponse),
       retrievedSessionIds,
       contextSessionIds,
+      contextRoles,
       redactedRetrievedSessions,
       retrievalRoute,
       embeddingModel,
@@ -471,6 +512,7 @@ export async function evaluateLongMemEvalAnswerInstance(
       correct: null,
       retrievedSessionIds,
       contextSessionIds,
+      contextRoles,
       redactedRetrievedSessions,
       retrievalRoute,
       embeddingModel,
@@ -569,6 +611,7 @@ export function longMemEvalAnswerRun(
     embeddingModel?: string | null;
     selection?: 'dev' | 'test' | 'all';
     sha256?: string;
+    semanticQuestionTypes?: ReadonlySet<string>;
   } = {}
 ): LongMemEvalAnswerRun {
   const topK = options.topK ?? DEFAULT_LONGMEMEVAL_ANSWER_TOP_K;
@@ -593,6 +636,12 @@ export function longMemEvalAnswerRun(
     retrieval: options.embeddingModel === undefined || options.embeddingModel === null
       ? 'remembero-local-source-search'
       : 'remembero-adaptive-source-search',
+    answerContextPolicy: 'user-turns-except-assistant-memory',
+    semanticQuestionTypes: [
+      ...(options.semanticQuestionTypes ?? DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES),
+    ].sort(),
+    multiSessionSemanticMaximumLexicalScore:
+      LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE,
     topK,
     sourceCharacters: LONGMEMEVAL_ANSWER_SOURCE_CHARACTERS,
     contextBytes,

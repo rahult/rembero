@@ -47,6 +47,12 @@ policy scores 75.4% over all 500 questions and 71.5% held-out. Factual and perso
 answers now use distinct grounding contracts; recommendation intent recognizes plural and
 implicit-reason wording. Provider-boundary Unicode normalization repairs malformed source
 text, and independent embedding batches run with bounded concurrency three.
+The end-to-end reader now keeps full transcripts for assistant-memory questions but sends
+only retrieved user turns for user facts, preferences, updates, temporal reasoning, and
+multi-session synthesis. The 500-question post-hoc v2 result rises from 75.4% to 77.0%
+while cutting reader tokens 76.7% and runtime provider cost 76.5%. Multi-session accuracy
+rises from 56.4% to 61.7%. Global semantic multi-session routing, a low-score semantic gate,
+top-six context, an aggregation prompt, and GPT-5.4 Mini were measured and rejected.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

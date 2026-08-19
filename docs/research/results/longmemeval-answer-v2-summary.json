@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "remembero.longmemeval-answer-summary.v2",
+  "dataset": {
+    "id": "xiaowu0162/longmemeval-cleaned",
+    "split": "longmemeval_s_cleaned",
+    "commit": "98d7416c24c778c2fee6e6f3006e7a073259d48f",
+    "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+    "questions": 500,
+    "selection": "sha256(question_id) modulo 2; development 261, validation 239",
+    "validationStatus": "post-hoc because the role-distribution audit inspected full-dataset answer-turn roles"
+  },
+  "policy": {
+    "formation": "durable raw-session facts in a fresh MemoryStore",
+    "retrieval": "local source search; semantic rerank only for detected preference/recommendation intent",
+    "topK": 4,
+    "sourceCharacters": 16384,
+    "contextBytes": 57344,
+    "answerContext": "user turns except single-session-assistant questions, which retain both roles",
+    "readerModel": "openai/gpt-5.6-luna",
+    "readerMaxTokens": 4096,
+    "embeddingModel": "perplexity/pplx-embed-v1-0.6b",
+    "judgeModel": "openai/gpt-4o-2024-08-06",
+    "judgeProtocol": "LongMemEval task-specific official-compatible yes/no contract",
+    "safety": "store redaction, bounded external context, and Unicode scalar normalization"
+  },
+  "development": {
+    "generatedAt": "2026-08-19T23:11:50.978Z",
+    "questions": 261,
+    "correct": 211,
+    "accuracy": 0.8084291187739464,
+    "errors": 0,
+    "retrievalRecallAtK": 0.8581267217630854,
+    "fullContextEvidenceAccuracy": 0.9414893617021277,
+    "incompleteContextEvidenceAccuracy": 0.4657534246575342,
+    "readerTokens": 645845,
+    "readerCostUsd": 0.15819475000000002,
+    "embeddingCostUsd": 0.006612907999999999,
+    "judgeCostUsd": 0.08267999999999999,
+    "medianTotalMs": 11729.922499999986,
+    "p95TotalMs": 38397.09379200003
+  },
+  "validation": {
+    "generatedAt": "2026-08-19T23:28:29.007Z",
+    "questions": 239,
+    "correct": 174,
+    "accuracy": 0.7280334728033473,
+    "errors": 0,
+    "retrievalRecallAtK": 0.8166666666666668,
+    "fullContextEvidenceAccuracy": 0.9079754601226994,
+    "incompleteContextEvidenceAccuracy": 0.34210526315789475,
+    "readerTokens": 613282,
+    "readerCostUsd": 0.15155155999999997,
+    "embeddingCostUsd": 0.006250816,
+    "judgeCostUsd": 0.07740749999999999,
+    "medianTotalMs": 13425.21337500005,
+    "p95TotalMs": 56732.364541999996
+  },
+  "combined": {
+    "questions": 500,
+    "correct": 385,
+    "accuracy": 0.77,
+    "errors": 0,
+    "retrievalRecallAtK": 0.838014184397163,
+    "fullContextEvidenceAccuracy": 0.9259259259259259,
+    "incompleteContextEvidenceAccuracy": 0.40268456375838924,
+    "abstentionAccuracy": 0.8666666666666667,
+    "formationP50Ms": 162.55537499999627,
+    "formationP95Ms": 183.2677080000285,
+    "localRetrievalP95Ms": 11.68262500000128,
+    "semanticRetrievalP50Ms": 22090.22766699997,
+    "semanticRetrievalP95Ms": 39719.34604200002,
+    "medianTotalMs": 12563.927958999993,
+    "p95TotalMs": 55448.493625,
+    "readerCalls": 500,
+    "readerTokens": 1259127,
+    "readerCostUsd": 0.3097463099999999,
+    "embeddingCalls": 86,
+    "embeddingTokens": 3215931,
+    "embeddingCostUsd": 0.012863723999999998,
+    "runtimeProviderCostUsd": 0.3226100339999999,
+    "runtimeProviderCostPerQuestionUsd": 0.0006452200679999998,
+    "judgeCalls": 500,
+    "judgeTokens": 61737,
+    "judgeCostUsd": 0.16008749999999997,
+    "totalMeasuredCostUsd": 0.4826975339999999
+  },
+  "byQuestionType": {
+    "single-session-user": { "questions": 70, "correct": 64, "accuracy": 0.9142857142857143 },
+    "single-session-assistant": { "questions": 56, "correct": 52, "accuracy": 0.9285714285714286 },
+    "single-session-preference": { "questions": 30, "correct": 27, "accuracy": 0.9 },
+    "knowledge-update": { "questions": 78, "correct": 65, "accuracy": 0.8333333333333334 },
+    "temporal-reasoning": { "questions": 133, "correct": 95, "accuracy": 0.7142857142857143 },
+    "multi-session": { "questions": 133, "correct": 82, "accuracy": 0.6165413533834586 }
+  },
+  "comparisonToV1": {
+    "accuracyPoints": 1.6000000000000014,
+    "fullContextEvidenceAccuracyPoints": 3.1339031339031376,
+    "multiSessionAccuracyPoints": 5.263157894736836,
+    "readerTokenReduction": 0.7674799921848657,
+    "readerCostReduction": 0.771950485564614,
+    "runtimeProviderCostReduction": 0.764710959087449,
+    "medianLatencyReduction": 0.20990957757747097,
+    "p95LatencyReduction": 0.14339913308523977
+  },
+  "rejectedDevelopmentCandidates": [
+    {
+      "candidate": "semantic reranking for every multi-session question",
+      "reason": "Recall@4 rose to 91.2%, but answer accuracy fell to 45/69 and cold retrieval added 192 provider calls and $0.025512"
+    },
+    {
+      "candidate": "semantic reranking only when local top score was at most 135",
+      "reason": "answer accuracy stayed 46/69 while adding 10 embedding calls and $0.001272"
+    },
+    {
+      "candidate": "top-six semantic context",
+      "reason": "stopped at 7/17 when mathematically unable to beat top-four's 12/20"
+    },
+    {
+      "candidate": "multi-session aggregation instruction",
+      "reason": "scored 8/20 versus the generic prompt's 9/20"
+    },
+    {
+      "candidate": "GPT-5.4 Mini multi-session reader",
+      "reason": "scored 4/20 versus Luna's 9/20 while costing about three times more"
+    }
+  ],
+  "evidenceBoundary": {
+    "officialHypothesisFormat": true,
+    "upstreamPythonJudgeRun": false,
+    "liveModelVariance": true,
+    "validationUsedForTuning": true,
+    "externalSystemComparison": false
+  }
+}

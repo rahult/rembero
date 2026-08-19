@@ -8,6 +8,7 @@ import { stringifyBoundedResult } from '../safety.js';
 import {
   DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES,
   DEFAULT_LONGMEMEVAL_ANSWER_TOP_K,
+  DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES,
   MAX_LONGMEMEVAL_ANSWER_CONTEXT_BYTES,
   evaluateLongMemEvalAnswerInstance,
   longMemEvalAnswerRun,
@@ -20,6 +21,7 @@ interface Args {
   data: string;
   split: LongMemEvalSplit | 'all';
   limit: number | undefined;
+  offset: number;
   topK: number;
   contextBytes: number;
   concurrency: number;
@@ -28,7 +30,7 @@ interface Args {
   output: string | undefined;
   hypotheses: string | undefined;
   questionTypes: Set<string> | undefined;
-  semanticPreferences: boolean;
+  semanticQuestionTypes: Set<string>;
   caseIds: Set<string> | undefined;
   json: boolean;
 }
@@ -39,6 +41,7 @@ Options:
   --data <path>          Dataset path (default: .cache/longmemeval/...)
   --split <dev|test|all> Deterministic selection (default: dev)
   --limit <count>        Run the first 1-500 selected questions
+  --offset <count>       Skip 0-499 selected questions for resumable slices
   --top-k <count>        Retrieved sessions per question (default: 4)
   --context-bytes <n>    Answer-facing context budget (default: 57344)
   --concurrency <n>      Concurrent questions from 1-8 (default: 4)
@@ -48,7 +51,9 @@ Options:
   --hypotheses <path>    Write official two-field hypothesis JSONL
   --question-types <csv> Run only the named question types
   --cases <csv>          Run only the named question IDs
-  --no-semantic-preferences  Keep every question on local lexical retrieval
+  --semantic-question-types <csv>  Question types eligible for semantic reranking
+  --local-only           Keep every question on local lexical retrieval
+  --no-semantic-preferences  Compatibility alias for --local-only
   --json                 Print the complete run instead of its summary
 `;
 
@@ -71,6 +76,7 @@ function parseArgs(argv: string[]): Args {
     data: resolve('.cache/longmemeval/longmemeval_s_cleaned.json'),
     split: 'dev',
     limit: undefined,
+    offset: 0,
     topK: DEFAULT_LONGMEMEVAL_ANSWER_TOP_K,
     contextBytes: DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES,
     concurrency: 4,
@@ -79,7 +85,7 @@ function parseArgs(argv: string[]): Args {
     output: undefined,
     hypotheses: undefined,
     questionTypes: undefined,
-    semanticPreferences: true,
+    semanticQuestionTypes: new Set(DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES),
     caseIds: undefined,
     json: false,
   };
@@ -94,6 +100,8 @@ function parseArgs(argv: string[]): Args {
       args.split = value;
     } else if (arg === '--limit') {
       args.limit = boundedInteger(requiredValue(argv, index++, arg), arg, 1, 500);
+    } else if (arg === '--offset') {
+      args.offset = boundedInteger(requiredValue(argv, index++, arg), arg, 0, 499);
     } else if (arg === '--top-k') {
       args.topK = boundedInteger(requiredValue(argv, index++, arg), arg, 1, 100);
     } else if (arg === '--context-bytes') {
@@ -127,8 +135,17 @@ function parseArgs(argv: string[]): Args {
         .filter(Boolean);
       if (values.length === 0) throw new Error('--cases needs at least one value');
       args.caseIds = new Set(values);
-    } else if (arg === '--no-semantic-preferences') {
-      args.semanticPreferences = false;
+    } else if (arg === '--semantic-question-types') {
+      const values = requiredValue(argv, index++, arg)
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (values.length === 0) {
+        throw new Error('--semantic-question-types needs at least one value');
+      }
+      args.semanticQuestionTypes = new Set(values);
+    } else if (arg === '--local-only' || arg === '--no-semantic-preferences') {
+      args.semanticQuestionTypes.clear();
     } else if (arg === '--json') args.json = true;
     else if (arg === '--help' || arg === '-h') {
       console.log(USAGE);
@@ -176,16 +193,20 @@ async function main(): Promise<void> {
     const missing = [...args.caseIds].filter((id) => !found.has(id));
     throw new Error(`unknown or out-of-split case ID: ${missing.join(', ')}`);
   }
-  const instances = args.limit === undefined ? selected : selected.slice(0, args.limit);
+  const available = selected.slice(args.offset);
+  const instances = args.limit === undefined ? available : available.slice(0, args.limit);
   const reader = new OpenRouterClient({ apiKey, baseUrl, model: args.readerModel });
   const judge = new OpenRouterClient({ apiKey, baseUrl, model: args.judgeModel });
-  const embeddings = args.semanticPreferences ? embeddingClientFromEnv() : undefined;
+  const embeddings = args.semanticQuestionTypes.size > 0
+    ? embeddingClientFromEnv()
+    : undefined;
   let completed = 0;
   const observations = await mapConcurrent(instances, args.concurrency, async (instance) => {
     const observation = await evaluateLongMemEvalAnswerInstance(instance, reader, judge, {
       topK: args.topK,
       contextBytes: args.contextBytes,
       ...(embeddings === undefined ? {} : { embeddings }),
+      semanticQuestionTypes: args.semanticQuestionTypes,
     });
     completed++;
     if (!args.json) {
@@ -201,6 +222,7 @@ async function main(): Promise<void> {
     embeddingModel: embeddings?.model ?? null,
     selection: args.split,
     sha256: loaded.sha256,
+    semanticQuestionTypes: args.semanticQuestionTypes,
   });
   const serialized = stringifyBoundedResult(run, 'LongMemEval answer run');
   if (args.output !== undefined) {

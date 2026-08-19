@@ -52,7 +52,7 @@ loading and the one-time conversion of each question's sessions into source reco
 The machine-readable measurement is
 [`results/longmemeval-s-retrieval-v1-summary.json`](results/longmemeval-s-retrieval-v1-summary.json).
 
-## End-to-end answer result
+## End-to-end answer result v1
 
 Each question gets a fresh real `MemoryStore`. Every timestamped session is committed as a
 durable `longmem_session/1` fact with its transcript as source provenance. Remembero then
@@ -101,6 +101,42 @@ The runner can also emit the upstream two-field hypothesis JSONL. Its internal j
 task-specific and official-compatible; this result was not independently rescored through
 the upstream Python script. See the
 [official benchmark and evaluator](https://github.com/xiaowu0162/LongMemEval).
+
+## Role-aware answer result v2
+
+The v1 reader repeatedly paid for long assistant replies even when the task asked about
+facts supplied by the user. In the pinned dataset, 326 of 327 labelled multi-session answer
+turns, all 259 temporal turns, all 144 knowledge-update turns, and all 44 preference turns
+are user-authored. V2 therefore keeps full transcripts only for
+`single-session-assistant`; every other reader prompt contains the retrieved user turns.
+Retrieval still ranks full durable transcripts, so this changes neither session IDs nor
+Recall@4.
+
+| Partition | Correct | Accuracy | Reader tokens | Reader cost | Median / p95 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Development | 211 / 261 | 80.8% | 645,845 | $0.158195 | 11.7 / 38.4 s |
+| Validation | 174 / 239 | 72.8% | 613,282 | $0.151552 | 13.4 / 56.7 s |
+| Combined | 385 / 500 | 77.0% | 1,259,127 | $0.309746 | 12.6 / 55.4 s |
+
+Compared with v1, overall accuracy rises 1.6 points, complete-evidence accuracy rises
+3.1 points to 92.6%, reader tokens fall 76.7%, runtime provider cost falls 76.5%, median
+latency falls 21.0%, and p95 falls 14.3%. Reader plus embedding cost is $0.322610, or
+$0.000645 per question. The independent judge adds $0.160087 evaluation-only cost.
+
+Multi-session accuracy rises from 56.4% to 61.7%; its reader tokens fall from 1,456,321 to
+207,795 across 133 questions. Single-session assistant accuracy remains 92.9% because those
+questions retain both roles.
+
+The role-distribution audit examined answer-turn roles over the full dataset before v2 was
+run. The 239-question v2 validation result is therefore post-hoc validation, not a new
+pristine held-out claim. The original v1 held-out result remains the sealed result. See the
+[v2 machine-readable evidence](results/longmemeval-answer-v2-summary.json).
+
+Several development candidates were rejected. Semantic reranking raised multi-session
+Recall@4 to 91.2% but did not improve complete answer accuracy after its extra latency and
+cost. A low-local-score semantic gate also ended at the same 46/69 answers as local search.
+Top-six context, an aggregation-specific prompt, and GPT-5.4 Mini each scored worse on the
+fixed development slice. These negative results are retained in the v2 artifact.
 
 ## What is actually indexed
 
@@ -166,14 +202,15 @@ cost, cache, and export-safety boundary.
 
 ## Evidence boundary
 
-The retrieval result remains the reproducible zero-provider baseline. The answer result adds
+The retrieval result remains the reproducible zero-provider baseline. The answer results add
 live raw-session formation and QA evidence, but it does not establish:
 
 - learned structured-fact formation accuracy over the complete transcript stream;
 - superiority over another memory product under the same reader, judge, and policy;
 - deterministic generation or judging—one development preference slice moved between
   repeated temperature-zero runs, so live-model variance remains real;
-- reliable multi-session aggregation or learned abstention confidence;
+- reliable multi-session aggregation or learned abstention confidence—v2 still reaches
+  only 61.7% on multi-session questions;
 - hosted, concurrent, multi-tenant, or sustained-provider performance.
 
 The held-out run initially contained one provider HTTP 400 caused by a lone UTF-16 high

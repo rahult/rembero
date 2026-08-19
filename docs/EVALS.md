@@ -64,9 +64,11 @@ on held-out data. The exact measurements and policy are preserved in the
 The live answer runner adds a real durable-store lifecycle and emits official-compatible
 `{question_id, hypothesis}` JSONL when requested. Its locked policy achieved 78.9% on the
 261-question development partition and 71.5% on 239 untouched held-out questions, with
-zero final errors. Across all 500 questions it scored 75.4%; reader plus embedding cost was
-$1.371122 ($0.002742/question), while the separate judge cost $0.161905. It stays outside
-CI because both generation and judging consume live provider budget. See the
+zero final errors. Across all 500 questions it scored 75.4%. A role-aware v2 keeps full
+transcripts only for assistant-memory questions and sends user turns for other reader
+tasks. The post-hoc v2 result scores 77.0%, cuts reader tokens 76.7%, and lowers reader plus
+embedding cost from $1.371122 to $0.322610 ($0.000645/question). It stays outside CI because
+both generation and judging consume live provider budget. See the
 [complete answer contract and limitations](research/LONGMEMEVAL.md).
 
 ## Structured-memory comparison

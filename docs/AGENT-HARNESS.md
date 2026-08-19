@@ -380,3 +380,24 @@ npm run bench:longmemeval:answer -- --split dev \
 The result separates durable formation, retrieval coverage, reader accuracy, judge cost,
 and failures by question type. See the
 [end-to-end benchmark contract](research/LONGMEMEVAL.md).
+
+### Filter roles after retrieval
+
+Rank the complete durable transcript, then minimize what the answer model rereads:
+
+```ts
+const answerTurns = questionAsksAboutAssistantOutput
+  ? retrievedSession.turns
+  : retrievedSession.turns.filter((turn) => turn.role === "user");
+```
+
+Do this after retrieval so assistant wording can still help find the right session. Keep
+both roles when the user asks what the assistant previously said or recommended. For user
+facts, preferences, updates, temporal events, and multi-session aggregation, user turns are
+usually the authority and assistant prose is often repeated cost and distraction.
+
+On the 500-question LongMemEval-S post-hoc v2 run, this role-aware reader context raises
+accuracy from 75.4% to 77.0%, cuts reader tokens 76.7%, lowers runtime provider cost 76.5%,
+and improves multi-session accuracy from 56.4% to 61.7%. Retrieval IDs and Recall@4 are
+unchanged. The [v2 evidence artifact](research/results/longmemeval-answer-v2-summary.json)
+also records the rejected alternatives.

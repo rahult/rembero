@@ -35,10 +35,11 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Accuracy | Stale leakage | 0.0% | 0% |
 | Broad retrieval | LongMemEval-S Recall@5 / MRR | 83.27% / 80.96% | measured |
 | Broad retrieval | Strict all-evidence coverage | 75.32% | measured |
-| End-to-end memory | LongMemEval-S overall / held-out accuracy | 75.4% / 71.5% | measured live |
-| End-to-end memory | Complete / incomplete evidence accuracy | 89.5% / 42.3% | measured live |
-| End-to-end cost | Reader + embeddings, 500 questions | $1.371122 / $0.002742 avg | measured live |
-| End-to-end formation | Durable raw-session formation p95 | 180 ms | measured |
+| End-to-end memory | LongMemEval-S v1 overall / sealed held-out | 75.4% / 71.5% | measured live |
+| End-to-end memory | Role-aware v2 overall / post-hoc validation | 77.0% / 72.8% | measured live |
+| End-to-end memory | V2 complete / incomplete evidence accuracy | 92.6% / 40.3% | measured live |
+| End-to-end cost | V2 reader + embeddings, 500 questions | $0.322610 / $0.000645 avg | measured live |
+| End-to-end formation | Durable raw-session formation p95 | 183 ms | measured |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
 | Speed | MCP process startup | 93.74 ms | diagnostic |
@@ -314,6 +315,14 @@ contract. The policy was locked on 261 development questions and achieved 71.5% 
 untouched held-out questions; combined accuracy is 75.4% with zero final errors. Complete
 evidence produced 89.5% answer accuracy versus 42.3% when evidence was incomplete.
 
+The role-aware v2 keeps both roles only for assistant-memory questions and otherwise sends
+the reader the retrieved user turns. It leaves durable formation and retrieved session IDs
+unchanged. The post-hoc 500-question run scores 77.0%, raises complete-evidence accuracy to
+92.6%, cuts reader tokens 76.7%, and lowers reader-plus-embedding cost 76.5% to
+$0.000645/question. Multi-session accuracy rises from 56.4% to 61.7%. Because the
+role-distribution audit inspected full-dataset answer-turn roles, v2 validation is not
+presented as a new pristine held-out result; v1 remains the sealed claim.
+
 The opt-in semantic policy addresses the largest measured subtype gap without changing the
 default structured path. It routes explicit recommendation/advice intent through
 `semantic_search_knowledge`, which reranks at most 100 locally shortlisted sources and
@@ -326,9 +335,10 @@ declare absence or proof. See the [semantic search contract](SEMANTIC-KNOWLEDGE-
 The answer runner uses the same authority boundary. Factual questions are restricted to
 retrieved history. Preference questions may combine recalled user context with general
 recommendation knowledge while user-specific claims remain grounded. This raises combined
-preference answer accuracy to 90.0%. Reader plus embedding cost was $1.371122 across all
-500 questions ($0.002742/question); the independent judge added $0.161905 evaluation-only
-cost. Durable formation p95 was 180 ms and local retrieval p95 was 11.5 ms. See the
+preference answer accuracy to 90.0%. Under v2, reader plus embedding cost was $0.322610
+across all 500 questions ($0.000645/question); the independent judge added $0.160087
+evaluation-only cost. Durable formation p95 was 183 ms and local retrieval p95 was
+11.7 ms. See the
 [answer result and evidence boundary](research/LONGMEMEVAL.md).
 
 ## Release gates
@@ -357,7 +367,7 @@ This scorecard does not yet prove:
   durable raw-session facts and sources rather than model-extracted semantic facts;
 - statistical superiority over another memory system under the same LongMemEval reader,
   judge, prompt, and provider revision;
-- strong multi-session synthesis—the current complete result is 56.4% on that subtype,
+- strong multi-session synthesis—the current v2 result is 61.7% on that subtype,
   versus 90%+ on the three single-session subtypes;
 - repeated and memory-bounded performance beyond the current one-million-fact gate;
 - managed-service availability or multi-tenant operations;

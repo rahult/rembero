@@ -136,6 +136,13 @@ parallel preserved a 5/5 development pilot while reducing semantic retrieval p50
 the full run's 48.6/67.0 seconds to 8.4/9.0 seconds. Prepared caches still reduce a later
 query to its question embedding only.
 
+Semantic reranking was also tested on all 69 development multi-session questions. Recall@4
+rose from 79.3% to 91.2%, but answer accuracy fell to 45/69 and required 192 embedding
+calls. A score-gated variant routed only four low-confidence cases and finished at the same
+46/69 answers as local retrieval while adding cost. Neither becomes a default route;
+semantic multi-session evaluation remains available through
+`--semantic-question-types multi-session`.
+
 ## Remaining limits
 
 - Held-out Recall@4 is now 86.7% in the end-to-end policy, but the remaining misses still
