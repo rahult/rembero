@@ -349,3 +349,34 @@ sessions pay only for query embeddings. Deleting `.semantic-embeddings/` is alwa
 After an accepted `apply_memory_proposal`, call `prepare_semantic_search` in bounded batches
 until it returns `status: "complete"`. This moves provider latency out of the next user turn
 without making mutation success depend on the embedding service.
+
+### Use two answer contracts
+
+A single “answer only from memory” prompt is wrong for personalized recommendations. Keep
+the grounding rule strict for user facts, but let the model contribute general knowledge
+when the task asks it to recommend something:
+
+```text
+Factual recall:
+Answer only from TOOL_RESULT. If it does not support the answer, say you do not know.
+
+Personalized recommendation:
+Use TOOL_RESULT to ground every claim about the user. You may use general knowledge to
+make recommendations, but do not invent user details. State the remembered preference or
+context that drives the recommendation.
+```
+
+This distinction moved LongMemEval-S development preference accuracy from the initial 20%
+lexical/history-only baseline to 86.7% in the locked full run; held-out accuracy was 93.3%.
+The model still receives only bounded retrieved sources, never the full store. Run the
+complete development harness with:
+
+```bash
+npm run bench:longmemeval:answer -- --split dev \
+  --output /tmp/remembero-longmemeval-dev.json \
+  --hypotheses /tmp/remembero-longmemeval-dev.jsonl
+```
+
+The result separates durable formation, retrieval coverage, reader accuracy, judge cost,
+and failures by question type. See the
+[end-to-end benchmark contract](research/LONGMEMEVAL.md).

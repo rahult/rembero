@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -2074,8 +2074,12 @@ describe('OpenRouterClient', () => {
       { apiKey: 'sk-test', baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-5.6-luna' },
       fakeFetch
     );
-    const text = await client.complete([{ role: 'user', content: 'hello' }]);
-    expect(text).toBe('hi there');
+    const completion = await client.completeWithUsage(
+      [{ role: 'user', content: 'hello' }],
+      { maxTokens: 42 }
+    );
+    expect(completion.content).toBe('hi there');
+    expect(client.model).toBe('openai/gpt-5.6-luna');
     expect(requests).toHaveLength(2);
     expect(requests[0].url).toBe('https://openrouter.ai/api/v1/chat/completions');
     const headers = requests[0].init.headers as Record<string, string>;
@@ -2084,6 +2088,34 @@ describe('OpenRouterClient', () => {
     expect(body.model).toBe('openai/gpt-5.6-luna');
     expect(body.messages).toEqual([{ role: 'user', content: 'hello' }]);
     expect(body.temperature).toBe(0);
+    expect(body.max_tokens).toBe(42);
+  });
+
+  it('normalizes malformed Unicode before sending provider JSON', async () => {
+    let requestBody = '';
+    const client = new OpenRouterClient(
+      { apiKey: 'sk-test', baseUrl: 'https://x.test/v1', model: 'm' },
+      (async (_url, init) => {
+        requestBody = String(init?.body);
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: 'ok' } }],
+        }), { status: 200 });
+      }) as typeof fetch
+    );
+    await client.complete([{ role: 'user', content: `left\uD800right` }]);
+    expect(JSON.parse(requestBody).messages[0].content).toBe('left�right');
+  });
+
+  it('rejects invalid completion limits before making a request', async () => {
+    const fakeFetch = vi.fn() as unknown as typeof fetch;
+    const client = new OpenRouterClient(
+      { apiKey: 'sk-test', baseUrl: 'https://x.test/v1', model: 'm' },
+      fakeFetch
+    );
+    await expect(
+      client.completeWithUsage([{ role: 'user', content: 'q' }], { maxTokens: 0 })
+    ).rejects.toThrow(/max tokens/i);
+    expect(fakeFetch).not.toHaveBeenCalled();
   });
 
   it('throws a readable error on repeated failure, without leaking the key', async () => {
@@ -2094,6 +2126,28 @@ describe('OpenRouterClient', () => {
     );
     await expect(client.complete([{ role: 'user', content: 'q' }])).rejects.toSatisfy(
       (e: Error) => /500/.test(e.message) && !e.message.includes('sk-secret-value')
+    );
+  });
+
+  it('returns bounded provider diagnostics without echoing sensitive text', async () => {
+    const actionable = new OpenRouterClient(
+      { apiKey: 'sk-test', baseUrl: 'https://x.test/v1', model: 'm' },
+      (async () => new Response(JSON.stringify({
+        error: { message: 'Prompt exceeds the configured context limit.' },
+      }), { status: 400 })) as typeof fetch
+    );
+    await expect(actionable.complete([{ role: 'user', content: 'q' }])).rejects.toThrow(
+      /status 400: Prompt exceeds the configured context limit/i
+    );
+
+    const sensitive = new OpenRouterClient(
+      { apiKey: 'sk-test', baseUrl: 'https://x.test/v1', model: 'm' },
+      (async () => new Response(JSON.stringify({
+        error: { message: 'API key is sk-sensitive-value' },
+      }), { status: 400 })) as typeof fetch
+    );
+    await expect(sensitive.complete([{ role: 'user', content: 'q' }])).rejects.toThrow(
+      /^LLM request failed with status 400$/i
     );
   });
 });

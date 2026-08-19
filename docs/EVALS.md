@@ -40,6 +40,7 @@ npm run bench:longmemeval:download
 npm run bench:longmemeval
 npm run bench:longmemeval -- --json
 npm run bench:longmemeval:semantic
+npm run bench:longmemeval:answer -- --split dev
 ```
 
 The current recall-first configuration achieves 83.27% Recall@5, 80.96% MRR, and 75.32%
@@ -48,7 +49,7 @@ Precision@5 is 30.72% and abstention empty rate is 0%, which remain explicit gap
 than being hidden by answer generation. See the [full method, sweeps, and evidence
 boundary](research/LONGMEMEVAL.md).
 
-The live semantic policy benchmark uses a deterministic SHA-256 development/held-out split
+The v1 live semantic policy benchmark uses a deterministic SHA-256 development/held-out split
 and routes only explicit recommendation/advice intent. On 15 held-out preference questions,
 Recall@5 improved from 46.7% to 60.0% and MRR from 16.1% to 47.2%. It requires an embedding
 provider and stays outside CI/prepublish. See the [semantic search contract and cost
@@ -59,6 +60,14 @@ retrieval control held fixed. Perplexity 0.6B beat the eligible Qwen3 8B and Per
 candidates on Recall@5, MRR, cost, and p95 latency; larger losing candidates were not run
 on held-out data. The exact measurements and policy are preserved in the
 [model-matrix artifact](research/results/semantic-model-matrix-v1-summary.json).
+
+The live answer runner adds a real durable-store lifecycle and emits official-compatible
+`{question_id, hypothesis}` JSONL when requested. Its locked policy achieved 78.9% on the
+261-question development partition and 71.5% on 239 untouched held-out questions, with
+zero final errors. Across all 500 questions it scored 75.4%; reader plus embedding cost was
+$1.371122 ($0.002742/question), while the separate judge cost $0.161905. It stays outside
+CI because both generation and judging consume live provider budget. See the
+[complete answer contract and limitations](research/LONGMEMEVAL.md).
 
 ## Structured-memory comparison
 

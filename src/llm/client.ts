@@ -1,3 +1,5 @@
+import { normalizeUnicodeScalarText, redactSensitiveText } from '../safety.js';
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -20,6 +22,10 @@ export interface LlmCompletion {
   content: string;
   model: string;
   usage: LlmUsage;
+}
+
+export interface LlmCompletionOptions {
+  maxTokens?: number;
 }
 
 export interface LlmUsageTotals {
@@ -47,6 +53,21 @@ function finiteNonnegative(value: unknown): number | null {
   return typeof parsed === 'number' && Number.isFinite(parsed) && parsed >= 0
     ? parsed
     : null;
+}
+
+function providerErrorDetail(body: string): string | undefined {
+  if (Buffer.byteLength(body) > 16 * 1024) return undefined;
+  try {
+    const payload = JSON.parse(body) as { error?: { message?: unknown } };
+    const message = payload.error?.message;
+    if (typeof message !== 'string' || message.trim() === '') return undefined;
+    const safe = redactSensitiveText(message);
+    return safe.redacted
+      ? undefined
+      : safe.text.replace(/\s+/g, ' ').trim().slice(0, 500);
+  } catch {
+    return undefined;
+  }
 }
 
 export function emptyLlmUsageTotals(): LlmUsageTotals {
@@ -85,16 +106,29 @@ export function addLlmUsage(
 }
 
 export class OpenRouterClient implements LlmClient {
+  readonly model: string;
+
   constructor(
     private config: LlmConfig,
     private fetchFn: typeof fetch = fetch
-  ) {}
+  ) {
+    this.model = config.model;
+  }
 
   async complete(messages: ChatMessage[]): Promise<string> {
     return (await this.completeWithUsage(messages)).content;
   }
 
-  async completeWithUsage(messages: ChatMessage[]): Promise<LlmCompletion> {
+  async completeWithUsage(
+    messages: ChatMessage[],
+    options: LlmCompletionOptions = {}
+  ): Promise<LlmCompletion> {
+    if (
+      options.maxTokens !== undefined &&
+      (!Number.isSafeInteger(options.maxTokens) || options.maxTokens < 1 || options.maxTokens > 16_384)
+    ) {
+      throw new Error('LLM max tokens must be an integer from 1 to 16384');
+    }
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -106,19 +140,29 @@ export class OpenRouterClient implements LlmClient {
           },
           body: JSON.stringify({
             model: this.config.model,
-            messages,
+            messages: messages.map((message) => ({
+              ...message,
+              content: normalizeUnicodeScalarText(message.content),
+            })),
             temperature: 0,
+            ...(options.maxTokens === undefined
+              ? {}
+              : { max_tokens: options.maxTokens }),
           }),
           signal: AbortSignal.timeout(60_000),
         });
         if (!response.ok) {
-          lastError = new Error(`LLM request failed with status ${response.status}`);
+          const detail = providerErrorDetail(await response.text());
+          lastError = new Error(
+            `LLM request failed with status ${response.status}` +
+            (detail === undefined ? '' : `: ${detail}`)
+          );
           if (response.status === 429 || response.status >= 500) continue;
           throw lastError;
         }
         const data = (await response.json()) as {
           model?: unknown;
-          choices?: { message?: { content?: string } }[];
+          choices?: { finish_reason?: unknown; message?: { content?: string } }[];
           usage?: {
             prompt_tokens?: unknown;
             completion_tokens?: unknown;
@@ -130,7 +174,11 @@ export class OpenRouterClient implements LlmClient {
         };
         const content = data.choices?.[0]?.message?.content;
         if (typeof content !== 'string') {
-          throw new Error('LLM response had no message content');
+          const finishReason = data.choices?.[0]?.finish_reason;
+          throw new Error(
+            'LLM response had no message content' +
+            (typeof finishReason === 'string' ? ` (finish_reason=${finishReason})` : '')
+          );
         }
         const promptTokens = finiteNonnegative(data.usage?.prompt_tokens);
         const completionTokens = finiteNonnegative(data.usage?.completion_tokens);

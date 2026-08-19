@@ -40,6 +40,13 @@ matrix. It outperformed the eligible 4B and 8B candidates on Recall@5 and MRR wh
 2.5–7.5x less; the free candidate was rejected rather than weakening provider data policy.
 Embedding failures now include bounded, redacted provider diagnostics so configuration and
 privacy-policy errors are actionable without exposing secrets.
+Adds a product-native LongMemEval-S answer runner that forms each history in a fresh durable
+store, performs bounded source retrieval, generates an answer, emits upstream-compatible
+hypotheses, and applies a task-specific judge contract with provider-native cost. The locked
+policy scores 75.4% over all 500 questions and 71.5% held-out. Factual and personalized
+answers now use distinct grounding contracts; recommendation intent recognizes plural and
+implicit-reason wording. Provider-boundary Unicode normalization repairs malformed source
+text, and independent embedding batches run with bounded concurrency three.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

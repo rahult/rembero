@@ -45,9 +45,10 @@ export const MAX_SEMANTIC_CHUNKS_PER_DOCUMENT = 10;
 export const SEMANTIC_LEXICAL_GUARD_RATIO = 1.5;
 export const SEMANTIC_LEXICAL_GUARD_MIN_SCORE = 120;
 const MAX_SEMANTIC_EMBEDDING_BATCH = 100;
+const MAX_SEMANTIC_EMBEDDING_CONCURRENCY = 3;
 
 const RECOMMENDATION_INTENT =
-  /\b(recommend|suggest|suggestion|advice|tips|ideas?|should i|what should|decide|choose|looking for)\b/i;
+  /\b(recommend(?:ation)?s?|suggest(?:ion)?s?|advice|tips|ideas?|should i|what should|decide|choose|looking for|could there be (?:a )?reason)\b/i;
 
 export function isRecommendationIntent(text: string): boolean {
   return RECOMMENDATION_INTENT.test(text);
@@ -352,6 +353,25 @@ function addEmbeddingUsage(
   };
 }
 
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  operation: (value: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+      while (true) {
+        const index = next++;
+        if (index >= values.length) return;
+        results[index] = await operation(values[index]!, index);
+      }
+    })
+  );
+  return results;
+}
+
 export async function prepareSemanticKnowledge(
   clauses: Clause[],
   sources: Map<string, MemorySource[]>,
@@ -422,9 +442,20 @@ export async function prepareSemanticKnowledge(
     totalTokens: null,
     costUsd: null,
   };
-  for (let start = 0; start < missingDocuments.length; start += MAX_SEMANTIC_EMBEDDING_BATCH) {
-    const batch = missingDocuments.slice(start, start + MAX_SEMANTIC_EMBEDDING_BATCH);
-    const embedded = await embeddings.embed(batch.map(([, document]) => document.text));
+  const batches = Array.from(
+    { length: Math.ceil(missingDocuments.length / MAX_SEMANTIC_EMBEDDING_BATCH) },
+    (_, index) => missingDocuments.slice(
+      index * MAX_SEMANTIC_EMBEDDING_BATCH,
+      (index + 1) * MAX_SEMANTIC_EMBEDDING_BATCH
+    )
+  );
+  const embeddedBatches = await mapConcurrent(
+    batches,
+    MAX_SEMANTIC_EMBEDDING_CONCURRENCY,
+    (batch) => embeddings.embed(batch.map(([, document]) => document.text))
+  );
+  for (const [batchIndex, batch] of batches.entries()) {
+    const embedded = embeddedBatches[batchIndex]!;
     providerCalls++;
     model = embedded.model;
     providerUsage = addEmbeddingUsage(providerUsage, embedded.usage);
@@ -569,32 +600,37 @@ export async function semanticSearchKnowledge(
     totalTokens: null,
     costUsd: null,
   };
-  const firstBatch = missingDocuments.slice(0, MAX_SEMANTIC_EMBEDDING_BATCH);
-  const firstEmbedded = await embeddings.embed([
-    text,
-    ...firstBatch.map(([, document]) => document.text),
-  ]);
-  providerCalls++;
-  model = firstEmbedded.model;
-  providerUsage = addEmbeddingUsage(providerUsage, firstEmbedded.usage);
-  const queryVector = firstEmbedded.vectors[0]!;
-  for (const [position, [key, document]] of firstBatch.entries()) {
-    const vector = firstEmbedded.vectors[position + 1]!;
-    cache?.set(key, vector);
-    for (const index of document.indexes) cachedVectors[index] = vector;
-  }
-  for (
-    let start = MAX_SEMANTIC_EMBEDDING_BATCH;
-    start < missingDocuments.length;
-    start += MAX_SEMANTIC_EMBEDDING_BATCH
-  ) {
-    const batch = missingDocuments.slice(start, start + MAX_SEMANTIC_EMBEDDING_BATCH);
-    const embedded = await embeddings.embed(batch.map(([, document]) => document.text));
+  const batches = [
+    missingDocuments.slice(0, MAX_SEMANTIC_EMBEDDING_BATCH),
+    ...Array.from(
+      {
+        length: Math.max(
+          0,
+          Math.ceil(missingDocuments.length / MAX_SEMANTIC_EMBEDDING_BATCH) - 1
+        ),
+      },
+      (_, index) => missingDocuments.slice(
+        (index + 1) * MAX_SEMANTIC_EMBEDDING_BATCH,
+        (index + 2) * MAX_SEMANTIC_EMBEDDING_BATCH
+      )
+    ),
+  ];
+  const embeddedBatches = await mapConcurrent(
+    batches,
+    MAX_SEMANTIC_EMBEDDING_CONCURRENCY,
+    (batch, index) => embeddings.embed([
+      ...(index === 0 ? [text] : []),
+      ...batch.map(([, document]) => document.text),
+    ])
+  );
+  const queryVector = embeddedBatches[0]!.vectors[0]!;
+  for (const [batchIndex, batch] of batches.entries()) {
+    const embedded = embeddedBatches[batchIndex]!;
     providerCalls++;
     model = embedded.model;
     providerUsage = addEmbeddingUsage(providerUsage, embedded.usage);
     for (const [position, [key, document]] of batch.entries()) {
-      const vector = embedded.vectors[position]!;
+      const vector = embedded.vectors[position + (batchIndex === 0 ? 1 : 0)]!;
       cache?.set(key, vector);
       for (const index of document.indexes) cachedVectors[index] = vector;
     }

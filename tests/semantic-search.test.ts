@@ -31,6 +31,13 @@ function store(label: string): MemoryStore {
 }
 
 describe('semantic knowledge search', () => {
+  it('routes plural recommendation language and implicit reason questions', () => {
+    expect(isRecommendationIntent('Any recommendations for coffee creamer?')).toBe(true);
+    expect(isRecommendationIntent('Any suggestions for meal prep?')).toBe(true);
+    expect(isRecommendationIntent('Could there be a reason my bike performs better?')).toBe(true);
+    expect(isRecommendationIntent('What degree did I graduate with?')).toBe(false);
+  });
+
   it('reranks a bounded lexical shortlist and caches document vectors', async () => {
     const memory = store('ranking');
     memory.assert('default', 'note(relevant).', {
@@ -321,13 +328,19 @@ describe('semantic knowledge search', () => {
       ).join(''),
     }]]));
     const calls: number[] = [];
+    let active = 0;
+    let maximumActive = 0;
     const result = await prepareSemanticKnowledge(
       clauses,
       sources,
       {
         model: 'test/batches',
         async embed(inputs) {
+          active++;
+          maximumActive = Math.max(maximumActive, active);
           calls.push(inputs.length);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          active--;
           return {
             model: this.model,
             vectors: inputs.map(() => [1, 0]),
@@ -344,6 +357,7 @@ describe('semantic knowledge search', () => {
       providerCalls: 2,
     });
     expect(calls).toEqual([100, 10]);
+    expect(maximumActive).toBe(2);
   });
 
   it('blocks sensitive preparation before embedding', async () => {
@@ -384,6 +398,22 @@ describe('semantic knowledge search', () => {
       usage: { promptTokens: 12, totalTokens: 12, costUsd: 0.000004 },
     });
     expect(fetchFn).toHaveBeenCalledOnce();
+  });
+
+  it('normalizes malformed Unicode before embedding provider input', async () => {
+    let requestBody = '';
+    const client = new OpenRouterEmbeddingClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://example.test/v1',
+      model: 'configured/model',
+    }, (async (_url, init) => {
+      requestBody = String(init?.body);
+      return new Response(JSON.stringify({
+        data: [{ index: 0, embedding: [1, 0] }],
+      }), { status: 200 });
+    }) as typeof fetch);
+    await client.embed([`left\uD800right`]);
+    expect(JSON.parse(requestBody).input).toEqual(['left�right']);
   });
 
   it('returns bounded actionable provider errors without echoing sensitive text', async () => {

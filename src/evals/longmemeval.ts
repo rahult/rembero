@@ -141,7 +141,7 @@ export async function loadLongMemEvalS(path: string): Promise<{
   return { instances: parsed as LongMemEvalInstance[], sha256 };
 }
 
-function sessionText(messages: readonly LongMemEvalMessage[]): string {
+export function longMemEvalSessionText(messages: readonly LongMemEvalMessage[]): string {
   return messages.map(({ role, content }) => `${role}: ${content}`).join('\n');
 }
 
@@ -261,7 +261,7 @@ export function scoreLongMemEvalInstances(
           namespace: 'longmemeval',
           opId: instance.haystack_session_ids[index]!,
           ts: instance.haystack_dates[index]!,
-          text: sessionText(instance.haystack_sessions[index]!),
+          text: longMemEvalSessionText(instance.haystack_sessions[index]!),
         },
       ]);
     }

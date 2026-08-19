@@ -188,10 +188,10 @@ Most importantly, I want “the system retrieved relevant text” and “the ans
 to remain different claims.
 
 Remembero’s first suite is not large enough to settle the agent-memory market. It is large
-enough to make our own standard falsifiable. Pinned external adapters and a cleaned
-LongMemEval-S retrieval run are now published; the next milestone is a common end-to-end
-answer reader plus Letta or managed Zep, with formation, retrieval, and answer failures
-still reported separately.
+enough to make our own standard falsifiable. Pinned external adapters, a cleaned
+LongMemEval-S retrieval run, and a common end-to-end answer reader are now published with
+formation, retrieval, answer, latency, and cost failures reported separately. The next
+comparison milestone is a pinned Letta or managed Zep run under that same reader contract.
 
 That is the point of proof-carrying memory: the answer should not get special treatment
 because it is ours.

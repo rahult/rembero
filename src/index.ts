@@ -70,6 +70,7 @@ export {
   type LlmClient,
   type LlmConfig,
   type LlmCompletion,
+  type LlmCompletionOptions,
   type LlmUsage,
   type LlmUsageTotals,
   DEFAULT_MODEL,

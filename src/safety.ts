@@ -4,7 +4,9 @@ export const MAX_NAMESPACE_COUNT = 32;
 export const REDACTED_SOURCE = '[sensitive source omitted]';
 
 const SENSITIVE_TEXT_PATTERNS = [
-  /\b(?:api[_ -]?key|password|passwd|secret|access[_ -]?token|refresh[_ -]?token|account[_ -]?number|credit[_ -]?card)\b\s*(?:is|=|:)?\s*\S+/i,
+  /\b(?:api[_ -]?key|password|passwd|secret|access[_ -]?token|refresh[_ -]?token|account[_ -]?number|credit[_ -]?card)\b["']?\s*(?:is|=|:)\s*["']?\S+/i,
+  /\b(?:api[_ -]?key|password|passwd|secret|access[_ -]?token|refresh[_ -]?token|account[_ -]?number|credit[_ -]?card)\s*\(/i,
+  /\b(?:my|your|the)\s+(?:api[_ -]?key|password|passwd|secret|access[_ -]?token|refresh[_ -]?token)\s+(?=\S*[0-9._~+/=-])\S{6,}/i,
   /\b(?:bearer\s+)[a-z0-9._~+/=-]{8,}/i,
   /\b(?:sk|gh[pousr])[-_][a-z0-9_-]{8,}/i,
   /\b(?:\d[ -]*?){13,19}\b/,
@@ -15,6 +17,20 @@ export function assertBoundedInput(value: string, label: string): void {
   if (bytes > MAX_INPUT_BYTES) {
     throw new Error(`${label} exceeds ${MAX_INPUT_BYTES} bytes`);
   }
+}
+
+export function normalizeUnicodeScalarText(value: string): string {
+  return value.replace(/[\uD800-\uDFFF]/g, (unit, offset) => {
+    const code = unit.charCodeAt(0);
+    if (code >= 0xD800 && code <= 0xDBFF) {
+      const next = value.charCodeAt(offset + 1);
+      if (next >= 0xDC00 && next <= 0xDFFF) return unit;
+    } else {
+      const previous = value.charCodeAt(offset - 1);
+      if (previous >= 0xD800 && previous <= 0xDBFF) return unit;
+    }
+    return '\uFFFD';
+  });
 }
 
 export function assertBoundedOutput(

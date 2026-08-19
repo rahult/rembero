@@ -1,4 +1,8 @@
-import { assertBoundedInput, redactSensitiveText } from '../safety.js';
+import {
+  assertBoundedInput,
+  normalizeUnicodeScalarText,
+  redactSensitiveText,
+} from '../safety.js';
 
 export const DEFAULT_EMBEDDING_MODEL = 'perplexity/pplx-embed-v1-0.6b';
 export const MAX_EMBEDDING_INPUTS = 101;
@@ -76,7 +80,7 @@ export class OpenRouterEmbeddingClient implements EmbeddingClient {
           },
           body: JSON.stringify({
             model: this.model,
-            input: inputs,
+            input: inputs.map(normalizeUnicodeScalarText),
             encoding_format: 'float',
           }),
           signal: AbortSignal.timeout(120_000),

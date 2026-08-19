@@ -40,7 +40,7 @@ The semantic path:
    2,048-character chunks;
 4. rejects detected secrets before any network call;
 5. permits only namespaces allowed by `REMBERO_LLM_ALLOWED_NAMESPACES`;
-6. sends bounded batches of at most 100 document chunks;
+6. sends batches of at most 100 document chunks with at most three provider calls in flight;
 7. ranks each candidate by its best chunk cosine similarity, breaking ties by lexical rank;
 8. preserves a lexical leader only when it scores at least 120 and has a 1.5x margin; and
 9. caches document vectors by model and content hash in memory and in a bounded derived
@@ -84,7 +84,7 @@ entries become misses and are recomputed. Changing source text or model changes 
 The directory is bounded to 2,000 entries and may be deleted at any time; the journal,
 program, and provenance remain the sole authority.
 
-## Measured preference gate
+## Measured preference gate v1
 
 The pinned LongMemEval-S policy routes only explicit recommendation/advice intent to
 semantic retrieval and leaves every other question on local lexical search. Question IDs
@@ -123,9 +123,23 @@ OpenRouter documents batching, caching, cosine comparison, model selection, and 
 OpenAI-compatible embeddings endpoint:
 <https://openrouter.ai/docs/api/reference/embeddings>.
 
+The later end-to-end answer gate expands intent detection to ordinary plural wording such
+as “recommendations” and “suggestions,” plus implicit “could there be a reason” questions.
+With top four answer-facing sessions it retrieved 100.0% of development preference evidence
+and 86.7% held-out; judged answer accuracy was 86.7% and 93.3%, respectively. Across all 30
+preference questions, Recall@4 was 93.3% and answer accuracy was 90.0%. This v2 policy was
+locked before the held-out run and is recorded in the
+[end-to-end result](research/results/longmemeval-answer-v1-summary.json).
+
+Cold embedding batches were initially serial. Running up to three independent batches in
+parallel preserved a 5/5 development pilot while reducing semantic retrieval p50/p95 from
+the full run's 48.6/67.0 seconds to 8.4/9.0 seconds. Prepared caches still reduce a later
+query to its question embedding only.
+
 ## Remaining limits
 
-- Held-out recall improved, but 60.0% still leaves meaningful preference misses.
+- Held-out Recall@4 is now 86.7% in the end-to-end policy, but the remaining misses still
+  matter and semantic similarity cannot prove absence.
 - Cold evaluation deliberately uses isolated corpora. MCP and CLI reuse the derived disk
   cache across processes, but first access still embeds shortlisted documents.
 - The cache is populated by explicit preparation or search, never automatically during a

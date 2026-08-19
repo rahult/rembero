@@ -69,8 +69,9 @@ correctness, semantic/vector retrieval, or model-free arbitrary natural-language
 - Public evaluation artifacts and measured transparent baselines: `docs/research/`.
 - Lab and playground timings are measured from the current browser and labeled as seeded
   case measurements, not cross-device benchmarks.
-- No customer testimonials, production scale evidence, or external-stack benchmark runs
-  are available and none may be fabricated for the showcase.
+- No customer testimonials or hosted production evidence is available and none may be
+  fabricated for the showcase. Current scale, external-stack, and LongMemEval evidence is
+  published under `docs/research/` with explicit configuration and scope limits.
 
 ## Product Principles
 

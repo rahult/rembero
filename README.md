@@ -22,6 +22,7 @@ npm run bench:agent-db:million
 npm run bench:longmemeval:download
 npm run bench:longmemeval
 npm run bench:longmemeval:semantic # live embedding cost
+npm run bench:longmemeval:answer -- --split dev # live durable formation + QA
 npm run bench:memory:external
 npm run bench:memory:mem0 # live OpenRouter extraction cost
 npm run bench:memory:graphiti # live OpenRouter graph formation cost
@@ -34,8 +35,11 @@ formation tokens and charged cost; it is never part of normal CI or prepublish.
 The Graphiti OSS command also requires `OPENROUTER_API_KEY`, stays outside CI/prepublish,
 and uses native bulk episode formation, local FastEmbed, and a fresh embedded FalkorDBLite
 graph per question.
-The pinned LongMemEval-S command runs all 500 cleaned questions as a retrieval-only,
-zero-model-call gate; its [result and limitations](docs/research/LONGMEMEVAL.md) are public.
+The pinned LongMemEval-S commands provide both a retrieval-only zero-model baseline and a
+live durable formation → retrieval → answer evaluation. The locked end-to-end policy scored
+75.4% across all 500 questions and 71.5% on untouched held-out data at $0.002742 average
+reader-plus-embedding cost. Its [method, evidence split, and limitations](docs/research/LONGMEMEVAL.md)
+are public.
 For fuzzy recommendations, the opt-in [`semantic_search_knowledge`](docs/SEMANTIC-KNOWLEDGE-SEARCH.md)
 tool reranks a bounded local shortlist, reports provider cost, and caches document vectors
 across process restarts without changing structured query or proof authority. The bounded

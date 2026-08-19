@@ -35,6 +35,10 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Accuracy | Stale leakage | 0.0% | 0% |
 | Broad retrieval | LongMemEval-S Recall@5 / MRR | 83.27% / 80.96% | measured |
 | Broad retrieval | Strict all-evidence coverage | 75.32% | measured |
+| End-to-end memory | LongMemEval-S overall / held-out accuracy | 75.4% / 71.5% | measured live |
+| End-to-end memory | Complete / incomplete evidence accuracy | 89.5% / 42.3% | measured live |
+| End-to-end cost | Reader + embeddings, 500 questions | $1.371122 / $0.002742 avg | measured live |
+| End-to-end formation | Durable raw-session formation p95 | 180 ms | measured |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
 | Speed | MCP process startup | 93.74 ms | diagnostic |
@@ -303,11 +307,12 @@ Recall@5, 80.96% MRR, and 75.32% strict all-evidence coverage over 470 answerabl
 Local search p95 was 10.61–11.10 ms across three complete runs with zero model, embedding,
 or remote calls.
 
-This is retrieval-only, not an answer-accuracy or memory-formation result. The current
-0% abstention empty rate and 43.33% preference-question Recall@5 are published gaps. The
-[reproducible contract and complete result](research/LONGMEMEVAL.md) include dataset
-commit/hash validation, source-window and threshold sweeps, per-question-type metrics, and
-the exact evidence boundary.
+The zero-provider result remains retrieval-only. A separate live runner now writes every
+session into a fresh durable `MemoryStore`, reconstructs the snapshot, retrieves bounded
+source context, generates an answer, and judges it under a task-specific LongMemEval
+contract. The policy was locked on 261 development questions and achieved 71.5% on 239
+untouched held-out questions; combined accuracy is 75.4% with zero final errors. Complete
+evidence produced 89.5% answer accuracy versus 42.3% when evidence was incomplete.
 
 The opt-in semantic policy addresses the largest measured subtype gap without changing the
 default structured path. It routes explicit recommendation/advice intent through
@@ -317,6 +322,14 @@ from 43.3% to 73.3% and MRR from 23.3% to 61.1%. On the locked held-out half, Re
 improved from 46.7% to 60.0% and MRR from 16.1% to 47.2%. The 22 routed calls cost
 $0.0090642 while recomputing every isolated corpus. Embeddings remain retrieval-only and are never used to
 declare absence or proof. See the [semantic search contract](SEMANTIC-KNOWLEDGE-SEARCH.md).
+
+The answer runner uses the same authority boundary. Factual questions are restricted to
+retrieved history. Preference questions may combine recalled user context with general
+recommendation knowledge while user-specific claims remain grounded. This raises combined
+preference answer accuracy to 90.0%. Reader plus embedding cost was $1.371122 across all
+500 questions ($0.002742/question); the independent judge added $0.161905 evaluation-only
+cost. Durable formation p95 was 180 ms and local retrieval p95 was 11.5 ms. See the
+[answer result and evidence boundary](research/LONGMEMEVAL.md).
 
 ## Release gates
 
@@ -340,8 +353,12 @@ structured-memory conformance gate.
 
 This scorecard does not yet prove:
 
-- LongMemEval answer accuracy, memory formation, or statistical superiority over another
-  system; the current LongMemEval result is source retrieval only;
+- learned structured-fact formation accuracy on LongMemEval; the end-to-end result forms
+  durable raw-session facts and sources rather than model-extracted semantic facts;
+- statistical superiority over another memory system under the same LongMemEval reader,
+  judge, prompt, and provider revision;
+- strong multi-session synthesis—the current complete result is 56.4% on that subtype,
+  versus 90%+ on the three single-session subtypes;
 - repeated and memory-bounded performance beyond the current one-million-fact gate;
 - managed-service availability or multi-tenant operations;
 - natural-language cost stability across provider revisions and workloads beyond the
