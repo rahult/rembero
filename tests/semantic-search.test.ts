@@ -386,6 +386,28 @@ describe('semantic knowledge search', () => {
     expect(fetchFn).toHaveBeenCalledOnce();
   });
 
+  it('returns bounded actionable provider errors without echoing sensitive text', async () => {
+    const client = new OpenRouterEmbeddingClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://example.test/v1',
+      model: 'configured/model',
+    }, vi.fn(async () => new Response(JSON.stringify({
+      error: { message: 'No endpoints satisfy the configured privacy policy.' },
+    }), { status: 404 })) as typeof fetch);
+    await expect(client.embed(['query'])).rejects.toThrow(
+      /status 404: No endpoints satisfy the configured privacy policy/i
+    );
+
+    const secretClient = new OpenRouterEmbeddingClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://example.test/v1',
+      model: 'configured/model',
+    }, vi.fn(async () => new Response(JSON.stringify({
+      error: { message: 'API key is sk-sensitive-value' },
+    }), { status: 400 })) as typeof fetch);
+    await expect(secretClient.embed(['query'])).rejects.toThrow(/^embedding request failed with status 400$/i);
+  });
+
   it('blocks local-only namespaces before calling the provider', async () => {
     const memory = store('allowlist');
     memory.assert('private', 'preference(rahul, tea).', {

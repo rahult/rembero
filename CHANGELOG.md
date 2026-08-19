@@ -35,6 +35,11 @@ whole-session vector, improving all-preference LongMemEval Recall@5 from 66.7% t
 with a 13.3% increase in routed provider cost.
 A conservative lexical score/margin guard prevents an obvious exact preference from being
 demoted by max-chunk similarity without changing the benchmark rankings.
+Selects the 0.6B semantic embedding default with a controlled development-only model
+matrix. It outperformed the eligible 4B and 8B candidates on Recall@5 and MRR while costing
+2.5–7.5x less; the free candidate was rejected rather than weakening provider data policy.
+Embedding failures now include bounded, redacted provider diagnostics so configuration and
+privacy-policy errors are actionable without exposing secrets.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

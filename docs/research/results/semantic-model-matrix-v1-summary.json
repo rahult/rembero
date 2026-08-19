@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "remembero.semantic-model-matrix.v1",
+  "measuredAt": "2026-08-20T05:58:00+10:00",
+  "dataset": {
+    "id": "xiaowu0162/longmemeval-cleaned",
+    "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+    "split": "deterministic development half",
+    "preferenceQuestions": 15,
+    "routedQuestions": 11
+  },
+  "fixedPolicy": {
+    "candidateLimit": 100,
+    "topK": 5,
+    "sourceCharacters": 16384,
+    "chunkCharacters": 2048,
+    "chunkOverlap": 256,
+    "maxChunks": 10,
+    "lexicalGuardMinimumScore": 120,
+    "lexicalGuardRatio": 1.5,
+    "sourceSafety": "store-equivalent redaction and fail-closed secret scan"
+  },
+  "catalogSnapshot": [
+    { "model": "nvidia/nemotron-3-embed-1b:free", "contextTokens": 32768, "usdPerInputToken": 0 },
+    { "model": "perplexity/pplx-embed-v1-0.6b", "contextTokens": 32000, "usdPerInputToken": 0.000000004 },
+    { "model": "qwen/qwen3-embedding-8b", "contextTokens": 32768, "usdPerInputToken": 0.00000001 },
+    { "model": "perplexity/pplx-embed-v1-4b", "contextTokens": 32000, "usdPerInputToken": 0.00000003 }
+  ],
+  "runs": [
+    {
+      "model": "perplexity/pplx-embed-v1-0.6b",
+      "status": "complete",
+      "precisionAtK": 0.17333333333333334,
+      "recallAtK": 0.8666666666666667,
+      "meanReciprocalRank": 0.75,
+      "providerCalls": 32,
+      "inputTokens": 1121159,
+      "costUsd": 0.004484636,
+      "medianWallMs": 7034.536875000002,
+      "p95WallMs": 9179.485875
+    },
+    {
+      "model": "nvidia/nemotron-3-embed-1b:free",
+      "status": "unavailable_under_account_policy",
+      "error": "No endpoints available matching the configured guardrail restrictions and data policy",
+      "heldOutRun": false
+    },
+    {
+      "model": "qwen/qwen3-embedding-8b",
+      "status": "complete",
+      "precisionAtK": 0.16,
+      "recallAtK": 0.8,
+      "meanReciprocalRank": 0.6155555555555556,
+      "providerCalls": 32,
+      "inputTokens": 1124014,
+      "costUsd": 0.011240140000000001,
+      "medianWallMs": 21525.267542000016,
+      "p95WallMs": 39780.06295800001,
+      "heldOutRun": false
+    },
+    {
+      "model": "perplexity/pplx-embed-v1-4b",
+      "status": "complete",
+      "precisionAtK": 0.16,
+      "recallAtK": 0.8,
+      "meanReciprocalRank": 0.6666666666666666,
+      "providerCalls": 32,
+      "inputTokens": 1121159,
+      "costUsd": 0.03363477,
+      "medianWallMs": 8291.096334000002,
+      "p95WallMs": 12202.761291000003,
+      "heldOutRun": false
+    }
+  ],
+  "decision": {
+    "defaultModel": "perplexity/pplx-embed-v1-0.6b",
+    "reason": "highest development Recall@5 and MRR among eligible models, lowest paid cost, and lowest p95 latency",
+    "expensiveModelsStoppedBeforeHeldOut": true
+  }
+}

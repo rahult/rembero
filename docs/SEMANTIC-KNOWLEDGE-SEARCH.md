@@ -59,6 +59,23 @@ embedding endpoint. Override it with `REMBERO_EMBEDDING_MODEL` and the endpoint 
 `REMBERO_EMBEDDING_BASE_URL`. `LLM_API_KEY` is used by default; `OPENROUTER_API_KEY` is an
 accepted fallback.
 
+## Model selection
+
+The default was selected on the deterministic development split with the routing, chunks,
+top-k, source safety, and lexical guard held fixed:
+
+| Model | Dev Recall@5 | Dev MRR | p95 | Cost | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Perplexity 0.6B | 86.7% | 75.0% | 9.2 s | $0.004485 | default |
+| Qwen3 8B | 80.0% | 61.6% | 39.8 s | $0.011240 | rejected |
+| Perplexity 4B | 80.0% | 66.7% | 12.2 s | $0.033635 | rejected |
+| NVIDIA Nemotron 1B free | not run | not run | not run | $0 | unavailable under account privacy policy |
+
+The larger eligible models were less accurate, slower, and more expensive, so they were
+stopped before held-out evaluation. The free endpoint was rejected rather than weakening
+privacy settings. See the
+[machine-readable matrix](research/results/semantic-model-matrix-v1-summary.json).
+
 The first cache layer is a 2,000-entry in-process LRU. The second is
 `.semantic-embeddings/`, a restart-safe derived cache containing only vectors, content/model
 hashes, and integrity metadata—never source text. Files are written atomically with `0600`

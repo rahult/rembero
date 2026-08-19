@@ -4,6 +4,24 @@ Remembero keeps rule evaluation, proofs, graph construction, schema selection, a
 deterministic answer rendering local. The configured model translates natural-language
 memory and recall requests; it is not the reasoning authority.
 
+Semantic preference retrieval has a separate embedding model. The default
+`perplexity/pplx-embed-v1-0.6b` was selected on the deterministic LongMemEval-S
+development split with routing, chunking, top-k, export safety, and the lexical guard held
+fixed:
+
+| Embedding model | Dev Recall@5 | Dev MRR | p95 | Charged cost | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `perplexity/pplx-embed-v1-0.6b` | 86.7% | 75.0% | 9.2 s | $0.004485 | default |
+| `qwen/qwen3-embedding-8b` | 80.0% | 61.6% | 39.8 s | $0.011240 | rejected |
+| `perplexity/pplx-embed-v1-4b` | 80.0% | 66.7% | 12.2 s | $0.033635 | rejected |
+| `nvidia/nemotron-3-embed-1b:free` | not run | not run | not run | $0 | unavailable under account privacy policy |
+
+Larger eligible models were stopped before held-out evaluation because none improved the
+development result. The free route was rejected rather than weakening the account's data
+policy. This is a dated provider measurement, not a universal model ranking; the raw
+decision record is in
+[`research/results/semantic-model-matrix-v1-summary.json`](research/results/semantic-model-matrix-v1-summary.json).
+
 ## Verified models
 
 The following live OpenRouter comparisons were run on 2026-08-17 AEST. Every run used

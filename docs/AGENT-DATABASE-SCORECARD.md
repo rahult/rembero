@@ -57,6 +57,8 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Semantic cost | 22 routed questions | $0.0090642 | measured |
 | Semantic cost | Restart cache provider tokens | 32 → 9 | measured |
 | Semantic speed | Long-source prewarm / first query after restart | 994 / 412 ms | measured |
+| Semantic model | 0.6B dev Recall@5 / MRR | 86.7% / 75.0% | best eligible matrix result |
+| Semantic model | 0.6B dev cost / p95 | $0.004485 / 9.2 s | 2.5–7.5x cheaper than larger candidates |
 | Ease | Cold empty-cache npm install | 5.19 s | <= 120 s diagnostic gate |
 | Ease | First CLI write / proof query | 89.08 ms / 95.46 ms | <= 1,000 ms each |
 | Ease | Packed / installed size | 0.92 MiB / 3.81 MiB | diagnostic |
@@ -69,6 +71,12 @@ Semantic evidence digest:
 
 Timings are current-machine diagnostics. The semantic digest excludes timing and remains
 stable across repeated runs with the same suite and implementation.
+
+The embedding-model matrix is development-only selection evidence. Qwen3 8B and
+Perplexity 4B both produced lower Recall@5 and MRR while costing more, so only the selected
+0.6B default retained the existing held-out run. The NVIDIA free route was unavailable
+without relaxing the account privacy policy. See the
+[machine-readable model matrix](research/results/semantic-model-matrix-v1-summary.json).
 
 ## What each dimension proves
 

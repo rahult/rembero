@@ -54,6 +54,12 @@ Recall@5 improved from 46.7% to 60.0% and MRR from 16.1% to 47.2%. It requires a
 provider and stays outside CI/prepublish. See the [semantic search contract and cost
 evidence](SEMANTIC-KNOWLEDGE-SEARCH.md).
 
+The default embedding model was selected separately on the development half with every
+retrieval control held fixed. Perplexity 0.6B beat the eligible Qwen3 8B and Perplexity 4B
+candidates on Recall@5, MRR, cost, and p95 latency; larger losing candidates were not run
+on held-out data. The exact measurements and policy are preserved in the
+[model-matrix artifact](research/results/semantic-model-matrix-v1-summary.json).
+
 ## Structured-memory comparison
 
 The v0.54 benchmark separates exact answers, answerability, ranked evidence retrieval,

@@ -1,4 +1,4 @@
-import { assertBoundedInput } from '../safety.js';
+import { assertBoundedInput, redactSensitiveText } from '../safety.js';
 
 export const DEFAULT_EMBEDDING_MODEL = 'perplexity/pplx-embed-v1-0.6b';
 export const MAX_EMBEDDING_INPUTS = 101;
@@ -35,6 +35,21 @@ function finiteNonnegative(value: unknown): number | null {
     : null;
 }
 
+function providerErrorDetail(body: string): string | undefined {
+  if (Buffer.byteLength(body) > 16 * 1024) return undefined;
+  try {
+    const payload = JSON.parse(body) as { error?: { message?: unknown } };
+    const message = payload.error?.message;
+    if (typeof message !== 'string' || message.trim() === '') return undefined;
+    const safe = redactSensitiveText(message);
+    return safe.redacted
+      ? undefined
+      : safe.text.replace(/\s+/g, ' ').trim().slice(0, 500);
+  } catch {
+    return undefined;
+  }
+}
+
 export class OpenRouterEmbeddingClient implements EmbeddingClient {
   readonly model: string;
 
@@ -67,7 +82,11 @@ export class OpenRouterEmbeddingClient implements EmbeddingClient {
           signal: AbortSignal.timeout(120_000),
         });
         if (!response.ok) {
-          lastError = new Error(`embedding request failed with status ${response.status}`);
+          const detail = providerErrorDetail(await response.text());
+          lastError = new Error(
+            `embedding request failed with status ${response.status}` +
+            (detail === undefined ? '' : `: ${detail}`)
+          );
           if (response.status === 429 || response.status >= 500) continue;
           throw lastError;
         }
