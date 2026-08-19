@@ -1,0 +1,126 @@
+{
+  "schemaVersion": "rembero.memory-stack.mem0-summary.v1",
+  "measuredAt": "2026-08-20T02:27:05+10:00",
+  "environment": {
+    "os": "macOS 26.5.2 arm64",
+    "cpu": "Apple M4",
+    "memoryBytes": 17179869184,
+    "uv": "0.12.0"
+  },
+  "suite": {
+    "id": "rembero-structured-memory",
+    "version": "1.0.0",
+    "digest": "2a483f29d0123bea651a8f4a7eec0a7b5193e58667474b5e96bbe8319c131524",
+    "cases": 7,
+    "questions": 8
+  },
+  "adapter": {
+    "id": "mem0-oss-openrouter-fastembed",
+    "version": "mem0ai-2.0.14_luna_fastembed-0.8.0_bge-small-en-v1.5",
+    "llm": "openai/gpt-5.6-luna via OpenRouter, temperature 0, max_tokens 512",
+    "embedding": "BAAI/bge-small-en-v1.5, FastEmbed 0.8.0, local CPU",
+    "storage": "fresh local Qdrant collection and SQLite history per question",
+    "telemetry": "disabled",
+    "spacy": "not installed; Mem0 non-spaCy fallback",
+    "answerReader": "none; retrieval-only scoring"
+  },
+  "method": {
+    "command": "npm run bench:memory:mem0",
+    "eventPolicy": "native Mem0 inference once per allowed event with fixture event ID metadata",
+    "trustPolicy": "accepted-only unless the public question requests tentative inclusion",
+    "retrievalPolicy": "question text, user filter, published top-k after event-ID deduplication",
+    "timingBoundary": "includes Mem0 inference, provider latency, local embedding, persistence, and search; excludes dependency and model initialization",
+    "comparisonBoundary": "Remembero consumes supplied clauses in this suite; Mem0 forms memories from event text, so formation latency is not a structured-query speed ratio"
+  },
+  "summary": {
+    "questions": 8,
+    "operationalErrors": 0,
+    "answerCoverage": 0,
+    "answerAccuracy": null,
+    "retrievalCoverage": 0.875,
+    "retrievalPrecisionAtK": 0.8857142857142858,
+    "retrievalRecallAtK": 1,
+    "meanReciprocalRank": 1,
+    "citationRecall": null,
+    "staleLeakageRate": 0,
+    "medianWallMs": 12407.479291025084,
+    "p95WallMs": 322890.38804202573
+  },
+  "providerUsage": {
+    "modelCalls": 118,
+    "inputTokens": 941841,
+    "outputTokens": 12855,
+    "totalTokens": 954696,
+    "costUsd": 0.04403369,
+    "averageCostPerCallUsd": 0.000373167,
+    "secondRunCostUsd": 0.04453473,
+    "secondRunP95WallMs": 349898.30387500115
+  },
+  "cases": [
+    {
+      "id": "direct_fact_at_scale",
+      "modelCalls": 101,
+      "inputTokens": 810126,
+      "outputTokens": 10625,
+      "costUsd": 0.0384849,
+      "wallMs": 322890.38804202573,
+      "retrieved": [
+        "direct-employer",
+        "direct-noise-021",
+        "direct-noise-009",
+        "direct-noise-090",
+        "direct-noise-017"
+      ]
+    },
+    {
+      "id": "multi_hop_rule",
+      "modelCalls": 3,
+      "costUsd": 0.00110101,
+      "wallMs": 22618.6555409804,
+      "retrieved": ["atlas-contributor", "atlas-owner", "collaborator-rule"]
+    },
+    {
+      "id": "recursive_reasoning",
+      "modelCalls": 4,
+      "costUsd": 0.0011481,
+      "wallMs": 12407.479291025084,
+      "retrieved": [
+        "parent-alice-bob",
+        "parent-carol-dan",
+        "parent-bob-carol",
+        "ancestor-rules"
+      ]
+    },
+    {
+      "id": "temporal_update",
+      "modelCalls": 3,
+      "costUsd": 0.00104908,
+      "wallMs": 13459.687875001691,
+      "retrieved": ["employment-new", "employment-old", "current-employment-rules"]
+    },
+    {
+      "id": "honest_abstention",
+      "modelCalls": 1,
+      "costUsd": 0.0003228,
+      "wallMs": 5238.120249996427,
+      "retrieved": ["known-beverage"]
+    },
+    {
+      "id": "explicit_trust",
+      "modelCalls": 3,
+      "costUsd": 0.00090314,
+      "wallMs": [3951.2345420080237, 5897.00045902282],
+      "retrieved": [
+        ["accepted-color"],
+        ["accepted-color", "tentative-color"]
+      ]
+    },
+    {
+      "id": "integrity_conflict",
+      "modelCalls": 3,
+      "costUsd": 0.00102466,
+      "wallMs": 10154.134666954633,
+      "retrieved": ["account-conflict-rule", "suspended-zoe", "active-zoe"]
+    }
+  ]
+}

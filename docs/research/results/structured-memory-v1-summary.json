@@ -31,13 +31,14 @@
       "answerRecall": 1,
       "answerabilityAccuracy": 1,
       "retrievalCoverage": 0.875,
+      "retrievalPrecisionAtK": 1,
       "retrievalRecallAtK": 1,
       "meanReciprocalRank": 1,
       "citationCoverage": 1,
       "citationPrecision": 1,
       "citationRecall": 1,
       "operationalErrors": 0,
-      "semanticDigest": "8ca23aa43d8df715a14cf37ac534cee6febc75ed40a1c01a080f1a016eeea6cf"
+      "semanticDigest": "c8cc0a0dff8cfdcf9b0cffac0de045f44e67d11b6060e082044b37e9f3b70c43"
     },
     {
       "adapter": "direct-fact-scan",
@@ -47,37 +48,40 @@
       "answerRecall": 0.5,
       "answerabilityAccuracy": 0.5,
       "retrievalCoverage": 0.875,
+      "retrievalPrecisionAtK": 0.42857142857142855,
       "retrievalRecallAtK": 0.42857142857142855,
       "meanReciprocalRank": 0.42857142857142855,
       "citationCoverage": 1,
       "citationPrecision": 0.5,
       "citationRecall": 0.5,
       "operationalErrors": 0,
-      "semanticDigest": "88d446649f85f48809209849b2cedac24be4594ee96cdc5737058636966c1fa7"
+      "semanticDigest": "0351a846f43a72a511e1d9262227432cabc1168ad0bcc7fec9b5022faaeba369"
     },
     {
       "adapter": "lexical-overlap-top-k",
       "answerCoverage": 0,
       "answerAccuracy": null,
       "retrievalCoverage": 0.875,
+      "retrievalPrecisionAtK": 0.9285714285714286,
       "retrievalRecallAtK": 0.857142857142857,
       "meanReciprocalRank": 1,
       "citationCoverage": 0,
       "citationRecall": null,
       "operationalErrors": 0,
-      "semanticDigest": "becc01782f5aba271bb9381a2bddbf97440f236005c47dda00f3f3a0b9b99d1c"
+      "semanticDigest": "deae421759e046414ddda520df1f1179a277528facc9d00668983506eb831858"
     },
     {
       "adapter": "recency-top-k",
       "answerCoverage": 0,
       "answerAccuracy": null,
       "retrievalCoverage": 0.875,
+      "retrievalPrecisionAtK": 0.8142857142857143,
       "retrievalRecallAtK": 1,
       "meanReciprocalRank": 0.9285714285714286,
       "citationCoverage": 0,
       "citationRecall": null,
       "operationalErrors": 0,
-      "semanticDigest": "0230b8f91c906742b12c33b80b6340bbd1ff0db40219e5f83295968c7b4db882"
+      "semanticDigest": "3e2daafe5e1387584df2570a648628350a928f3a563bfcdf38447dd9e62992f0"
     }
   ]
 }

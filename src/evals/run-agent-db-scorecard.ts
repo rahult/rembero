@@ -50,6 +50,9 @@ async function main(): Promise<void> {
     console.log(
       `accuracy | answerability | ${percent(scorecard.accuracy.answerabilityAccuracy)}`
     );
+    console.log(
+      `accuracy | retrieval precision@k | ${percent(scorecard.accuracy.retrievalPrecisionAtK)}`
+    );
     console.log(`accuracy | citation recall | ${percent(scorecard.accuracy.citationRecall)}`);
     console.log(`accuracy | stale leakage | ${percent(scorecard.accuracy.staleLeakageRate)}`);
     console.log(`speed | engine p50 | ${scorecard.speed.engineMedianMs.toFixed(2)} ms`);

@@ -16,6 +16,9 @@ retrieval-only adapter reaches 100% Recall@k/MRR without being misreported as an
 proof system.
 Adds a second pinned retrieval adapter for LlamaIndex VectorMemory 0.14.23 using the same
 FastEmbed model and capability disclosures, enabling a controlled three-way local comparison.
+Adds a full Mem0 OSS 2.0.14 formation-and-retrieval adapter with native OpenRouter usage
+accounting, plus Retrieval Precision@k so distractor-heavy top-k results cannot hide behind
+perfect recall and MRR.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

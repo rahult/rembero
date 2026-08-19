@@ -30,6 +30,7 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | --- | --- | ---: | ---: |
 | Accuracy | Exact structured answers | 100.0% | 100% |
 | Accuracy | Answerability | 100.0% | 100% |
+| Accuracy | Retrieval Precision@k | 100.0% | 100% |
 | Accuracy | Citation recall | 100.0% | 100% |
 | Accuracy | Stale leakage | 0.0% | 0% |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
@@ -51,12 +52,12 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Ease | Discovered MCP tools | 34 | includes required read tools |
 | Ease | Cold empty-cache npm install | 5.19 s | <= 120 s diagnostic gate |
 | Ease | First CLI write / proof query | 89.08 ms / 95.46 ms | <= 1,000 ms each |
-| Ease | Packed / installed size | 0.92 MiB / 3.79 MiB | diagnostic |
+| Ease | Packed / installed size | 0.92 MiB / 3.81 MiB | diagnostic |
 
 Semantic evidence digest:
 
 ```text
-9265fc9a8c0ecd1366bfa9178918882202b66e7acb5716ffc8bc2f86f19862b3
+85448a68f2a141a8d9b681267365c576c9e072099165568e8f6f03d6ff3807de
 ```
 
 Timings are current-machine diagnostics. The semantic digest excludes timing and remains
@@ -112,6 +113,7 @@ trust views, provenance, and integrity conflict detection. The release gate requ
 
 - 100% exact typed answer rows;
 - 100% answerability accuracy;
+- 100% retrieval precision and recall at the published top-k;
 - 100% citation precision and recall;
 - zero stale evidence leakage;
 - zero operational errors.
@@ -206,7 +208,7 @@ and lowered charged cost by 25.8%. A compact-instruction experiment was rejected
 slower and saved only 2.8%, confirming that detailed schema samples—not instruction prose—
 were the material cost lever.
 
-## First pinned external comparison
+## Pinned external comparisons
 
 `npm run bench:memory:langgraph` executes an externally maintained agent-memory store
 through the same private-label protocol. The bridge pins LangGraph 1.2.10, FastEmbed 0.8.0,
@@ -217,14 +219,17 @@ metrics remain not applicable instead of being scored as zero or silently synthe
 
 Measured 20 August 2026 AEST on Apple M4 / 16 GiB, after the 67 MB model was cached:
 
-| Adapter | Retrieval Recall@k | MRR | Exact typed answers | Citation recall | p95 | Provider calls |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Remembero engine | 100% | 100% | 100% | 100% | 1.82 ms | 0 |
-| LangGraph `InMemoryStore` + FastEmbed | 100% | 100% | not applicable | not applicable | 224.32 ms | 0 |
-| LlamaIndex `VectorMemory` + FastEmbed | 100% | 100% | not applicable | not applicable | 319.97 ms | 0 |
+| Adapter | Precision@k | Recall@k | MRR | Exact typed answers | Citation recall | p95 | Model calls / cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Remembero engine | 100% | 100% | 100% | 100% | 100% | 1.77 ms | 0 / $0 |
+| LangGraph `InMemoryStore` + FastEmbed | 88.6% | 100% | 100% | not applicable | not applicable | 254.04 ms | 0 / $0 |
+| LlamaIndex `VectorMemory` + FastEmbed | 88.6% | 100% | 100% | not applicable | not applicable | 299.87 ms | 0 / $0 |
+| Mem0 OSS + Luna + FastEmbed | 88.6% | 100% | 100% | not applicable | not applicable | 322.89 s | 118 / $0.044034 |
 
-Remembero matched the external adapter's retrieval result while also returning exact typed
-answers and proof citations. The timing paths are disclosed rather than treated as identical:
+Remembero matched the external adapters' retrieval result while also returning exact typed
+answers and proof citations. It also returned only relevant evidence; each vector adapter
+returned four distractors beside the target in the direct fact top-five, reducing mean
+Precision@k to 88.6%. The timing paths are disclosed rather than treated as identical:
 Remembero parses/evaluates/proves the structured question, while LangGraph creates a fresh
 store, embeds all case events, and runs vector search; dependency/model initialization is
 excluded from its `wallMs`. This is a real external result, not a general framework or
@@ -238,11 +243,22 @@ its 384 dimensions:
 <https://docs.llamaindex.ai/en/stable/community/integrations/vector_stores/>,
 <https://qdrant.github.io/fastembed/Getting%20Started/>.
 
+The Mem0 result exercises native memory formation rather than raw event storage. It pins
+Mem0 OSS 2.0.14, runs Luna once per allowed event, embeds locally, persists to local Qdrant
+and SQLite, then searches. The corrected full run used 118 model calls, 941,841 input and
+12,855 output tokens, and $0.044034 provider-reported cost. A second full run was within
+$0.00051 and 27 seconds p95. Because Remembero's memory-stack adapter consumes supplied
+clauses while Mem0 forms memories from event text, the 323-second Mem0 p95 is a product
+ingestion diagnostic—not a direct structured-query speed ratio. Mem0 documents this
+LLM/embedder/vector-store composition and OpenRouter compatibility:
+<https://docs.mem0.ai/open-source/configuration>,
+<https://docs.mem0.ai/components/llms/models/openai>.
+
 ## Release gates
 
 The scorecard fails when any of these regress:
 
-1. exact answers, answerability, or citations fall below 100%;
+1. exact answers, answerability, retrieval precision, or citations fall below 100%;
 2. stale leakage or operational errors become non-zero;
 3. engine p95 exceeds 25 ms on the public suite;
 4. real MCP `explain_query` exceeds 500 ms;
@@ -267,11 +283,12 @@ This scorecard does not yet prove:
   measured recall/extraction suites;
 - installation success on CPU architectures beyond the tested macOS arm64 and hosted
   Linux/Windows x64 environments;
-- comparative results for Mem0, Graphiti/Zep, or Letta without executing pinned external
+- comparative results for Graphiti/Zep or Letta without executing pinned external
   adapters;
 - broader LangGraph conclusions beyond the executed in-memory retrieval-only configuration.
 - broader LlamaIndex conclusions beyond the executed VectorMemory retrieval-only configuration.
+- broader Mem0 conclusions beyond the executed OSS/Luna/FastEmbed/Qdrant configuration.
 
 The next gates should add cost-regression thresholds after more provider samples, scale
-sweeps above one million facts, additional CPU architectures, and pinned Mem0, Graphiti/Zep,
-or Letta adapters.
+sweeps above one million facts, additional CPU architectures, and pinned Graphiti/Zep or
+Letta adapters.

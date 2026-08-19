@@ -108,6 +108,22 @@ function percent(value: number | null): string {
   return value === null ? 'n/a' : `${(value * 100).toFixed(1)}%`;
 }
 
+function providerUsage(run: Awaited<ReturnType<typeof runMemoryStackBenchmark>>) {
+  return run.cases.reduce(
+    (total, testCase) => {
+      const usage = testCase.observation.providerUsage;
+      if (usage === undefined) return total;
+      total.modelCalls += usage.modelCalls;
+      total.inputTokens += usage.inputTokens;
+      total.outputTokens += usage.outputTokens;
+      total.totalTokens += usage.totalTokens;
+      total.costUsd += usage.costUsd;
+      return total;
+    },
+    { modelCalls: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 }
+  );
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const knownCases = new Set(MEMORY_STACK_CASES.map(({ id }) => id));
@@ -166,14 +182,26 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ generatedAt: new Date().toISOString(), runs }, null, 2));
   } else {
     console.log(
-      '\nadapter | answer coverage | answer accuracy | retrieval recall | MRR | citation recall | stale leakage | p50 ms | p95 ms | errors'
+      '\nadapter | answer coverage | answer accuracy | retrieval precision | retrieval recall | MRR | citation recall | stale leakage | p50 ms | p95 ms | errors'
     );
-    console.log('--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:');
+    console.log('--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:');
     for (const run of runs) {
       const summary = run.summary;
       console.log(
-        `${run.adapter.id} | ${percent(summary.answerCoverage)} | ${percent(summary.answerAccuracy)} | ${percent(summary.retrievalRecallAtK)} | ${percent(summary.meanReciprocalRank)} | ${percent(summary.citationRecall)} | ${percent(summary.staleLeakageRate)} | ${summary.medianWallMs.toFixed(2)} | ${summary.p95WallMs.toFixed(2)} | ${summary.operationalErrors}`
+        `${run.adapter.id} | ${percent(summary.answerCoverage)} | ${percent(summary.answerAccuracy)} | ${percent(summary.retrievalPrecisionAtK)} | ${percent(summary.retrievalRecallAtK)} | ${percent(summary.meanReciprocalRank)} | ${percent(summary.citationRecall)} | ${percent(summary.staleLeakageRate)} | ${summary.medianWallMs.toFixed(2)} | ${summary.p95WallMs.toFixed(2)} | ${summary.operationalErrors}`
       );
+    }
+    if (runs.some((run) => providerUsage(run).modelCalls > 0)) {
+      console.log(
+        '\nadapter | model calls | input tokens | output tokens | provider cost USD'
+      );
+      console.log('--- | ---: | ---: | ---: | ---:');
+      for (const run of runs) {
+        const usage = providerUsage(run);
+        console.log(
+          `${run.adapter.id} | ${usage.modelCalls} | ${usage.inputTokens} | ${usage.outputTokens} | ${usage.costUsd.toFixed(6)}`
+        );
+      }
     }
   }
 

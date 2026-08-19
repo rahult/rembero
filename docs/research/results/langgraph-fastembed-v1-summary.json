@@ -45,15 +45,16 @@
         "operationalErrors": 0,
         "answerCoverage": 1,
         "answerAccuracy": 1,
-        "answerabilityAccuracy": 1,
-        "retrievalRecallAtK": 1,
+      "answerabilityAccuracy": 1,
+      "retrievalPrecisionAtK": 1,
+      "retrievalRecallAtK": 1,
         "meanReciprocalRank": 1,
         "citationRecall": 1,
         "staleLeakageRate": 0,
         "medianWallMs": 0.14420900000000003,
         "p95WallMs": 1.8182909999999985
       },
-      "semanticDigest": "8ca23aa43d8df715a14cf37ac534cee6febc75ed40a1c01a080f1a016eeea6cf"
+      "semanticDigest": "c8cc0a0dff8cfdcf9b0cffac0de045f44e67d11b6060e082044b37e9f3b70c43"
     },
     {
       "adapter": {
@@ -83,15 +84,16 @@
         "operationalErrors": 0,
         "answerCoverage": 0,
         "answerAccuracy": null,
-        "answerabilityAccuracy": null,
-        "retrievalRecallAtK": 1,
+      "answerabilityAccuracy": null,
+      "retrievalPrecisionAtK": 0.8857142857142858,
+      "retrievalRecallAtK": 1,
         "meanReciprocalRank": 1,
         "citationRecall": null,
         "staleLeakageRate": 0,
         "medianWallMs": 12.631457997485995,
         "p95WallMs": 232.65612497925758
       },
-      "semanticDigest": "fd1702eda0a59e9124e1f0f7c697c64b41a094acc1d6ed35645ea3a143f84f59"
+      "semanticDigest": "3c795163521271b298e9582c95f422ed0416b52e7281009e02a2c9e1b591baaf"
     }
   ]
 }

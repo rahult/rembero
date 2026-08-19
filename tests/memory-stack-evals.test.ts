@@ -77,6 +77,7 @@ describe('memory-stack benchmark adapters and scoring', () => {
     expect(scorecard.accuracy).toMatchObject({
       answerAccuracy: 1,
       answerabilityAccuracy: 1,
+      retrievalPrecisionAtK: 1,
       citationPrecision: 1,
       citationRecall: 1,
       staleLeakageRate: 0,
@@ -129,6 +130,7 @@ describe('memory-stack benchmark adapters and scoring', () => {
       answerCoverage: 1,
       answerAccuracy: 1,
       answerabilityAccuracy: 1,
+      retrievalPrecisionAtK: 1,
       citationRecall: 1,
       staleLeakageRate: 0,
     });
@@ -154,6 +156,7 @@ describe('memory-stack benchmark adapters and scoring', () => {
     expect(lexical.summary.answerCoverage).toBe(0);
     expect(lexical.summary.answerAccuracy).toBeNull();
     expect(lexical.summary.retrievalCoverage).toBeGreaterThan(0);
+    expect(lexical.summary.retrievalPrecisionAtK).not.toBeNull();
   });
 
   it('rejects omitted, duplicate, and unknown observation identifiers', async () => {
@@ -254,6 +257,41 @@ describe('memory-stack benchmark adapters and scoring', () => {
     expect(run.summary.answerAccuracy).toBe(0);
     expect(run.summary.answerPrecision).toBe(0);
     expect(run.summary.answerRecall).toBe(0);
+  });
+
+  it('validates provider usage without adding it to semantic correctness', async () => {
+    const testCase = MEMORY_STACK_CASES[0];
+    const labels = MEMORY_STACK_LABELS.filter(({ caseId }) => caseId === testCase.id);
+    const base = await createLexicalAdapter().runCase(testCase);
+    const run = (totalTokens: number) =>
+      runMemoryStackBenchmark({
+        suite: MEMORY_STACK_SUITE,
+        cases: [testCase],
+        labels,
+        adapter: {
+          describe: () => createLexicalAdapter().describe(),
+          async runCase() {
+            return {
+              ...base,
+              providerUsage: {
+                modelCalls: 1,
+                inputTokens: 10,
+                outputTokens: 2,
+                totalTokens,
+                costUsd: 0.001,
+              },
+            };
+          },
+        },
+        generatedAt: '2026-08-20T00:00:00.000Z',
+      });
+    const measured = await run(12);
+    expect(measured.cases[0]?.observation.providerUsage).toMatchObject({
+      modelCalls: 1,
+      totalTokens: 12,
+      costUsd: 0.001,
+    });
+    await expect(run(13)).rejects.toThrow(/totalTokens does not match/);
   });
 });
 

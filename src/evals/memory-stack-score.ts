@@ -30,6 +30,25 @@ function validateObservation(
     throw new Error(`adapter returned an incomplete or duplicate question set for ${testCase.id}`);
   }
   const eventIds = new Set(testCase.events.map(({ id }) => id));
+  if (observation.providerUsage !== undefined) {
+    const usage = observation.providerUsage;
+    for (const [label, value] of Object.entries({
+      modelCalls: usage.modelCalls,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
+    })) {
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(`adapter returned invalid provider usage ${label}`);
+      }
+    }
+    if (!Number.isFinite(usage.costUsd) || usage.costUsd < 0) {
+      throw new Error('adapter returned invalid provider usage costUsd');
+    }
+    if (usage.totalTokens !== usage.inputTokens + usage.outputTokens) {
+      throw new Error('adapter provider usage totalTokens does not match input plus output');
+    }
+  }
   for (const question of observation.questions) {
     if (!['answered', 'no_match', 'unsupported', 'error'].includes(question.status)) {
       throw new Error(`adapter returned an invalid status for ${question.questionId}`);
@@ -124,6 +143,10 @@ function questionScore(
     answerPrecision: capabilities.answerRows ? answer.precision : null,
     answerRecall: capabilities.answerRows ? answer.recall : null,
     answerability: capabilities.answerRows ? expectedAnswerStatus : null,
+    retrievalPrecisionAtK:
+      capabilities.rankedRetrieval && label.relevantEventIds.length > 0
+        ? retrieval.precision
+        : null,
     retrievalRecallAtK:
       capabilities.rankedRetrieval && label.relevantEventIds.length > 0
         ? retrieval.recall
@@ -190,6 +213,11 @@ function summarize(
     retrievalCoverage: adapter.capabilities.rankedRetrieval
       ? retrievalScores.length / scores.length
       : 0,
+    retrievalPrecisionAtK: mean(
+      retrievalScores.flatMap((score) =>
+        score.retrievalPrecisionAtK === null ? [] : [score.retrievalPrecisionAtK]
+      )
+    ),
     retrievalRecallAtK: mean(
       retrievalScores.flatMap((score) =>
         score.retrievalRecallAtK === null ? [] : [score.retrievalRecallAtK]

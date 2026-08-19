@@ -52,6 +52,7 @@ export interface MemoryStackCapabilities {
 
 export interface MemoryStackAdapterDisclosures {
   packages: Record<string, string>;
+  llmModel?: string;
   embeddingModel: string;
   storage: string;
   writePolicy: string;
@@ -85,6 +86,15 @@ export interface MemoryStackQuestionObservation {
 export interface MemoryStackCaseObservation {
   caseId: string;
   questions: MemoryStackQuestionObservation[];
+  providerUsage?: MemoryStackProviderUsage;
+}
+
+export interface MemoryStackProviderUsage {
+  modelCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number;
 }
 
 export interface MemoryStackAdapter {
@@ -98,6 +108,7 @@ export interface MemoryStackQuestionScore {
   answerPrecision: number | null;
   answerRecall: number | null;
   answerability: boolean | null;
+  retrievalPrecisionAtK: number | null;
   retrievalRecallAtK: number | null;
   reciprocalRank: number | null;
   citationPrecision: number | null;
@@ -114,6 +125,7 @@ export interface MemoryStackSummary {
   answerRecall: number | null;
   answerabilityAccuracy: number | null;
   retrievalCoverage: number;
+  retrievalPrecisionAtK: number | null;
   retrievalRecallAtK: number | null;
   meanReciprocalRank: number | null;
   citationCoverage: number;

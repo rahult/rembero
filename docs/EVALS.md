@@ -41,6 +41,7 @@ npm run bench:memory -- --json
 npm run bench:memory:langgraph
 npm run bench:memory:llamaindex
 npm run bench:memory:external
+npm run bench:memory:mem0
 ```
 
 The public v1 suite contains eight questions over direct facts, 100 distractors, rule and
@@ -67,6 +68,12 @@ The LlamaIndex manifest pins `llama-index-core` 0.14.23 and its FastEmbed integr
 It stores one event-tagged `ChatMessage` per fixture event in `VectorMemory`, retrieves with
 the same question/top-k/model, and also achieved 100% Recall@k/MRR with no provider calls.
 `bench:memory:external` runs Remembero and both external adapters together.
+
+`bench:memory:mem0` is a separate live-provider measurement. It requires
+`OPENROUTER_API_KEY`, pins Mem0 OSS 2.0.14 and FastEmbed 0.8.0, disables Mem0 telemetry,
+runs native Mem0 inference on every event, and records OpenRouter-native calls, input/output
+tokens, and charged cost. It is deliberately excluded from CI and prepublish because the
+full 118-call run consumes live provider budget and takes several minutes.
 
 See the [benchmark contract and current results](research/MEMORY-STACK-BENCHMARK.md), the
 [Medium draft](research/MEDIUM-DRAFT.md), and the [research paper](research/paper/paper.md).

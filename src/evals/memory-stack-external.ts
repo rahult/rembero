@@ -10,6 +10,19 @@ import type { ExternalCommandAdapterOptions } from './memory-stack-adapters.js';
 export const MEMORY_STACK_ADAPTER_MANIFEST_VERSION =
   'rembero.memory-stack-adapter.v1' as const;
 
+const ALLOWED_EXTERNAL_ENVIRONMENT = new Set([
+  'OPENROUTER_API_KEY',
+  'OPENROUTER_API_BASE',
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'ANTHROPIC_API_KEY',
+  'GOOGLE_API_KEY',
+  'GEMINI_API_KEY',
+  'HF_HOME',
+  'HF_HUB_CACHE',
+  'HF_HUB_OFFLINE',
+]);
+
 export interface LoadedExternalAdapterManifest {
   descriptor: MemoryStackAdapterDescriptor;
   command: ExternalCommandAdapterOptions;
@@ -93,6 +106,9 @@ function disclosuresValue(value: unknown): MemoryStackAdapterDisclosures {
     : stringArray(source.notes, 'adapter.disclosures.notes');
   return {
     packages,
+    ...(source.llmModel === undefined
+      ? {}
+      : { llmModel: stringValue(source.llmModel, 'adapter.disclosures.llmModel') }),
     embeddingModel: stringValue(
       source.embeddingModel,
       'adapter.disclosures.embeddingModel'
@@ -134,6 +150,20 @@ export async function loadExternalAdapterManifest(
   const args = command.args === undefined
     ? []
     : stringArray(command.args, 'command.args', 64);
+  const requiredEnvironment = command.requiredEnvironment === undefined
+    ? []
+    : stringArray(command.requiredEnvironment, 'command.requiredEnvironment', 16);
+  const env: Record<string, string> = {};
+  for (const name of requiredEnvironment) {
+    if (!ALLOWED_EXTERNAL_ENVIRONMENT.has(name)) {
+      throw new Error(`command.requiredEnvironment does not allow ${name}`);
+    }
+    const value = process.env[name];
+    if (value === undefined || value === '') {
+      throw new Error(`external adapter requires environment variable ${name}`);
+    }
+    env[name] = value;
+  }
   return {
     descriptor: {
       id: stringValue(adapter.id, 'adapter.id', 100),
@@ -147,7 +177,7 @@ export async function loadExternalAdapterManifest(
       workingDirectory,
       timeoutMs: command.timeoutMs === undefined
         ? 120_000
-        : integerValue(command.timeoutMs, 'command.timeoutMs', 1_000, 300_000),
+        : integerValue(command.timeoutMs, 'command.timeoutMs', 1_000, 900_000),
       maxOutputBytes: command.maxOutputBytes === undefined
         ? 1_000_000
         : integerValue(
@@ -156,6 +186,7 @@ export async function loadExternalAdapterManifest(
           1_024,
           10_000_000
         ),
+      ...(Object.keys(env).length === 0 ? {} : { env }),
     },
     manifestPath,
   };

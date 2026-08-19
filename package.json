@@ -153,6 +153,7 @@
     "bench:memory:langgraph": "npm run build:core && node dist/evals/run-memory-stack.js --adapters rembero --external-manifest benchmarks/adapters/langgraph-fastembed/adapter.json",
     "bench:memory:llamaindex": "npm run build:core && node dist/evals/run-memory-stack.js --adapters rembero --external-manifest benchmarks/adapters/llamaindex-fastembed/adapter.json",
     "bench:memory:external": "npm run build:core && node dist/evals/run-memory-stack.js --adapters rembero --external-manifest benchmarks/adapters/langgraph-fastembed/adapter.json --external-manifest benchmarks/adapters/llamaindex-fastembed/adapter.json",
+    "bench:memory:mem0": "npm run build:core && node dist/evals/run-memory-stack.js --adapters rembero --external-manifest benchmarks/adapters/mem0-openrouter-fastembed/adapter.json",
     "bench:agent-db": "npm run build && node dist/evals/run-agent-db-scorecard.js",
     "bench:agent-db:check": "npm run build && node dist/evals/run-agent-db-scorecard.js --check",
     "bench:agent-db:scale": "npm run build:core && node dist/evals/run-agent-db-scale.js",

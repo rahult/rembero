@@ -29,14 +29,15 @@ errors. Timings are diagnostic only; they are excluded from the semantic digest.
 
 ## Current results
 
-| Adapter | Answer coverage | Answer accuracy | Retrieval Recall@k | MRR | Citation recall |
-|---|---:|---:|---:|---:|---:|
-| Remembero engine | 100% | 100% | 100% | 100% | 100% |
-| Direct fact scan | 100% | 50% | 42.9% | 42.9% | 50% |
-| Lexical overlap top-k | 0% | not applicable | 85.7% | 100% | not applicable |
-| Recency top-k | 0% | not applicable | 100% | 92.9% | not applicable |
-| LangGraph 1.2.10 + FastEmbed 0.8.0 | 0% | not applicable | 100% | 100% | not applicable |
-| LlamaIndex VectorMemory 0.14.23 + FastEmbed 0.8.0 | 0% | not applicable | 100% | 100% | not applicable |
+| Adapter | Answer coverage | Answer accuracy | Retrieval Precision@k | Retrieval Recall@k | MRR | Citation recall |
+|---|---:|---:|---:|---:|---:|---:|
+| Remembero engine | 100% | 100% | 100% | 100% | 100% | 100% |
+| Direct fact scan | 100% | 50% | 42.9% | 42.9% | 42.9% | 50% |
+| Lexical overlap top-k | 0% | not applicable | 92.9% | 85.7% | 100% | not applicable |
+| Recency top-k | 0% | not applicable | 81.4% | 100% | 92.9% | not applicable |
+| LangGraph 1.2.10 + FastEmbed 0.8.0 | 0% | not applicable | 88.6% | 100% | 100% | not applicable |
+| LlamaIndex VectorMemory 0.14.23 + FastEmbed 0.8.0 | 0% | not applicable | 88.6% | 100% | 100% | not applicable |
+| Mem0 OSS 2.0.14 + Luna + FastEmbed 0.8.0 | 0% | not applicable | 88.6% | 100% | 100% | not applicable |
 
 These are eight questions across seven small, public cases. They are a deterministic
 conformance result, not a statistically representative ranking of commercial memory
@@ -50,12 +51,19 @@ these paths return different capability sets and the timing is not a universal p
 benchmark. The external adapter excludes dependency/model initialization but includes fresh
 store creation, event embedding, and search per question.
 
+Precision@k is reported separately because every vector adapter found the relevant direct
+fact at rank one but also returned four distractors in its top five. Recall and MRR therefore
+remain 100%, while context precision is 88.6% over the seven answerable retrieval questions.
+Remembero returned only proof-supporting events and retained 100% precision.
+
 The versioned machine-readable snapshot is in
 [`results/structured-memory-v1-summary.json`](results/structured-memory-v1-summary.json).
 The pinned external result and disclosures are in
 [`results/langgraph-fastembed-v1-summary.json`](results/langgraph-fastembed-v1-summary.json).
 The combined two-adapter result is in
 [`results/external-adapters-v1-summary.json`](results/external-adapters-v1-summary.json).
+The live Mem0 formation/retrieval result is in
+[`results/mem0-oss-v1-summary.json`](results/mem0-oss-v1-summary.json).
 
 ## Case coverage
 
@@ -98,6 +106,7 @@ The checked-in example is reproducible with:
 npm run bench:memory:langgraph
 npm run bench:memory:llamaindex
 npm run bench:memory:external
+npm run bench:memory:mem0
 ```
 
 It uses LangGraph's documented `InMemoryStore` semantic-search interface with a custom
@@ -111,6 +120,15 @@ The LlamaIndex bridge uses `VectorMemory.from_defaults`, the default in-memory
 message per allowed fixture event and maps `VectorMemory.get` results back to those event IDs.
 Both external adapters therefore use the same BGE model, local CPU provider, question text,
 top-k, accepted/tentative policy, process isolation, and unsupported answer/citation contract.
+
+The Mem0 bridge is intentionally separate because it exercises a different stage: native
+LLM memory formation before retrieval. It pins Mem0 OSS 2.0.14, Luna via OpenRouter,
+FastEmbed 0.8.0, local Qdrant, and SQLite history. Telemetry is disabled. Every allowed
+event is inferred independently so its fixture source ID survives in metadata; provider
+usage is captured from Mem0's native response callback. Two full runs used 118 model calls,
+approximately 0.95 million tokens, cost $0.0440–$0.0445, and took 323–350 seconds p95.
+This formation latency is not directly comparable to Remembero's structured-query latency;
+it is published as a product-ingestion diagnostic.
 
 The request is:
 
@@ -191,11 +209,13 @@ open-source variants must be treated as different adapters.
 
 - Natural-language extraction quality or conversational answer fluency.
 - Performance over million-token histories.
-- General superiority over Mem0, Graphiti/Zep, or Letta before those adapters are actually run.
+- General superiority over Graphiti/Zep or Letta before those adapters are actually run.
 - General answer-system superiority over LangGraph; the executed LangGraph adapter measures
   its retrieval store only and deliberately declares answers, rules, and citations unsupported.
 - General answer-system superiority over LlamaIndex; the executed VectorMemory adapter has
   the same retrieval-only boundary.
+- General answer-system superiority over Mem0; the executed adapter measures native memory
+  formation and retrieval but deliberately adds no downstream answer reader.
 - Production latency from the single-process diagnostic timings.
 - Statistical significance from eight questions.
 

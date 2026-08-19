@@ -20,10 +20,13 @@ npm run bench:agent-db:cost
 npm run bench:agent-db:install:check
 npm run bench:agent-db:million
 npm run bench:memory:external
+npm run bench:memory:mem0 # live OpenRouter extraction cost
 ```
 
 The pinned external command runs the same hidden-label retrieval protocol against LangGraph
 and LlamaIndex without adding their Python packages to Remembero.
+The separate Mem0 OSS command requires `OPENROUTER_API_KEY` and records provider-native
+formation tokens and charged cost; it is never part of normal CI or prepublish.
 
 ## Try the real web console
 

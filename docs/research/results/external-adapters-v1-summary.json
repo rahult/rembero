@@ -1,6 +1,6 @@
 {
   "schemaVersion": "rembero.memory-stack.external-summary.v1",
-  "measuredAt": "2026-08-20T01:47:43+10:00",
+  "measuredAt": "2026-08-20T02:29:42+10:00",
   "environment": {
     "os": "macOS 26.5.2 arm64",
     "cpu": "Apple M4",
@@ -31,39 +31,42 @@
       "adapter": "rembero-engine",
       "answerCoverage": 1,
       "answerAccuracy": 1,
+      "retrievalPrecisionAtK": 1,
       "retrievalRecallAtK": 1,
       "meanReciprocalRank": 1,
       "citationRecall": 1,
-      "medianWallMs": 0.28916699999999906,
-      "p95WallMs": 1.772000000000002,
+      "medianWallMs": 0.29824999999999946,
+      "p95WallMs": 1.787749999999999,
       "operationalErrors": 0,
-      "semanticDigest": "8ca23aa43d8df715a14cf37ac534cee6febc75ed40a1c01a080f1a016eeea6cf"
+      "semanticDigest": "c8cc0a0dff8cfdcf9b0cffac0de045f44e67d11b6060e082044b37e9f3b70c43"
     },
     {
       "adapter": "langgraph-inmemory-fastembed",
       "version": "langgraph-1.2.10_fastembed-0.8.0_bge-small-en-v1.5",
       "answerCoverage": 0,
       "answerAccuracy": null,
+      "retrievalPrecisionAtK": 0.8857142857142858,
       "retrievalRecallAtK": 1,
       "meanReciprocalRank": 1,
       "citationRecall": null,
-      "medianWallMs": 12.044958013575524,
-      "p95WallMs": 224.32262502843514,
+      "medianWallMs": 11.695458029862493,
+      "p95WallMs": 254.03791602002457,
       "operationalErrors": 0,
-      "semanticDigest": "fd1702eda0a59e9124e1f0f7c697c64b41a094acc1d6ed35645ea3a143f84f59"
+      "semanticDigest": "3c795163521271b298e9582c95f422ed0416b52e7281009e02a2c9e1b591baaf"
     },
     {
       "adapter": "llamaindex-vector-memory-fastembed",
       "version": "llama-index-core-0.14.23_fastembed-0.8.0_bge-small-en-v1.5",
       "answerCoverage": 0,
       "answerAccuracy": null,
+      "retrievalPrecisionAtK": 0.8857142857142858,
       "retrievalRecallAtK": 1,
       "meanReciprocalRank": 1,
       "citationRecall": null,
-      "medianWallMs": 53.52420802228153,
-      "p95WallMs": 319.96991694904864,
+      "medianWallMs": 56.34762498084456,
+      "p95WallMs": 299.86716597341,
       "operationalErrors": 0,
-      "semanticDigest": "9cb451a3d83fad0b52de748c75ace958b2b7fb046450d8518c31b5401842164d"
+      "semanticDigest": "7d507f7d5c5e0cd2ebdb6643c96f35f3cd81d12a3366c96874a8e8d87cc3cf64"
     }
   ]
 }

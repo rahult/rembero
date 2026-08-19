@@ -29,6 +29,7 @@ export interface AgentDbScorecard {
     questions: number;
     answerAccuracy: number;
     answerabilityAccuracy: number;
+    retrievalPrecisionAtK: number;
     citationPrecision: number;
     citationRecall: number;
     staleLeakageRate: number;
@@ -240,6 +241,10 @@ export async function buildAgentDbScorecard(options: {
     reference.summary.answerabilityAccuracy,
     'answerability accuracy'
   );
+  const retrievalPrecisionAtK = requiredMetric(
+    reference.summary.retrievalPrecisionAtK,
+    'retrieval precision at k'
+  );
   const citationPrecision = requiredMetric(
     reference.summary.citationPrecision,
     'citation precision'
@@ -248,6 +253,7 @@ export async function buildAgentDbScorecard(options: {
   const failures: string[] = [];
   if (answerAccuracy !== 1) failures.push('answer accuracy must be 100%');
   if (answerabilityAccuracy !== 1) failures.push('answerability accuracy must be 100%');
+  if (retrievalPrecisionAtK !== 1) failures.push('retrieval precision at k must be 100%');
   if (citationPrecision !== 1 || citationRecall !== 1) {
     failures.push('citation precision and recall must be 100%');
   }
@@ -295,6 +301,7 @@ export async function buildAgentDbScorecard(options: {
     semanticDigest: reference.semanticDigest,
     answerAccuracy,
     answerabilityAccuracy,
+    retrievalPrecisionAtK,
     citationPrecision,
     citationRecall,
     staleLeakageRate: reference.summary.staleLeakageRate,
@@ -317,6 +324,7 @@ export async function buildAgentDbScorecard(options: {
       questions: reference.summary.questions,
       answerAccuracy,
       answerabilityAccuracy,
+      retrievalPrecisionAtK,
       citationPrecision,
       citationRecall,
       staleLeakageRate: reference.summary.staleLeakageRate,
