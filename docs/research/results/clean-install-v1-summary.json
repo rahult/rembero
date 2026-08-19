@@ -1,6 +1,6 @@
 {
   "schemaVersion": "remembero.agent-db-install.summary.v1",
-  "measuredAt": "2026-08-20T04:54:30+10:00",
+  "measuredAt": "2026-08-20T01:14:21+10:00",
   "environment": {
     "os": "macOS 26.5.2 arm64",
     "cpu": "Apple M4",
@@ -10,21 +10,19 @@
   },
   "method": {
     "command": "npm run bench:agent-db:install:check",
-    "runs": 7,
+    "runs": 6,
     "npmCache": "new empty temporary directory per run",
-    "install": "packed current tree with production dependencies bundled; ignore lifecycle scripts; no audit or funding calls",
+    "install": "packed current tree; ignore lifecycle scripts; no audit or funding calls",
     "query": "installed CLI writes two facts plus one rule, then explains collaborator(Person, atlas)",
     "credentialBoundary": "LLM API keys are excluded from the CLI environment",
     "notes": [
-      "Bundling replaces dependency registry fetches with one larger package download.",
-      "A pre-bundle GitHub Windows run took 198.94 seconds only in dependency installation while write and proof remained correct.",
+      "Registry download latency is network and machine specific.",
       "This proves the current macOS arm64 environment, not every supported OS or architecture."
     ]
   },
   "package": {
-    "archiveBytes": 3987587,
-    "installedBytes": 19610202,
-    "bundledProductionDependencies": true
+    "archiveBytes": 965040,
+    "installedBytes": 3998916
   },
   "runs": [
     {
@@ -72,16 +70,35 @@
       "firstProofQueryMs": 95.46016599999984,
       "expectedAnswer": true,
       "expectedSources": true
+    }
+  ],
+  "laterWindowsDiagnostics": [
+    {
+      "configuration": "unbundled production dependencies",
+      "coldInstallMs": 198942.08,
+      "firstWriteMs": 258.05,
+      "firstProofQueryMs": 240.49,
+      "installedMiB": 2.85,
+      "passed": false
     },
     {
-      "environment": "macOS arm64 with bundled production dependencies",
-      "coldInstallMs": 1760.117958,
-      "firstWriteMs": 91.63149999999996,
-      "firstProofQueryMs": 95.80745900000011,
-      "archiveBytes": 3987587,
-      "installedBytes": 19610202,
-      "expectedAnswer": true,
-      "expectedSources": true
+      "configuration": "unbundled production dependencies, unchanged retry",
+      "coldInstallMs": 74807.91,
+      "firstWriteMs": 308.35,
+      "firstProofQueryMs": 327.23,
+      "installedMiB": 2.85,
+      "passed": true
+    },
+    {
+      "configuration": "rejected bundleDependencies experiment",
+      "coldInstallMs": 176200.75,
+      "firstWriteMs": 284.35,
+      "firstProofQueryMs": 267.96,
+      "installedMiB": 17.59,
+      "localColdInstallMs": 1760.117958,
+      "localArchiveBytes": 3987587,
+      "passed": false,
+      "decision": "rejected because Windows still exceeded the gate while installed size grew materially"
     }
   ],
   "boundary": {

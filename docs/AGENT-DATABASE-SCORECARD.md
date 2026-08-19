@@ -56,9 +56,9 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Preference retrieval | Held-out Recall@5 / MRR | 53.3% / 45.6% | measured |
 | Semantic cost | 22 routed questions | $0.007999824 | measured |
 | Semantic cost | Restart cache provider tokens | 32 → 9 | measured |
-| Ease | Cold empty-cache npm install | 1.76 s | <= 120 s diagnostic gate |
+| Ease | Cold empty-cache npm install | 5.19 s | <= 120 s diagnostic gate |
 | Ease | First CLI write / proof query | 89.08 ms / 95.46 ms | <= 1,000 ms each |
-| Ease | Packed / installed size | 3.80 MiB / 18.70 MiB | diagnostic |
+| Ease | Packed / installed size | 0.92 MiB / 3.81 MiB | diagnostic |
 
 Semantic evidence digest:
 
@@ -99,20 +99,24 @@ and first `explain` query must return Maya/Atlas plus `project_owner` and
 `project_contributor` support. The benchmark passes only if install, write, and query remain
 inside generous diagnostic limits and it passes no LLM credentials to the CLI.
 
-Earlier registry-dependent Apple M4 runs completed cold install in 4.74–5.19 s. After one
-GitHub-hosted Windows download took 198.94 s despite a correct 258/240 ms write/proof flow,
-the three production dependencies were bundled into the npm tarball. The current empty-cache
-install takes 1.76 s, first write 91.63 ms, and first proof query 95.81 ms without dependency
-registry fetches. The single-download archive is 3.80 MiB and installs to 18.70 MiB. The
-size-for-reliability tradeoff and exact result are recorded in
+Across four recorded Apple M4 / 16 GiB runs with Node 26.5 and npm 11.17, cold install
+completed in 4.74–5.19 s, first write in 89.08–90.40 ms, and first proof query in
+94.74–98.33 ms. The
+latest packed artifact was 0.92 MiB and the installed package was 3.81 MiB. npm registry download
+time is machine/network specific; the exact result is recorded in
 [`research/results/clean-install-v1-summary.json`](research/results/clean-install-v1-summary.json).
-This uses npm's documented `bundleDependencies` tarball mechanism:
-<https://docs.npmjs.com/files/package.json/#bundledependencies>.
 The GitHub-hosted Ubuntu/Node 24 gate also passed: 3.00 s cold install, 210.71 ms first
 write, and 224.03 ms first proof query.
-The earlier Windows/Node 24 gate passed the same complete web/package build and packed CLI flow:
+The Windows/Node 24 gate passed the same complete web/package build and packed CLI flow:
 32.33 s cold install, 359.54 ms first write, and 353.19 ms first proof query. All remain
 inside the 120 s / 1 s cross-platform budgets.
+
+Later hosted Windows runs exposed the network diagnostic's variance: the unbundled package
+first took 198.94 s and failed, then passed unchanged at 74.81 s on retry. Bundling all
+production dependencies was tested instead of raising the gate. It improved local install to
+1.76 s but still took 176.20 s on Windows and expanded the installed package to 17.59 MiB,
+so the experiment was rejected and the 0.92 MiB archive retained. Write/proof stayed below
+328 ms in every run; only dependency installation moved.
 
 ### Accuracy
 

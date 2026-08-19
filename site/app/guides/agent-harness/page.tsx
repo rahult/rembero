@@ -283,7 +283,7 @@ export default function AgentHarnessGuide() {
           <strong><span>Natural recall</span>$0.000644 avg</strong>
           <strong><span>Natural write</span>$0.000220 avg</strong>
           <strong><span>Luna cost lead</span>about 15x</strong>
-          <strong><span>Cold npm install</span>1.76 s</strong>
+          <strong><span>Cold npm install</span>5.19 s</strong>
           <strong><span>First proof query</span>95.46 ms</strong>
           <strong><span>Top retrieval group</span>4 stacks · 100% R@k</strong>
           <strong><span>Remembero precision</span>100% P@k</strong>

@@ -82,7 +82,6 @@ test("server-renders the agent harness integration guide", async () => {
   assert.match(html, /100k facts/);
   assert.match(html, /Million-fact gate/);
   assert.match(html, /2\.15 GiB/);
-  assert.match(html, /1\.76 s/);
   assert.match(html, /bench:agent-db:scale/);
   assert.match(html, /bench:agent-db:install:check/);
   assert.match(html, /bench:agent-db:million/);
