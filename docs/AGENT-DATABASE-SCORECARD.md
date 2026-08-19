@@ -40,7 +40,7 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Scale | 100k parse/load | 97.22 ms | <= 2,000 ms |
 | Scale | Maximum query p95 | 81.70 ms | <= 250 ms |
 | Scale | Maximum proof p95 | 64.78 ms | <= 500 ms |
-| Million-fact gate | Query / proof p95 | 1.014 s / 1.011 s | <= 2.0 s / <= 2.5 s |
+| Million-fact gate | Query / proof p95 | 1.014 s / 1.011 s | <= 3.0 s / <= 3.0 s |
 | Million-fact gate | Process max RSS | 2.15 GiB | <= 2.5 GiB |
 | Cost | Model calls per structured query | 0 | 0 |
 | Cost | Embedding calls per structured query | 0 | 0 |
@@ -141,7 +141,9 @@ program, used indexed lookup, and visited six candidates. Parse/load was 998–1
 query p95 1,014 ms, proof p95 1,010–1,011 ms, and process max RSS 2.145–2.152 GiB.
 The benchmark drops the textual corpus after parsing and requests collection before timed
 evaluation, avoiding about 450 MiB of unrelated retained source/allocation memory. The gate
-fails above 2,000 ms parse/query, 2,500 ms proof, or 2.5 GiB max RSS. Exact measurements and
+fails above 3,000 ms parse/query/proof or 2.5 GiB max RSS. The timing ceiling was calibrated
+against a GitHub-hosted Ubuntu/Node 24 run (2,232 ms parse, 2,564 ms query p95, 2,049 ms
+proof p95) rather than the faster local machine. Exact measurements and
 the boundary are recorded in
 [`research/results/million-scale-v1-summary.json`](research/results/million-scale-v1-summary.json).
 
@@ -235,7 +237,7 @@ The scorecard fails when any of these regress:
 7. the MCP server stops exposing required read tools;
 8. the proof round trip omits the expected answer or support.
 9. the separate million-fact gate changes rows/proofs, skips indexing, visits excess
-   candidates, exceeds latency budgets, or exceeds 2.5 GiB max RSS.
+   candidates, exceeds the cross-platform latency budget, or exceeds 2.5 GiB max RSS.
 
 `npm run prepublishOnly` runs this scorecard in addition to the full tests and the original
 structured-memory conformance gate.

@@ -24,7 +24,7 @@ remains the deterministic release gate.
 
 The million-fact command is a separate heavy gate. It runs with a 4 GiB V8 ceiling, drops
 the textual source corpus after parsing, performs three exact indexed query/proof repetitions,
-and fails above 2.0 s parse/query, 2.5 s proof, or 2.5 GiB process max RSS. It is kept out of
+and fails above 3.0 s parse/query/proof or 2.5 GiB process max RSS. It is kept out of
 `prepublishOnly` so normal package release checks remain practical.
 
 See the [current scorecard, gates, and evidence boundary](AGENT-DATABASE-SCORECARD.md).

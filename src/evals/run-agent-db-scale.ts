@@ -95,9 +95,9 @@ async function main(): Promise<void> {
         failures.push(`million gate visited ${result.candidateFactsVisited} candidates`);
       }
     }
-    if (sweep.maxima.parseMs > 2_000) failures.push('million parse time exceeds 2000ms');
-    if (sweep.maxima.queryP95Ms > 2_000) failures.push('million query p95 exceeds 2000ms');
-    if (sweep.maxima.proofP95Ms > 2_500) failures.push('million proof p95 exceeds 2500ms');
+    if (sweep.maxima.parseMs > 3_000) failures.push('million parse time exceeds 3000ms');
+    if (sweep.maxima.queryP95Ms > 3_000) failures.push('million query p95 exceeds 3000ms');
+    if (sweep.maxima.proofP95Ms > 3_000) failures.push('million proof p95 exceeds 3000ms');
     if (sweep.maxima.processMaxRssBytes > 2.5 * 1024 * 1024 * 1024) {
       failures.push('million process max RSS exceeds 2560 MiB');
     }
