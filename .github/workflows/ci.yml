@@ -9,6 +9,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      max-parallel: 1
       matrix:
         node: [20, 22, 24]
     steps:
