@@ -6,3 +6,5 @@ build/
 .rembero-web/
 .claude/
 .cache/
+__pycache__/
+*.pyc

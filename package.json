@@ -159,6 +159,7 @@
     "bench:longmemeval": "npm run build:core && node dist/evals/run-longmemeval.js",
     "bench:longmemeval:semantic": "npm run build:core && node dist/evals/run-longmemeval-semantic.js",
     "bench:longmemeval:answer": "npm run build:core && node dist/evals/run-longmemeval-answer.js",
+    "bench:longmemeval:v2:prepare": "node benchmarks/adapters/longmemeval-v2/prepare_text_subset.mjs",
     "bench:agent-db": "npm run build && node dist/evals/run-agent-db-scorecard.js",
     "bench:agent-db:check": "npm run build && node dist/evals/run-agent-db-scorecard.js --check",
     "bench:agent-db:scale": "npm run build:core && node dist/evals/run-agent-db-scale.js",

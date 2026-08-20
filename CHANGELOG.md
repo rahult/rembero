@@ -69,6 +69,11 @@ The LongMemEval answer runner can explicitly prepare semantic document vectors b
 measured user turn. A 20-case check reduces user-turn p95 from 27.3 to 18.3 seconds and
 query embedding tokens from 1,836,242 to 249, while disclosing the 19.7% increase in total
 embedding cost as maintenance rather than hiding it.
+Adds a pinned LongMemEval-V2 backend that splits browser-agent states into bounded chunks,
+uses a state-level BM25 shortlist plus Remembero local chunk scoring, and conforms to the
+official metadata-private `insert/query` interface. On ten fresh text-only enterprise
+questions it improves the fixed reader from 0/10 to 3/10 at 121 ms memory-query p95 with
+zero memory provider calls; multimodal and leaderboard claims remain explicitly out of scope.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

@@ -57,6 +57,11 @@ The measured prepared multi-session path reduces user-turn p95 from 27.3 to 18.3
 it spends about 19.7% more total embedding cost, so use it when latency matters more than
 minimum provider spend.
 
+The separate pinned LongMemEval-V2 adapter runs through the official agentic-memory harness.
+Its first fresh text-only enterprise pilot improves Qwen3.5-9B from 0/10 without retrieval
+to 3/10 with 121 ms memory-query p95 and zero memory provider calls. See the
+[fresh pilot boundary](docs/research/LONGMEMEVAL-V2.md); it is not a leaderboard claim.
+
 ## Try the real web console
 
 ```bash

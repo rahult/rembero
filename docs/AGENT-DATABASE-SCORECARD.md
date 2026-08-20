@@ -45,6 +45,8 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | End-to-end cost | Adaptive v4 runtime, 500 questions | $0.392863 / $0.000786 avg | composed live runs |
 | End-to-end cost | Gated semantic v5 runtime, 500 questions | $0.435901 / $0.000872 avg | composed live runs |
 | End-to-end formation | Durable raw-session formation p95 | 183 ms | measured |
+| Fresh agentic pilot | LongMemEval-V2 Remembero / no retrieval | 30% / 0% | 10 text-only questions |
+| Fresh agentic speed | LongMemEval-V2 memory-query p95 | 121 ms | zero provider calls |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
 | Speed | MCP process startup | 93.74 ms | diagnostic |

@@ -1,0 +1,8 @@
+{
+  "memory_type": "remembero",
+  "memory_params": {
+    "top_k": 6,
+    "source_characters": 16384,
+    "context_characters": 12000
+  }
+}

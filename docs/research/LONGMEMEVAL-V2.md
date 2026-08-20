@@ -1,0 +1,70 @@
+# LongMemEval-V2 fresh agentic-memory pilot
+
+Status: pinned official-harness text-only pilot, 20 August 2026 AEST
+
+This is Remembero's first fresh evaluation on
+[LongMemEval-V2](https://github.com/xiaowu0162/LongMemEval-V2), an agentic-memory benchmark
+over web and enterprise trajectories. It is separate from LongMemEval-S: the backend
+receives complete browser-agent trajectories and returns compact context to the benchmark's
+fixed reader.
+
+## Pinned contract
+
+- Official harness commit: `2cc8c540bdb87fe6761629b585e727e1c4704520`
+- Dataset: `xiaowu0162/longmemeval-v2`
+- Questions SHA-256: `0a3ae5ebea938c24d7800e1e0b0828e08ae1646f939a53853b2b8cdc08e292b7`
+- Trajectories SHA-256: `363cec9a8e87aa8d9101ce4e600aadbf7031d674056ebe4f969e8424abc5f3c6`
+- Small haystack SHA-256: `9b5301defb23a088a5f06e45ff8d5f35e569d78305a66d492046a9fff9b46593`
+
+The text corpus is 1.20 GB. The small tier shares 100 trajectories per domain. Screenshot
+archives total about 5.9 GB and were not downloaded for this text-only pilot.
+
+## Adapter
+
+The [official adapter](../../benchmarks/adapters/longmemeval-v2/README.md) implements
+`Memory.insert` and `Memory.query` without modifying the benchmark harness:
+
+1. each state is split into at most ten overlapping 4,096-character chunks;
+2. a bounded BM25-style state shortlist groups terms across those chunks;
+3. Remembero's real local source scorer ranks chunks inside the shortlist;
+4. up to three best chunks from each of six states are returned to the reader;
+5. memory retrieval uses zero model and embedding calls.
+
+The backend receives no question ID, type, gold answer, or evaluator configuration. Question
+images are explicitly ignored and reported in metadata; multimodal support is not claimed.
+
+## Fresh selection
+
+One question (`01307e07`) was used during adapter development and excluded from evidence.
+The pilot then selected text-only enterprise questions with deterministic official scorers,
+sorted by SHA-256 of question ID, and took the first ten. The frozen adapter was rerun once
+on that set through the official harness.
+
+| Method | Correct | Accuracy | Unknown rate | Memory-query p50 / p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Official no retrieval | 0 / 10 | 0% | 100% | 0.004 / 0.025 ms |
+| Remembero local state search | 3 / 10 | 30% | 60% | 99 / 121 ms |
+
+Remembero's six static questions scored 33.3%, two dynamic questions scored 0%, and two
+procedure questions scored 50%. The reader was the benchmark's fixed
+`qwen/qwen3.5-9b` configuration through OpenRouter. Remembero supplied an average 19,015
+memory-context tokens; no context was truncated. Reader usage was 192,075 prompt and 35,126
+completion tokens. Memory retrieval itself made no provider call and had zero operational
+errors.
+
+The machine-readable result is
+[`results/longmemeval-v2-fresh10-summary.json`](results/longmemeval-v2-fresh10-summary.json).
+
+## Evidence boundary
+
+This result proves that the adapter conforms to the official privacy boundary and improves
+the same reader from 0/10 to 3/10 on a fresh text-only subset. It does not establish:
+
+- leaderboard performance or statistical significance;
+- web-domain, medium-tier, screenshot, or multimodal quality;
+- parity with the paper's local reader endpoint despite using the same model ID;
+- learned workflow/runbook formation; the current adapter indexes bounded raw states;
+- superiority over the official RAG or AgentRunbook baselines.
+
+The next defensible expansion is a larger frozen text-only set covering abstention and
+gotchas, followed by a multimodal design rather than silently omitting question images.

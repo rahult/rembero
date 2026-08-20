@@ -29,6 +29,15 @@ and fails above 3.0 s parse/query/proof or 2.5 GiB process max RSS. It is kept o
 
 See the [current scorecard, gates, and evidence boundary](AGENT-DATABASE-SCORECARD.md).
 
+## LongMemEval-V2 fresh pilot
+
+The pinned official adapter consumes browser-agent trajectories through the benchmark's
+`Memory.insert` / `Memory.query` interface and returns bounded Remembero state evidence.
+On ten fresh text-only enterprise questions with deterministic official scorers, Remembero
+improves the fixed Qwen3.5-9B reader from 0/10 without retrieval to 3/10. Memory-query p95
+is 121 ms with zero memory model or embedding calls. This is a pilot, not a leaderboard
+claim. See the [contract and limits](research/LONGMEMEVAL-V2.md).
+
 ## LongMemEval-S source retrieval
 
 The complete cleaned 500-question LongMemEval-S split is pinned by dataset commit and

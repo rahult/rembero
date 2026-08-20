@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "remembero.longmemeval-v2-fresh-summary.v1",
+  "measuredAt": "2026-08-20T01:46:00Z",
+  "officialHarness": {
+    "repository": "xiaowu0162/LongMemEval-V2",
+    "commit": "2cc8c540bdb87fe6761629b585e727e1c4704520",
+    "tier": "small",
+    "domain": "enterprise"
+  },
+  "dataset": {
+    "repository": "xiaowu0162/longmemeval-v2",
+    "questionsSha256": "0a3ae5ebea938c24d7800e1e0b0828e08ae1646f939a53853b2b8cdc08e292b7",
+    "trajectoriesSha256": "363cec9a8e87aa8d9101ce4e600aadbf7031d674056ebe4f969e8424abc5f3c6",
+    "smallHaystackSha256": "9b5301defb23a088a5f06e45ff8d5f35e569d78305a66d492046a9fff9b46593",
+    "sharedTrajectories": 100,
+    "selectedQuestions": 10,
+    "selection": "text-only enterprise questions with deterministic scorers, excluding development question 01307e07, sorted by SHA-256(question_id), first ten",
+    "questionTypes": {
+      "static-environment": 6,
+      "dynamic-environment": 2,
+      "procedure": 2
+    }
+  },
+  "adapter": {
+    "id": "remembero-local-state-search",
+    "version": 1,
+    "stateChunkCharacters": 4096,
+    "stateChunkOverlap": 512,
+    "maximumStateChunks": 10,
+    "stateCandidateLimit": 100,
+    "returnedStates": 6,
+    "chunksPerReturnedState": 3,
+    "memoryModelCalls": 0,
+    "memoryEmbeddingCalls": 0,
+    "multimodal": false
+  },
+  "reader": {
+    "model": "qwen/qwen3.5-9b",
+    "provider": "OpenRouter",
+    "temperature": 0.6,
+    "topP": 0.95,
+    "topK": 20
+  },
+  "remembero": {
+    "correct": 3,
+    "questions": 10,
+    "accuracy": 0.3,
+    "staticAccuracy": 0.3333333333333333,
+    "dynamicAccuracy": 0,
+    "procedureAccuracy": 0.5,
+    "unknownRate": 0.6,
+    "memoryQueryAverageMs": 99.24539999919943,
+    "memoryQueryP50Ms": 99.3314579827711,
+    "memoryQueryP95Ms": 121.44537502899766,
+    "averageMemoryContextTokens": 19014.8,
+    "truncatedContexts": 0,
+    "readerPromptTokens": 192075,
+    "readerCompletionTokens": 35126,
+    "readerTotalTokens": 227201,
+    "operationalErrors": 0
+  },
+  "noRetrieval": {
+    "correct": 0,
+    "questions": 10,
+    "accuracy": 0,
+    "unknownRate": 1,
+    "readerPromptTokens": 1959,
+    "readerCompletionTokens": 34821,
+    "readerTotalTokens": 36780,
+    "operationalErrors": 0
+  },
+  "evidenceBoundary": {
+    "freshQuestionSubset": true,
+    "excludedDevelopmentQuestion": "01307e07",
+    "officialHarnessUsed": true,
+    "officialScorersUsed": true,
+    "llmJudgeUsed": false,
+    "questionImagesUsed": false,
+    "screenshotArchivesDownloaded": false,
+    "statisticalSignificance": false,
+    "leaderboardComparable": false,
+    "reason": "ten-question text-only pilot, OpenRouter-hosted reader, and no web-domain or multimodal questions"
+  }
+}
