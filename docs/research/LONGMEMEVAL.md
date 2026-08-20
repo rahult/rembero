@@ -156,6 +156,19 @@ multi-session observations. It is not a fresh sealed run, and live reader/judge 
 still applies. See the
 [v3 machine-readable evidence](results/longmemeval-answer-v3-summary.json).
 
+## Temporal top-k result v4
+
+Temporal questions also benefit from one additional dated session. Top five improves the
+complete development temporal run from 48/66 to 55/66 and the post-hoc validation run from
+47/67 to 51/67. Combined temporal accuracy rises from 71.4% to 79.7%, Recall rises from
+76.9% to 80.9%, and all six temporal abstention questions remain correct.
+
+V4 therefore uses top five for multi-session and temporal questions and top four elsewhere.
+The composed policy reaches 399/500 (79.8%), with 83.9% development and 75.3% post-hoc
+validation accuracy. Reader plus embedding cost is $0.392863, or $0.000786/question—71.3%
+below v1—and no extra provider call is added. See the
+[v4 machine-readable evidence](results/longmemeval-answer-v4-summary.json).
+
 ## What is actually indexed
 
 Each LongMemEval session is represented by one opaque `longmem_session(session_N).` carrier

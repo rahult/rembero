@@ -294,6 +294,7 @@ describe('LongMemEval end-to-end answer evaluation', () => {
       formation: 'durable-raw-session-facts',
       topK: 4,
       multiSessionTopK: 5,
+      temporalTopK: 5,
       summary: { questions: 1, errors: 1, correct: 0, accuracy: 0 },
       dataset: { commit: expect.any(String), sha256: expect.any(String) },
     });

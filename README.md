@@ -41,7 +41,8 @@ live durable formation → retrieval → answer evaluation. The locked end-to-en
 post-hoc run improves overall accuracy to 77.0% while cutting reader tokens 76.7% and
 reader-plus-embedding cost to $0.000645/question. Adaptive v3 uses top five only for
 multi-session questions, reaching 77.6% overall and 63.9% multi-session accuracy at
-$0.000760/question. Its
+$0.000760/question. V4 also uses top five for temporal reasoning, reaching 79.8% overall
+and 79.7% temporal accuracy at $0.000786/question. Its
 [method, evidence split, and limitations](docs/research/LONGMEMEVAL.md) are public.
 For fuzzy recommendations, the opt-in [`semantic_search_knowledge`](docs/SEMANTIC-KNOWLEDGE-SEARCH.md)
 tool reranks a bounded local shortlist, reports provider cost, and caches document vectors

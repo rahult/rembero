@@ -408,3 +408,8 @@ multi-session synthesis. Top six raised retrieval coverage but reduced developme
 accuracy and abstention quality. The
 [adaptive v3 result](research/results/longmemeval-answer-v3-summary.json) reaches 63.9%
 multi-session and 77.6% overall accuracy at $0.000760 runtime cost per question.
+
+Temporal reasoning uses the same top-five budget. Complete temporal development and
+validation runs improve from 71.4% to 79.7% with no additional provider call. The
+[adaptive v4 result](research/results/longmemeval-answer-v4-summary.json) reaches 79.8%
+overall accuracy at $0.000786 runtime cost per question.

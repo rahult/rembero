@@ -35,6 +35,7 @@ import {
 export const LONGMEMEVAL_ANSWER_VERSION = 'remembero.longmemeval-answer.v1' as const;
 export const DEFAULT_LONGMEMEVAL_ANSWER_TOP_K = 4;
 export const DEFAULT_LONGMEMEVAL_MULTI_SESSION_TOP_K = 5;
+export const DEFAULT_LONGMEMEVAL_TEMPORAL_TOP_K = 5;
 export const DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES = 56 * 1024;
 export const MAX_LONGMEMEVAL_ANSWER_CONTEXT_BYTES = 60 * 1024;
 export const LONGMEMEVAL_ANSWER_SOURCE_CHARACTERS = 16_384;
@@ -134,6 +135,7 @@ export interface LongMemEvalAnswerRun {
   multiSessionSemanticMaximumLexicalScore: number;
   topK: number;
   multiSessionTopK: number;
+  temporalTopK: number;
   sourceCharacters: number;
   contextBytes: number;
   summary: LongMemEvalAnswerSummary;
@@ -320,6 +322,7 @@ export async function evaluateLongMemEvalAnswerInstance(
   options: {
     topK?: number;
     multiSessionTopK?: number;
+    temporalTopK?: number;
     contextBytes?: number;
     embeddings?: EmbeddingClient;
     semanticQuestionTypes?: ReadonlySet<string>;
@@ -328,7 +331,9 @@ export async function evaluateLongMemEvalAnswerInstance(
   const topK = options.topK ?? DEFAULT_LONGMEMEVAL_ANSWER_TOP_K;
   const effectiveTopK = instance.question_type === 'multi-session'
     ? options.multiSessionTopK ?? DEFAULT_LONGMEMEVAL_MULTI_SESSION_TOP_K
-    : topK;
+    : instance.question_type === 'temporal-reasoning'
+      ? options.temporalTopK ?? DEFAULT_LONGMEMEVAL_TEMPORAL_TOP_K
+      : topK;
   const contextBytes = options.contextBytes ?? DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES;
   validateOptions(effectiveTopK, contextBytes);
   const root = mkdtempSync(join(tmpdir(), 'remembero-longmemeval-answer-'));
@@ -613,6 +618,7 @@ export function longMemEvalAnswerRun(
   options: {
     topK?: number;
     multiSessionTopK?: number;
+    temporalTopK?: number;
     contextBytes?: number;
     generatedAt?: string;
     embeddingModel?: string | null;
@@ -624,9 +630,11 @@ export function longMemEvalAnswerRun(
   const topK = options.topK ?? DEFAULT_LONGMEMEVAL_ANSWER_TOP_K;
   const multiSessionTopK =
     options.multiSessionTopK ?? DEFAULT_LONGMEMEVAL_MULTI_SESSION_TOP_K;
+  const temporalTopK = options.temporalTopK ?? DEFAULT_LONGMEMEVAL_TEMPORAL_TOP_K;
   const contextBytes = options.contextBytes ?? DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES;
   validateOptions(topK, contextBytes);
   validateOptions(multiSessionTopK, contextBytes);
+  validateOptions(temporalTopK, contextBytes);
   const questionTypes = [...new Set(observations.map(({ questionType }) => questionType))].sort();
   return {
     schemaVersion: LONGMEMEVAL_ANSWER_VERSION,
@@ -654,6 +662,7 @@ export function longMemEvalAnswerRun(
       LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE,
     topK,
     multiSessionTopK,
+    temporalTopK,
     sourceCharacters: LONGMEMEVAL_ANSWER_SOURCE_CHARACTERS,
     contextBytes,
     summary: summarizeLongMemEvalAnswers(observations),

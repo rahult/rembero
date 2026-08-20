@@ -38,8 +38,10 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | End-to-end memory | LongMemEval-S v1 overall / sealed held-out | 75.4% / 71.5% | measured live |
 | End-to-end memory | Role-aware v2 overall / post-hoc validation | 77.0% / 72.8% | measured live |
 | End-to-end memory | Adaptive v3 overall / multi-session | 77.6% / 63.9% | composed live runs |
-| End-to-end memory | V3 complete / incomplete evidence accuracy | 92.1% / 41.7% | composed live runs |
+| End-to-end memory | Adaptive v4 overall / temporal | 79.8% / 79.7% | composed live runs |
+| End-to-end memory | V4 complete / incomplete evidence accuracy | 92.9% / 44.9% | composed live runs |
 | End-to-end cost | Adaptive v3 runtime, 500 questions | $0.379880 / $0.000760 avg | composed live runs |
+| End-to-end cost | Adaptive v4 runtime, 500 questions | $0.392863 / $0.000786 avg | composed live runs |
 | End-to-end formation | Durable raw-session formation p95 | 183 ms | measured |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
@@ -329,6 +331,10 @@ Complete development and validation multi-session runs raise that subtype from 6
 63.9%; the composed overall result reaches 77.6%. Runtime provider cost is $0.379880
 ($0.000760/question), still 72.3% below v1. Top six was rejected because it fell to 47/69
 development answers versus top five's 51/69 and regressed two abstentions.
+
+Adaptive v4 also uses top five for temporal reasoning. Complete temporal runs improve that
+subtype from 71.4% to 79.7%, lifting the composed score to 79.8%. Runtime cost remains
+$0.000786/question—71.3% below v1—with no extra model or embedding call.
 
 The opt-in semantic policy addresses the largest measured subtype gap without changing the
 default structured path. It routes explicit recommendation/advice intent through

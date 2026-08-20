@@ -77,6 +77,11 @@ It composes complete v2 non-multi runs with complete top-five multi-session runs
 questions. Runtime cost remains $0.000760/question. Top six was rejected at 47/69
 development answers versus top five's 51/69.
 
+Adaptive v4 also uses top five for temporal reasoning. Complete development and validation
+temporal runs raise that subtype from 71.4% to 79.7%, producing a composed 79.8% overall
+score. Runtime provider cost remains $0.000786/question and no additional model or
+embedding call is introduced.
+
 ## Structured-memory comparison
 
 The v0.54 benchmark separates exact answers, answerability, ranked evidence retrieval,

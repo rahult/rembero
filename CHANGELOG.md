@@ -57,6 +57,10 @@ Adaptive answer context now retrieves five sessions only for multi-session quest
 keeps four elsewhere. It raises the composed post-hoc score to 77.6% and multi-session
 accuracy to 63.9% at $0.000760 runtime provider cost per question. A role-aware top-six
 rerun was rejected at 47/69 development answers versus top five's 51/69.
+Temporal reasoning now also receives five sessions while ordinary questions remain at four.
+Complete temporal runs improve the subtype from 71.4% to 79.7% and lift the composed
+post-hoc score to 79.8% at $0.000786 runtime provider cost per question, without another
+model or embedding call.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

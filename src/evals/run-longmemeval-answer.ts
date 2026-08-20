@@ -9,6 +9,7 @@ import {
   DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES,
   DEFAULT_LONGMEMEVAL_ANSWER_TOP_K,
   DEFAULT_LONGMEMEVAL_MULTI_SESSION_TOP_K,
+  DEFAULT_LONGMEMEVAL_TEMPORAL_TOP_K,
   DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES,
   MAX_LONGMEMEVAL_ANSWER_CONTEXT_BYTES,
   evaluateLongMemEvalAnswerInstance,
@@ -25,6 +26,7 @@ interface Args {
   offset: number;
   topK: number;
   multiSessionTopK: number;
+  temporalTopK: number;
   contextBytes: number;
   concurrency: number;
   readerModel: string;
@@ -46,6 +48,7 @@ Options:
   --offset <count>       Skip 0-499 selected questions for resumable slices
   --top-k <count>        Retrieved sessions per question (default: 4)
   --multi-session-top-k <count>  Retrieved sessions for multi-session questions (default: 5)
+  --temporal-top-k <count>  Retrieved sessions for temporal questions (default: 5)
   --context-bytes <n>    Answer-facing context budget (default: 57344)
   --concurrency <n>      Concurrent questions from 1-8 (default: 4)
   --reader-model <id>    Answer model (default: LLM_MODEL or ${DEFAULT_MODEL})
@@ -82,6 +85,7 @@ function parseArgs(argv: string[]): Args {
     offset: 0,
     topK: DEFAULT_LONGMEMEVAL_ANSWER_TOP_K,
     multiSessionTopK: DEFAULT_LONGMEMEVAL_MULTI_SESSION_TOP_K,
+    temporalTopK: DEFAULT_LONGMEMEVAL_TEMPORAL_TOP_K,
     contextBytes: DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES,
     concurrency: 4,
     readerModel: process.env.LLM_MODEL ?? DEFAULT_MODEL,
@@ -110,6 +114,13 @@ function parseArgs(argv: string[]): Args {
       args.topK = boundedInteger(requiredValue(argv, index++, arg), arg, 1, 100);
     } else if (arg === '--multi-session-top-k') {
       args.multiSessionTopK = boundedInteger(
+        requiredValue(argv, index++, arg),
+        arg,
+        1,
+        100
+      );
+    } else if (arg === '--temporal-top-k') {
+      args.temporalTopK = boundedInteger(
         requiredValue(argv, index++, arg),
         arg,
         1,
@@ -216,6 +227,7 @@ async function main(): Promise<void> {
     const observation = await evaluateLongMemEvalAnswerInstance(instance, reader, judge, {
       topK: args.topK,
       multiSessionTopK: args.multiSessionTopK,
+      temporalTopK: args.temporalTopK,
       contextBytes: args.contextBytes,
       ...(embeddings === undefined ? {} : { embeddings }),
       semanticQuestionTypes: args.semanticQuestionTypes,
@@ -231,6 +243,7 @@ async function main(): Promise<void> {
   const run = longMemEvalAnswerRun(observations, reader.model, judge.model, {
     topK: args.topK,
     multiSessionTopK: args.multiSessionTopK,
+    temporalTopK: args.temporalTopK,
     contextBytes: args.contextBytes,
     embeddingModel: embeddings?.model ?? null,
     selection: args.split,
@@ -259,7 +272,7 @@ async function main(): Promise<void> {
     console.log(`reader / judge: ${reader.model} / ${judge.model}`);
     console.log(`accuracy: ${percent(summary.accuracy)} (${summary.correct}/${summary.questions})`);
     console.log(`errors: ${summary.errors}`);
-    console.log(`retrieval/context recall: ${percent(summary.retrievalRecallAtK)} / ${percent(summary.contextRecallAtK)} (top-k ${args.topK}; multi-session ${args.multiSessionTopK})`);
+    console.log(`retrieval/context recall: ${percent(summary.retrievalRecallAtK)} / ${percent(summary.contextRecallAtK)} (top-k ${args.topK}; multi-session ${args.multiSessionTopK}; temporal ${args.temporalTopK})`);
     console.log(`full/incomplete evidence accuracy: ${percent(summary.fullContextEvidenceAccuracy)} / ${percent(summary.incompleteContextEvidenceAccuracy)}`);
     console.log(`formation p50/p95: ${summary.medianFormationMs.toFixed(1)} / ${summary.p95FormationMs.toFixed(1)} ms`);
     console.log(`end-to-end p50/p95: ${summary.medianTotalMs.toFixed(1)} / ${summary.p95TotalMs.toFixed(1)} ms`);
