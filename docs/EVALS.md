@@ -35,8 +35,9 @@ The pinned official adapter consumes browser-agent trajectories through the benc
 `Memory.insert` / `Memory.query` interface and returns bounded Remembero state evidence.
 On ten fresh text-only enterprise questions with deterministic official scorers, Remembero
 improves the fixed Qwen3.5-9B reader from 0/10 without retrieval to 3/10. Memory-query p95
-is 121 ms with zero memory model or embedding calls. This is a pilot, not a leaderboard
-claim. See the [contract and limits](research/LONGMEMEVAL-V2.md).
+is 121 ms with zero memory model or embedding calls. A frozen 50-question expansion scores
+10/50 (20.0%) at 122 ms memory-query p95. This is not a leaderboard claim; see the
+[contract and limits](research/LONGMEMEVAL-V2.md).
 
 ## LongMemEval-S source retrieval
 

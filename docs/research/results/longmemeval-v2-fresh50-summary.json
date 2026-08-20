@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "remembero.longmemeval-v2-fresh-summary.v2",
+  "measuredAt": "2026-08-20T12:35:00Z",
+  "officialHarness": {
+    "repository": "xiaowu0162/LongMemEval-V2",
+    "commit": "2cc8c540bdb87fe6761629b585e727e1c4704520",
+    "tier": "small",
+    "domain": "enterprise"
+  },
+  "dataset": {
+    "questionsSha256": "0a3ae5ebea938c24d7800e1e0b0828e08ae1646f939a53853b2b8cdc08e292b7",
+    "trajectoriesSha256": "363cec9a8e87aa8d9101ce4e600aadbf7031d674056ebe4f969e8424abc5f3c6",
+    "smallHaystackSha256": "9b5301defb23a088a5f06e45ff8d5f35e569d78305a66d492046a9fff9b46593",
+    "sharedTrajectories": 100,
+    "selectedQuestions": 50,
+    "selection": "text-only enterprise questions with deterministic scorers, excluding development question 01307e07, sorted by SHA-256(question_id), first fifty"
+  },
+  "adapter": {
+    "id": "remembero-local-state-search",
+    "version": 1,
+    "stateChunkCharacters": 4096,
+    "stateChunkOverlap": 512,
+    "maximumStateChunks": 10,
+    "stateCandidateLimit": 100,
+    "returnedStates": 6,
+    "chunksPerReturnedState": 3,
+    "memoryModelCalls": 0,
+    "memoryEmbeddingCalls": 0,
+    "multimodal": false
+  },
+  "reader": {
+    "model": "qwen/qwen3.5-9b",
+    "provider": "OpenRouter",
+    "temperature": 0.6,
+    "topP": 0.95,
+    "topK": 20
+  },
+  "remembero": {
+    "correct": 10,
+    "questions": 50,
+    "accuracy": 0.2,
+    "staticAccuracy": 0.20689655172413793,
+    "dynamicAccuracy": 0.1,
+    "procedureAccuracy": 0.2727272727272727,
+    "unknownRate": 0.58,
+    "memoryQueryAverageMs": 89.55057329731061,
+    "memoryQueryP50Ms": 86.45633299602196,
+    "memoryQueryP95Ms": 122.22183402627707,
+    "averageMemoryContextTokens": 18717.38,
+    "truncatedContexts": 0,
+    "readerPromptTokens": 945908,
+    "readerCompletionTokens": 223663,
+    "readerTotalTokens": 1169571,
+    "operationalErrors": 0
+  },
+  "comparison": {
+    "fresh10RememberoAccuracy": 0.3,
+    "fresh10NoRetrievalAccuracy": 0,
+    "fresh50NoRetrievalRun": false
+  },
+  "evidenceBoundary": {
+    "officialHarnessUsed": true,
+    "officialScorersUsed": true,
+    "llmJudgeUsed": false,
+    "questionImagesUsed": false,
+    "screenshotArchivesDownloaded": false,
+    "statisticalSignificance": false,
+    "leaderboardComparable": false,
+    "reason": "fresh text-only enterprise expansion; no web, multimodal, abstention, gotchas, or medium-tier coverage"
+  }
+}

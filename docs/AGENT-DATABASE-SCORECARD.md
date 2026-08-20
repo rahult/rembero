@@ -47,6 +47,7 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | End-to-end formation | Durable raw-session formation p95 | 183 ms | measured |
 | Fresh agentic pilot | LongMemEval-V2 Remembero / no retrieval | 30% / 0% | 10 text-only questions |
 | Fresh agentic speed | LongMemEval-V2 memory-query p95 | 121 ms | zero provider calls |
+| Fresh agentic expansion | LongMemEval-V2 Remembero accuracy | 20% | 50 text-only questions |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
 | Speed | MCP process startup | 93.74 ms | diagnostic |

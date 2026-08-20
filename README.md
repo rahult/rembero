@@ -59,7 +59,8 @@ minimum provider spend.
 
 The separate pinned LongMemEval-V2 adapter runs through the official agentic-memory harness.
 Its first fresh text-only enterprise pilot improves Qwen3.5-9B from 0/10 without retrieval
-to 3/10 with 121 ms memory-query p95 and zero memory provider calls. See the
+to 3/10 with 121 ms memory-query p95 and zero memory provider calls. A frozen 50-question
+expansion scores 10/50 at 122 ms p95. See the
 [fresh pilot boundary](docs/research/LONGMEMEVAL-V2.md); it is not a leaderboard claim.
 
 ## Try the real web console

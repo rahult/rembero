@@ -74,6 +74,9 @@ uses a state-level BM25 shortlist plus Remembero local chunk scoring, and confor
 official metadata-private `insert/query` interface. On ten fresh text-only enterprise
 questions it improves the fixed reader from 0/10 to 3/10 at 121 ms memory-query p95 with
 zero memory provider calls; multimodal and leaderboard claims remain explicitly out of scope.
+The same frozen adapter now has a 50-question text-only enterprise expansion at 10/50 and
+122 ms memory-query p95, with zero operational errors. The result remains a pilot because
+web, multimodal, abstention, gotcha, and medium-tier questions are not yet covered.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

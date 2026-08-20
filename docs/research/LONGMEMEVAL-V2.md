@@ -55,6 +55,17 @@ errors.
 The machine-readable result is
 [`results/longmemeval-v2-fresh10-summary.json`](results/longmemeval-v2-fresh10-summary.json).
 
+The frozen expansion uses the same adapter and selection policy on 50 text-only enterprise
+questions. It scores 10/50 (20.0%) with 89.6 ms average and 122 ms p95 memory-query
+latency, zero provider calls inside memory, and zero operational errors. Category accuracy
+is 20.7% static, 10.0% dynamic, and 27.3% procedure. The reader received an average
+18,717 context tokens and used 945,908 prompt plus 223,663 completion tokens.
+
+This larger result is consistent with the ten-question pilot's 3/10 score. It is not
+compared to a same-question no-retrieval run, so the only supported causal comparison is
+the pilot's 3/10 versus 0/10 baseline. See
+[`results/longmemeval-v2-fresh50-summary.json`](results/longmemeval-v2-fresh50-summary.json).
+
 ## Evidence boundary
 
 This result proves that the adapter conforms to the official privacy boundary and improves
