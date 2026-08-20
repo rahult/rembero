@@ -401,3 +401,10 @@ accuracy from 75.4% to 77.0%, cuts reader tokens 76.7%, lowers runtime provider 
 and improves multi-session accuracy from 56.4% to 61.7%. Retrieval IDs and Recall@4 are
 unchanged. The [v2 evidence artifact](research/results/longmemeval-answer-v2-summary.json)
 also records the rejected alternatives.
+
+Use a slightly larger result set only when the task requires evidence from multiple
+sessions. The measured default is top four for ordinary recall and top five for
+multi-session synthesis. Top six raised retrieval coverage but reduced development answer
+accuracy and abstention quality. The
+[adaptive v3 result](research/results/longmemeval-answer-v3-summary.json) reaches 63.9%
+multi-session and 77.6% overall accuracy at $0.000760 runtime cost per question.

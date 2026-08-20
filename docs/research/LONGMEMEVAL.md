@@ -138,6 +138,24 @@ cost. A low-local-score semantic gate also ended at the same 46/69 answers as lo
 Top-six context, an aggregation-specific prompt, and GPT-5.4 Mini each scored worse on the
 fixed development slice. These negative results are retained in the v2 artifact.
 
+## Adaptive top-k result v3
+
+Role-aware context makes one additional session affordable for multi-session synthesis.
+V3 keeps top four for every other question type and uses top five only for multi-session
+questions. Complete development and validation multi-session runs improve from 82/133 to
+85/133 correct and raise multi-session Recall from 74.2% to 78.1%.
+
+The composed 500-question policy reaches 388/500 (77.6%), with 81.2% development and 73.6%
+post-hoc validation accuracy. Runtime reader-plus-embedding cost is $0.379880, or
+$0.000760/question—72.3% below v1. Reader tokens remain 75.9% below v1. Top-six was rerun
+with role-aware context and rejected at 47/69 development answers versus top five's 51/69,
+with two additional abstention regressions.
+
+V3 is composed from the complete v2 non-multi observations and complete top-five
+multi-session observations. It is not a fresh sealed run, and live reader/judge variance
+still applies. See the
+[v3 machine-readable evidence](results/longmemeval-answer-v3-summary.json).
+
 ## What is actually indexed
 
 Each LongMemEval session is represented by one opaque `longmem_session(session_N).` carrier
@@ -209,8 +227,8 @@ live raw-session formation and QA evidence, but it does not establish:
 - superiority over another memory product under the same reader, judge, and policy;
 - deterministic generation or judging—one development preference slice moved between
   repeated temperature-zero runs, so live-model variance remains real;
-- reliable multi-session aggregation or learned abstention confidence—v2 still reaches
-  only 61.7% on multi-session questions;
+- reliable multi-session aggregation or learned abstention confidence—v3 still reaches
+  only 63.9% on multi-session questions;
 - hosted, concurrent, multi-tenant, or sustained-provider performance.
 
 The held-out run initially contained one provider HTTP 400 caused by a lone UTF-16 high

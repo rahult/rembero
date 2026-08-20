@@ -71,6 +71,12 @@ embedding cost from $1.371122 to $0.322610 ($0.000645/question). It stays outsid
 both generation and judging consume live provider budget. See the
 [complete answer contract and limitations](research/LONGMEMEVAL.md).
 
+Adaptive v3 keeps top four for ordinary questions and top five for multi-session synthesis.
+It composes complete v2 non-multi runs with complete top-five multi-session runs and scores
+77.6% overall, 73.6% on the post-hoc validation partition, and 63.9% on multi-session
+questions. Runtime cost remains $0.000760/question. Top six was rejected at 47/69
+development answers versus top five's 51/69.
+
 ## Structured-memory comparison
 
 The v0.54 benchmark separates exact answers, answerability, ranked evidence retrieval,

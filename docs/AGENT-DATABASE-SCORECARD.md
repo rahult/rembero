@@ -37,8 +37,9 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Broad retrieval | Strict all-evidence coverage | 75.32% | measured |
 | End-to-end memory | LongMemEval-S v1 overall / sealed held-out | 75.4% / 71.5% | measured live |
 | End-to-end memory | Role-aware v2 overall / post-hoc validation | 77.0% / 72.8% | measured live |
-| End-to-end memory | V2 complete / incomplete evidence accuracy | 92.6% / 40.3% | measured live |
-| End-to-end cost | V2 reader + embeddings, 500 questions | $0.322610 / $0.000645 avg | measured live |
+| End-to-end memory | Adaptive v3 overall / multi-session | 77.6% / 63.9% | composed live runs |
+| End-to-end memory | V3 complete / incomplete evidence accuracy | 92.1% / 41.7% | composed live runs |
+| End-to-end cost | Adaptive v3 runtime, 500 questions | $0.379880 / $0.000760 avg | composed live runs |
 | End-to-end formation | Durable raw-session formation p95 | 183 ms | measured |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
@@ -323,6 +324,12 @@ $0.000645/question. Multi-session accuracy rises from 56.4% to 61.7%. Because th
 role-distribution audit inspected full-dataset answer-turn roles, v2 validation is not
 presented as a new pristine held-out result; v1 remains the sealed claim.
 
+Adaptive v3 retrieves five sessions only for multi-session questions and four elsewhere.
+Complete development and validation multi-session runs raise that subtype from 61.7% to
+63.9%; the composed overall result reaches 77.6%. Runtime provider cost is $0.379880
+($0.000760/question), still 72.3% below v1. Top six was rejected because it fell to 47/69
+development answers versus top five's 51/69 and regressed two abstentions.
+
 The opt-in semantic policy addresses the largest measured subtype gap without changing the
 default structured path. It routes explicit recommendation/advice intent through
 `semantic_search_knowledge`, which reranks at most 100 locally shortlisted sources and
@@ -335,8 +342,8 @@ declare absence or proof. See the [semantic search contract](SEMANTIC-KNOWLEDGE-
 The answer runner uses the same authority boundary. Factual questions are restricted to
 retrieved history. Preference questions may combine recalled user context with general
 recommendation knowledge while user-specific claims remain grounded. This raises combined
-preference answer accuracy to 90.0%. Under v2, reader plus embedding cost was $0.322610
-across all 500 questions ($0.000645/question); the independent judge added $0.160087
+preference answer accuracy to 90.0%. Under adaptive v3, reader plus embedding cost was
+$0.379880 across all 500 questions ($0.000760/question); the independent judge added $0.160453
 evaluation-only cost. Durable formation p95 was 183 ms and local retrieval p95 was
 11.7 ms. See the
 [answer result and evidence boundary](research/LONGMEMEVAL.md).

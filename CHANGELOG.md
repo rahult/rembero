@@ -53,6 +53,10 @@ multi-session synthesis. The 500-question post-hoc v2 result rises from 75.4% to
 while cutting reader tokens 76.7% and runtime provider cost 76.5%. Multi-session accuracy
 rises from 56.4% to 61.7%. Global semantic multi-session routing, a low-score semantic gate,
 top-six context, an aggregation prompt, and GPT-5.4 Mini were measured and rejected.
+Adaptive answer context now retrieves five sessions only for multi-session questions and
+keeps four elsewhere. It raises the composed post-hoc score to 77.6% and multi-session
+accuracy to 63.9% at $0.000760 runtime provider cost per question. A role-aware top-six
+rerun was rejected at 47/69 development answers versus top five's 51/69.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

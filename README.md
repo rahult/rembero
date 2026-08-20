@@ -39,7 +39,9 @@ The pinned LongMemEval-S commands provide both a retrieval-only zero-model basel
 live durable formation → retrieval → answer evaluation. The locked end-to-end policy scored
 75.4% across all 500 questions and 71.5% on untouched held-out data. A role-aware v2
 post-hoc run improves overall accuracy to 77.0% while cutting reader tokens 76.7% and
-reader-plus-embedding cost to $0.000645/question. Its
+reader-plus-embedding cost to $0.000645/question. Adaptive v3 uses top five only for
+multi-session questions, reaching 77.6% overall and 63.9% multi-session accuracy at
+$0.000760/question. Its
 [method, evidence split, and limitations](docs/research/LONGMEMEVAL.md) are public.
 For fuzzy recommendations, the opt-in [`semantic_search_knowledge`](docs/SEMANTIC-KNOWLEDGE-SEARCH.md)
 tool reranks a bounded local shortlist, reports provider cost, and caches document vectors

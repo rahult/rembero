@@ -175,6 +175,7 @@ describe('LongMemEval end-to-end answer evaluation', () => {
       judge,
       {
         topK: 1,
+        multiSessionTopK: 1,
         contextBytes: 4_096,
         semanticQuestionTypes: new Set(['multi-session']),
         embeddings: {
@@ -219,6 +220,7 @@ describe('LongMemEval end-to-end answer evaluation', () => {
       judge,
       {
         topK: 1,
+        multiSessionTopK: 1,
         contextBytes: 4_096,
         semanticQuestionTypes: new Set(['multi-session']),
         embeddings: {
@@ -290,6 +292,8 @@ describe('LongMemEval end-to-end answer evaluation', () => {
     expect(run).toMatchObject({
       schemaVersion: 'remembero.longmemeval-answer.v1',
       formation: 'durable-raw-session-facts',
+      topK: 4,
+      multiSessionTopK: 5,
       summary: { questions: 1, errors: 1, correct: 0, accuracy: 0 },
       dataset: { commit: expect.any(String), sha256: expect.any(String) },
     });
