@@ -212,7 +212,9 @@ export function ChatMemoryLab() {
   const [hasRun, setHasRun] = useState(false);
   const [running, setRunning] = useState(false);
   const [modelMode, setModelMode] = useState<BrowserModelMode>("simulated");
-  const [modelDiagnostic, setModelDiagnostic] = useState("LanguageModel not run");
+  const [modelDiagnostic, setModelDiagnostic] = useState(
+    "SQLite data ready · WebLLM model not loaded",
+  );
   const [webLlmStatus, setWebLlmStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
@@ -397,7 +399,7 @@ export function ChatMemoryLab() {
           status: "simulated",
         },
         answer: fallbackAnswer,
-        diagnostic: "WebLLM native tool call not run",
+        diagnostic: "SQLite queried · deterministic tool-call simulator used",
         runtime: "simulated",
       };
     }
@@ -615,7 +617,9 @@ export function ChatMemoryLab() {
                       setAnswerContract("Awaiting model output");
                       if (webLlmStatus !== "ready") {
                         setModelMode("simulated");
-                        setModelDiagnostic("LanguageModel not run");
+                        setModelDiagnostic(
+                          "SQLite data ready · WebLLM model not loaded",
+                        );
                       }
                     }}
                   />
