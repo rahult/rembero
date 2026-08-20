@@ -87,6 +87,12 @@ Gated semantic v5 reranks multi-session questions only when the local top score 
 overall accuracy, and raises combined retrieval Recall to 89.7%. Runtime provider cost is
 $0.000872/question; the semantic latency is a cold isolated-corpus measurement.
 
+Pass `--prepare-semantic` to separate document-maintenance time from the measured user turn.
+On 20 development multi-session questions, preparation reduced user-turn p50/p95 from
+20.8/27.3 seconds to 12.1/18.3 seconds and query embedding tokens from 1,836,242 to 249.
+The maintenance phase increased total embedding cost about 19.7%; the result is a latency
+tradeoff, not a lower total-cost claim.
+
 ## Structured-memory comparison
 
 The v0.54 benchmark separates exact answers, answerability, ranked evidence retrieval,

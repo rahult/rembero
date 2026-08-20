@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "remembero.semantic-preparation-summary.v1",
+  "measuredAt": "2026-08-20T01:04:00Z",
+  "dataset": {
+    "id": "xiaowu0162/longmemeval-cleaned",
+    "commit": "98d7416c24c778c2fee6e6f3006e7a073259d48f",
+    "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+    "selection": "first 20 development multi-session questions"
+  },
+  "policy": {
+    "topK": 5,
+    "semanticMaximumLexicalScore": 315,
+    "embeddingModel": "perplexity/pplx-embed-v1-0.6b",
+    "readerModel": "openai/gpt-5.6-luna",
+    "concurrency": 2,
+    "cache": "fresh in-memory cache per isolated question"
+  },
+  "cold": {
+    "questions": 20,
+    "correct": 14,
+    "errors": 0,
+    "retrievalRecall": 0.9375,
+    "userTurnP50Ms": 20837.5,
+    "userTurnP95Ms": 27265.7,
+    "queryEmbeddingCalls": 55,
+    "queryEmbeddingTokens": 1836242,
+    "queryEmbeddingCostUsd": 0.007345
+  },
+  "prepared": {
+    "questions": 20,
+    "correct": 16,
+    "errors": 0,
+    "retrievalRecall": 0.9375,
+    "preparationP50Ms": 8490.3,
+    "preparationP95Ms": 15034.0,
+    "preparationCalls": 60,
+    "preparationTokens": 2196997,
+    "preparationCostUsd": 0.008787988000000004,
+    "userTurnP50Ms": 12113.9,
+    "userTurnP95Ms": 18255.5,
+    "queryEmbeddingCalls": 19,
+    "queryEmbeddingTokens": 249,
+    "queryEmbeddingCostUsd": 0.000000996
+  },
+  "comparison": {
+    "userTurnP50Reduction": 0.41864907018596287,
+    "userTurnP95Reduction": 0.3304591483072138,
+    "queryEmbeddingTokenReduction": 0.9998643969585708,
+    "totalEmbeddingTokenIncrease": 0.1965993589080306,
+    "totalEmbeddingCostIncrease": 0.19659414567733148
+  },
+  "evidenceBoundary": {
+    "accuracyComparisonValid": false,
+    "reason": "reader and judge are live and varied between runs; retrieval IDs and Recall were unchanged",
+    "maintenanceOutsideUserTurn": true,
+    "costEliminated": false,
+    "persistentFileCacheMeasuredHere": false
+  }
+}

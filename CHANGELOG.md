@@ -65,6 +65,10 @@ Multi-session semantic reranking is now gated by a deterministic local top-score
 315. Under role-aware top-five context it raises multi-session accuracy from 63.9% to 76.7%
 and the composed post-hoc score from 79.8% to 83.2%. The gate avoids 18 high-confidence
 local cases and 55 provider calls relative to global semantic routing.
+The LongMemEval answer runner can explicitly prepare semantic document vectors before the
+measured user turn. A 20-case check reduces user-turn p95 from 27.3 to 18.3 seconds and
+query embedding tokens from 1,836,242 to 249, while disclosing the 19.7% increase in total
+embedding cost as maintenance rather than hiding it.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

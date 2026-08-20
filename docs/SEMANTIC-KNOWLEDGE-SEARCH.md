@@ -110,11 +110,20 @@ maintenance call. After closing and restarting the MCP server, the first semanti
 412 ms, hit all ten vectors, sent only the 9-token question for $0.000000036, and retained
 the correct lexical leader over a semantically tempting distractor.
 
+A larger end-to-end preparation check uses the first 20 development multi-session cases
+under the v5 score gate. Cold user-turn p50/p95 was 20.8/27.3 seconds. Explicit preparation
+moved document embedding into maintenance and reduced user-turn p50/p95 to 12.1/18.3
+seconds; query embedding tokens fell from 1,836,242 to 249. Preparation consumed 2,196,997
+tokens and raised total embedding cost about 19.7%, so this is a latency shift, not free
+work. See the
+[preparation evidence](research/results/semantic-preparation-v1-summary.json).
+
 Run the reproducible live-provider evaluation after downloading LongMemEval-S:
 
 ```bash
 npm run bench:longmemeval:download
 npm run bench:longmemeval:semantic
+npm run bench:longmemeval:answer -- --split dev --prepare-semantic
 ```
 
 The machine-readable result is

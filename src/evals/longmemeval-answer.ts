@@ -16,6 +16,7 @@ import { searchKnowledge, type KnowledgeSearchResult } from '../knowledge/search
 import {
   isRecommendationIntent,
   MemoryEmbeddingCache,
+  prepareSemanticKnowledge,
   SEMANTIC_CHUNK_CHARACTERS,
   SEMANTIC_CHUNK_OVERLAP,
   semanticSearchKnowledge,
@@ -67,6 +68,8 @@ export interface LongMemEvalAnswerObservation {
   embeddingModel: string | null;
   embeddingCalls: number;
   embeddingUsage: EmbeddingUsage | null;
+  semanticPreparationCalls: number;
+  semanticPreparationUsage: EmbeddingUsage | null;
   retrieval: LongMemEvalQuestionResult | null;
   context: LongMemEvalQuestionResult | null;
   hypothesis: string | null;
@@ -74,10 +77,12 @@ export interface LongMemEvalAnswerObservation {
   readerUsage: LlmUsage | null;
   judgeUsage: LlmUsage | null;
   formationMs: number;
+  semanticPreparationMs: number;
   retrievalMs: number;
   readerMs: number;
   judgeMs: number;
   totalMs: number;
+  userTurnMs: number;
   error?: string;
 }
 
@@ -96,6 +101,8 @@ export interface LongMemEvalAnswerSummary {
   redactedRetrievedSessions: number;
   medianFormationMs: number;
   p95FormationMs: number;
+  medianSemanticPreparationMs: number;
+  p95SemanticPreparationMs: number;
   medianRetrievalMs: number;
   p95RetrievalMs: number;
   medianReaderMs: number;
@@ -104,9 +111,18 @@ export interface LongMemEvalAnswerSummary {
   p95JudgeMs: number;
   medianTotalMs: number;
   p95TotalMs: number;
+  medianUserTurnMs: number;
+  p95UserTurnMs: number;
   readerUsage: LlmUsageTotals;
   judgeUsage: LlmUsageTotals;
   embeddingUsage: {
+    calls: number;
+    promptTokens: number;
+    totalTokens: number;
+    costResponses: number;
+    costUsd: number;
+  };
+  semanticPreparationUsage: {
     calls: number;
     promptTokens: number;
     totalTokens: number;
@@ -134,6 +150,7 @@ export interface LongMemEvalAnswerRun {
   answerContextPolicy: 'user-turns-except-assistant-memory';
   semanticQuestionTypes: string[];
   multiSessionSemanticMaximumLexicalScore: number;
+  semanticPreparation: 'cold' | 'prepared';
   topK: number;
   multiSessionTopK: number;
   temporalTopK: number;
@@ -148,6 +165,19 @@ function mean(values: readonly number[]): number {
   return values.length === 0
     ? 0
     : values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function mergeEmbeddingUsage(
+  left: EmbeddingUsage | null,
+  right: EmbeddingUsage
+): EmbeddingUsage {
+  const add = (a: number | null | undefined, b: number | null) =>
+    a === null && b === null ? null : (a ?? 0) + (b ?? 0);
+  return {
+    promptTokens: add(left?.promptTokens, right.promptTokens),
+    totalTokens: add(left?.totalTokens, right.totalTokens),
+    costUsd: add(left?.costUsd, right.costUsd),
+  };
 }
 
 function percentile(values: readonly number[], quantile: number): number {
@@ -328,6 +358,7 @@ export async function evaluateLongMemEvalAnswerInstance(
     embeddings?: EmbeddingClient;
     semanticQuestionTypes?: ReadonlySet<string>;
     multiSessionSemanticMaximumLexicalScore?: number;
+    prepareSemantic?: boolean;
   } = {}
 ): Promise<LongMemEvalAnswerObservation> {
   const topK = options.topK ?? DEFAULT_LONGMEMEVAL_ANSWER_TOP_K;
@@ -351,6 +382,7 @@ export async function evaluateLongMemEvalAnswerInstance(
   const root = mkdtempSync(join(tmpdir(), 'remembero-longmemeval-answer-'));
   const started = performance.now();
   let formationMs = 0;
+  let semanticPreparationMs = 0;
   let retrievalMs = 0;
   let readerMs = 0;
   let judgeMs = 0;
@@ -364,6 +396,8 @@ export async function evaluateLongMemEvalAnswerInstance(
   let embeddingModel: string | null = null;
   let embeddingCalls = 0;
   let embeddingUsage: EmbeddingUsage | null = null;
+  let semanticPreparationCalls = 0;
+  let semanticPreparationUsage: EmbeddingUsage | null = null;
   let retrieval: LongMemEvalQuestionResult | null = null;
   let context: LongMemEvalQuestionResult | null = null;
   let hypothesis: string | null = null;
@@ -423,6 +457,34 @@ export async function evaluateLongMemEvalAnswerInstance(
       );
     let search: KnowledgeSearchResult | SemanticKnowledgeSearchResult;
     if (useSemantic) {
+      const semanticCache = new MemoryEmbeddingCache();
+      if (options.prepareSemantic === true) {
+        const preparationStarted = performance.now();
+        let after: string | undefined;
+        do {
+          const prepared = await prepareSemanticKnowledge(
+            snapshot.clauses,
+            snapshot.sources,
+            options.embeddings!,
+            {
+              cache: semanticCache,
+              limit: 100,
+              kinds: ['fact'],
+              ...(after === undefined ? {} : { after }),
+            }
+          );
+          semanticPreparationCalls += prepared.providerCalls;
+          semanticPreparationUsage = mergeEmbeddingUsage(
+            semanticPreparationUsage,
+            prepared.providerUsage
+          );
+          after = prepared.status === 'more'
+            ? prepared.nextCursor ?? undefined
+            : undefined;
+          if (prepared.status === 'complete') break;
+        } while (after !== undefined);
+        semanticPreparationMs = performance.now() - preparationStarted;
+      }
       const semantic = await semanticSearchKnowledge(
         snapshot.clauses,
         instance.question,
@@ -432,7 +494,7 @@ export async function evaluateLongMemEvalAnswerInstance(
           limit: effectiveTopK,
           candidateLimit: 100,
           kinds: ['fact'],
-          cache: new MemoryEmbeddingCache(),
+          cache: semanticCache,
         }
       );
       retrievalRoute = 'semantic';
@@ -443,7 +505,10 @@ export async function evaluateLongMemEvalAnswerInstance(
     } else {
       search = lexical;
     }
-    retrievalMs = performance.now() - retrievalStarted;
+    retrievalMs = Math.max(
+      0,
+      performance.now() - retrievalStarted - semanticPreparationMs
+    );
     const rankedSources = search.results.flatMap((result) => {
       const source = result.sources[0];
       return source === undefined
@@ -514,6 +579,8 @@ export async function evaluateLongMemEvalAnswerInstance(
       embeddingModel,
       embeddingCalls,
       embeddingUsage,
+      semanticPreparationCalls,
+      semanticPreparationUsage,
       retrieval,
       context,
       hypothesis,
@@ -521,10 +588,12 @@ export async function evaluateLongMemEvalAnswerInstance(
       readerUsage,
       judgeUsage,
       formationMs,
+      semanticPreparationMs,
       retrievalMs,
       readerMs,
       judgeMs,
       totalMs: performance.now() - started,
+      userTurnMs: retrievalMs + readerMs + judgeMs,
     };
   } catch (error) {
     return {
@@ -541,6 +610,8 @@ export async function evaluateLongMemEvalAnswerInstance(
       embeddingModel,
       embeddingCalls,
       embeddingUsage,
+      semanticPreparationCalls,
+      semanticPreparationUsage,
       retrieval,
       context,
       hypothesis,
@@ -548,10 +619,12 @@ export async function evaluateLongMemEvalAnswerInstance(
       readerUsage,
       judgeUsage,
       formationMs,
+      semanticPreparationMs,
       retrievalMs,
       readerMs,
       judgeMs,
       totalMs: performance.now() - started,
+      userTurnMs: retrievalMs + readerMs + judgeMs,
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
@@ -579,6 +652,13 @@ export function summarizeLongMemEvalAnswers(
     costResponses: 0,
     costUsd: 0,
   };
+  const semanticPreparationUsage = {
+    calls: 0,
+    promptTokens: 0,
+    totalTokens: 0,
+    costResponses: 0,
+    costUsd: 0,
+  };
   for (const observation of observations) {
     if (observation.readerUsage !== null) readerUsage = addLlmUsage(readerUsage, observation.readerUsage);
     if (observation.judgeUsage !== null) judgeUsage = addLlmUsage(judgeUsage, observation.judgeUsage);
@@ -592,6 +672,17 @@ export function summarizeLongMemEvalAnswers(
     ) {
       embeddingUsage.costResponses += observation.embeddingCalls;
       embeddingUsage.costUsd += observation.embeddingUsage.costUsd;
+    }
+    semanticPreparationUsage.calls += observation.semanticPreparationCalls ?? 0;
+    semanticPreparationUsage.promptTokens +=
+      observation.semanticPreparationUsage?.promptTokens ?? 0;
+    semanticPreparationUsage.totalTokens +=
+      observation.semanticPreparationUsage?.totalTokens ?? 0;
+    if (observation.semanticPreparationUsage?.costUsd !== null &&
+        observation.semanticPreparationUsage !== null &&
+        observation.semanticPreparationUsage !== undefined) {
+      semanticPreparationUsage.costResponses += observation.semanticPreparationCalls ?? 0;
+      semanticPreparationUsage.costUsd += observation.semanticPreparationUsage.costUsd;
     }
   }
   return {
@@ -609,6 +700,14 @@ export function summarizeLongMemEvalAnswers(
     redactedRetrievedSessions: observations.reduce((sum, value) => sum + value.redactedRetrievedSessions, 0),
     medianFormationMs: percentile(observations.map(({ formationMs: value }) => value), 0.5),
     p95FormationMs: percentile(observations.map(({ formationMs: value }) => value), 0.95),
+    medianSemanticPreparationMs: percentile(
+      observations.map(({ semanticPreparationMs: value }) => value ?? 0),
+      0.5
+    ),
+    p95SemanticPreparationMs: percentile(
+      observations.map(({ semanticPreparationMs: value }) => value ?? 0),
+      0.95
+    ),
     medianRetrievalMs: percentile(observations.map(({ retrievalMs: value }) => value), 0.5),
     p95RetrievalMs: percentile(observations.map(({ retrievalMs: value }) => value), 0.95),
     medianReaderMs: percentile(observations.map(({ readerMs: value }) => value), 0.5),
@@ -617,9 +716,18 @@ export function summarizeLongMemEvalAnswers(
     p95JudgeMs: percentile(observations.map(({ judgeMs: value }) => value), 0.95),
     medianTotalMs: percentile(observations.map(({ totalMs: value }) => value), 0.5),
     p95TotalMs: percentile(observations.map(({ totalMs: value }) => value), 0.95),
+    medianUserTurnMs: percentile(
+      observations.map(({ userTurnMs: value }) => value ?? 0),
+      0.5
+    ),
+    p95UserTurnMs: percentile(
+      observations.map(({ userTurnMs: value }) => value ?? 0),
+      0.95
+    ),
     readerUsage,
     judgeUsage,
     embeddingUsage,
+    semanticPreparationUsage,
   };
 }
 
@@ -638,6 +746,7 @@ export function longMemEvalAnswerRun(
     sha256?: string;
     semanticQuestionTypes?: ReadonlySet<string>;
     multiSessionSemanticMaximumLexicalScore?: number;
+    prepareSemantic?: boolean;
   } = {}
 ): LongMemEvalAnswerRun {
   const topK = options.topK ?? DEFAULT_LONGMEMEVAL_ANSWER_TOP_K;
@@ -674,6 +783,7 @@ export function longMemEvalAnswerRun(
     multiSessionSemanticMaximumLexicalScore:
       options.multiSessionSemanticMaximumLexicalScore ??
       LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE,
+    semanticPreparation: options.prepareSemantic === true ? 'prepared' : 'cold',
     topK,
     multiSessionTopK,
     temporalTopK,

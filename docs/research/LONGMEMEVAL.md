@@ -186,6 +186,18 @@ $0.000872/question—68.2% below v1. The semantic timing is cold: every isolated
 case recomputes document vectors; a prepared long-lived harness pays only for the query
 embedding. See the [v5 evidence](results/longmemeval-answer-v5-summary.json).
 
+## Prepared semantic user turns
+
+`--prepare-semantic` runs the same bounded document preparation before measuring the user
+turn. On the first 20 development multi-session questions, cold user-turn p50/p95 was
+20.8/27.3 seconds. Prepared p50/p95 was 12.1/18.3 seconds, and query embedding tokens fell
+from 1,836,242 to 249.
+
+The work moves rather than disappears: maintenance used 2,196,997 tokens and total embedding
+cost rose about 19.7%. Accuracy is not compared because live reader/judge outcomes varied
+between runs while retrieval IDs and Recall stayed fixed. See the
+[preparation evidence](results/semantic-preparation-v1-summary.json).
+
 ## What is actually indexed
 
 Each LongMemEval session is represented by one opaque `longmem_session(session_N).` carrier

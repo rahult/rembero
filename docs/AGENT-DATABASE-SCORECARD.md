@@ -67,6 +67,7 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Semantic cost | 22 routed questions | $0.0090642 | measured |
 | Semantic cost | Restart cache provider tokens | 32 → 9 | measured |
 | Semantic speed | Long-source prewarm / first query after restart | 994 / 412 ms | measured |
+| Semantic speed | Cold / prepared multi-session user-turn p95 | 27.3 / 18.3 s | 20-case live slice |
 | Semantic model | 0.6B dev Recall@5 / MRR | 86.7% / 75.0% | best eligible matrix result |
 | Semantic model | 0.6B dev cost / p95 | $0.004485 / 9.2 s | 2.5–7.5x cheaper than larger candidates |
 | Ease | Cold empty-cache npm install | 5.19 s | <= 120 s diagnostic gate |
@@ -343,6 +344,11 @@ Gated semantic v5 reranks multi-session questions only when the local top score 
 lifts the composed result to 83.2%. Runtime cost remains $0.000872/question—68.2% below
 v1. Global semantic routing scored one fewer development answer and made 55 more provider
 calls across the two partitions.
+
+Explicit semantic preparation moves document embedding into maintenance. On the measured
+20-case multi-session slice it cuts user-turn p95 33.0% and query embedding tokens 99.99%,
+while increasing total embedding cost 19.7%. It is an agent-harness latency option, not the
+default minimum-cost path.
 
 The opt-in semantic policy addresses the largest measured subtype gap without changing the
 default structured path. It routes explicit recommendation/advice intent through

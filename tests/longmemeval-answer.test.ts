@@ -114,6 +114,8 @@ describe('LongMemEval end-to-end answer evaluation', () => {
       embeddingModel: null,
       embeddingCalls: 0,
       embeddingUsage: null,
+      semanticPreparationCalls: 0,
+      semanticPreparationUsage: null,
     });
     expect(observation.retrieval?.recallAtK).toBe(1);
     expect(observation.context?.recallAtK).toBe(1);
@@ -178,6 +180,7 @@ describe('LongMemEval end-to-end answer evaluation', () => {
         multiSessionTopK: 1,
         contextBytes: 4_096,
         semanticQuestionTypes: new Set(['multi-session']),
+        prepareSemantic: true,
         embeddings: {
           model: 'embedding',
           async embed(inputs) {
@@ -204,8 +207,11 @@ describe('LongMemEval end-to-end answer evaluation', () => {
       retrievalRoute: 'semantic',
       embeddingModel: 'embedding',
       embeddingCalls: 1,
+      semanticPreparationCalls: 1,
       retrievedSessionIds: ['evidence'],
     });
+    expect(observation.semanticPreparationUsage?.costUsd).toBe(0.001);
+    expect(observation.userTurnMs).toBeLessThanOrEqual(observation.totalMs);
   });
 
   it('keeps high-confidence multi-session matches local', async () => {
@@ -288,10 +294,12 @@ describe('LongMemEval end-to-end answer evaluation', () => {
       readerUsage: null,
       judgeUsage: null,
       formationMs: 1,
+      semanticPreparationMs: 0,
       retrievalMs: 0,
       readerMs: 0,
       judgeMs: 0,
       totalMs: 1,
+      userTurnMs: 0,
       error: 'provider unavailable',
     };
     const run = longMemEvalAnswerRun([failed], 'reader', 'judge', {
@@ -300,6 +308,7 @@ describe('LongMemEval end-to-end answer evaluation', () => {
     expect(run).toMatchObject({
       schemaVersion: 'remembero.longmemeval-answer.v1',
       formation: 'durable-raw-session-facts',
+      semanticPreparation: 'cold',
       topK: 4,
       multiSessionTopK: 5,
       temporalTopK: 5,

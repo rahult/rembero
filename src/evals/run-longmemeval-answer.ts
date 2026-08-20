@@ -37,6 +37,7 @@ interface Args {
   questionTypes: Set<string> | undefined;
   semanticQuestionTypes: Set<string>;
   multiSessionSemanticMaximumLexicalScore: number;
+  prepareSemantic: boolean;
   caseIds: Set<string> | undefined;
   json: boolean;
 }
@@ -61,6 +62,7 @@ Options:
   --cases <csv>          Run only the named question IDs
   --semantic-question-types <csv>  Question types eligible for semantic reranking
   --multi-semantic-max-score <n>  Multi-session local-score ceiling for semantic routing
+  --prepare-semantic     Prepare document embeddings before measuring the user turn
   --local-only           Keep every question on local lexical retrieval
   --no-semantic-preferences  Compatibility alias for --local-only
   --json                 Print the complete run instead of its summary
@@ -99,6 +101,7 @@ function parseArgs(argv: string[]): Args {
     semanticQuestionTypes: new Set(DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES),
     multiSessionSemanticMaximumLexicalScore:
       LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE,
+    prepareSemantic: false,
     caseIds: undefined,
     json: false,
   };
@@ -178,6 +181,8 @@ function parseArgs(argv: string[]): Args {
         0,
         10_000
       );
+    } else if (arg === '--prepare-semantic') {
+      args.prepareSemantic = true;
     } else if (arg === '--local-only' || arg === '--no-semantic-preferences') {
       args.semanticQuestionTypes.clear();
     } else if (arg === '--json') args.json = true;
@@ -245,6 +250,7 @@ async function main(): Promise<void> {
       semanticQuestionTypes: args.semanticQuestionTypes,
       multiSessionSemanticMaximumLexicalScore:
         args.multiSessionSemanticMaximumLexicalScore,
+      prepareSemantic: args.prepareSemantic,
     });
     completed++;
     if (!args.json) {
@@ -265,6 +271,7 @@ async function main(): Promise<void> {
     semanticQuestionTypes: args.semanticQuestionTypes,
     multiSessionSemanticMaximumLexicalScore:
       args.multiSessionSemanticMaximumLexicalScore,
+    prepareSemantic: args.prepareSemantic,
   });
   const serialized = stringifyBoundedResult(run, 'LongMemEval answer run');
   if (args.output !== undefined) {
@@ -291,10 +298,13 @@ async function main(): Promise<void> {
     console.log(`retrieval/context recall: ${percent(summary.retrievalRecallAtK)} / ${percent(summary.contextRecallAtK)} (top-k ${args.topK}; multi-session ${args.multiSessionTopK}; temporal ${args.temporalTopK})`);
     console.log(`full/incomplete evidence accuracy: ${percent(summary.fullContextEvidenceAccuracy)} / ${percent(summary.incompleteContextEvidenceAccuracy)}`);
     console.log(`formation p50/p95: ${summary.medianFormationMs.toFixed(1)} / ${summary.p95FormationMs.toFixed(1)} ms`);
-    console.log(`end-to-end p50/p95: ${summary.medianTotalMs.toFixed(1)} / ${summary.p95TotalMs.toFixed(1)} ms`);
+    console.log(`semantic preparation p50/p95: ${summary.medianSemanticPreparationMs.toFixed(1)} / ${summary.p95SemanticPreparationMs.toFixed(1)} ms`);
+    console.log(`user turn p50/p95: ${summary.medianUserTurnMs.toFixed(1)} / ${summary.p95UserTurnMs.toFixed(1)} ms`);
+    console.log(`full lifecycle p50/p95: ${summary.medianTotalMs.toFixed(1)} / ${summary.p95TotalMs.toFixed(1)} ms`);
     console.log(`reader calls/tokens/cost: ${summary.readerUsage.calls} / ${summary.readerUsage.totalTokens} / $${summary.readerUsage.costUsd.toFixed(6)}`);
     console.log(`judge calls/tokens/cost: ${summary.judgeUsage.calls} / ${summary.judgeUsage.totalTokens} / $${summary.judgeUsage.costUsd.toFixed(6)}`);
     console.log(`embedding calls/tokens/cost: ${summary.embeddingUsage.calls} / ${summary.embeddingUsage.totalTokens} / $${summary.embeddingUsage.costUsd.toFixed(6)}`);
+    console.log(`preparation calls/tokens/cost: ${summary.semanticPreparationUsage.calls} / ${summary.semanticPreparationUsage.totalTokens} / $${summary.semanticPreparationUsage.costUsd.toFixed(6)}`);
   }
   if (run.summary.errors > 0) process.exitCode = 1;
 }

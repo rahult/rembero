@@ -419,3 +419,9 @@ most 315. Stronger local matches stay fast and embedding-free. The measured gate
 115 of 133 multi-session questions, reaches 76.7% subtype and 83.2% overall accuracy, and
 costs $0.000872 per answer across the 500-question run. See the
 [v5 evidence](research/results/longmemeval-answer-v5-summary.json).
+
+Treat `prepare_semantic_search` as maintenance, not a hidden part of the next user query.
+The 20-case prepared harness check reduces user-turn p95 from 27.3 to 18.3 seconds and query
+embedding tokens from 1,836,242 to 249. It increases total embedding cost about 19.7%
+because it prepares the whole isolated store. Schedule it after reviewed writes when latency
+matters; skip it when semantic queries are rare and minimum provider cost matters more.
