@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "remembero.longmemeval-v2-fresh-lexical-summary.v2",
+  "measuredAt": "2026-08-20T03:06:58Z",
+  "officialHarness": {
+    "repository": "xiaowu0162/LongMemEval-V2",
+    "commit": "2cc8c540bdb87fe6761629b585e727e1c4704520",
+    "tier": "small",
+    "domain": "enterprise"
+  },
+  "dataset": {
+    "questionsSha256": "0a3ae5ebea938c24d7800e1e0b0828e08ae1646f939a53853b2b8cdc08e292b7",
+    "trajectoriesSha256": "363cec9a8e87aa8d9101ce4e600aadbf7031d674056ebe4f969e8424abc5f3c6",
+    "smallHaystackSha256": "9b5301defb23a088a5f06e45ff8d5f35e569d78305a66d492046a9fff9b46593",
+    "sharedTrajectories": 100,
+    "selectedQuestions": 10,
+    "selection": "fresh text-only enterprise questions with deterministic official scorers, excluding development question 01307e07"
+  },
+  "adapter": {
+    "id": "remembero-local-state-search",
+    "version": 2,
+    "stateChunkCharacters": 4096,
+    "stateChunkOverlap": 512,
+    "maximumStateChunks": 24,
+    "maximumStatesPerTrajectory": 2,
+    "returnedStates": 6,
+    "memoryModelCalls": 0,
+    "memoryEmbeddingCalls": 0,
+    "multimodal": false
+  },
+  "reader": {
+    "model": "qwen/qwen3.5-9b",
+    "provider": "OpenRouter",
+    "temperature": 0.6,
+    "topP": 0.95,
+    "topK": 20
+  },
+  "remembero": {
+    "correct": 3,
+    "questions": 10,
+    "accuracy": 0.3,
+    "staticAccuracy": 0.3333333333333333,
+    "dynamicAccuracy": 0.5,
+    "procedureAccuracy": 0,
+    "unknownRate": 0.6,
+    "memoryQueryAverageMs": 105.51987919025123,
+    "memoryQueryP50Ms": 104.56704196985811,
+    "memoryQueryP95Ms": 132.7550410060212,
+    "averageMemoryContextTokens": 19740.2,
+    "readerPromptTokens": 199328,
+    "readerCompletionTokens": 23973,
+    "readerTotalTokens": 223301,
+    "operationalErrors": 0
+  },
+  "comparison": {
+    "noRetrievalAccuracy": 0,
+    "semanticPreparedAccuracy": 0.6
+  },
+  "evidenceBoundary": {
+    "officialHarnessUsed": true,
+    "officialScorersUsed": true,
+    "llmJudgeUsed": false,
+    "questionImagesUsed": false,
+    "screenshotArchivesDownloaded": false,
+    "statisticalSignificance": false,
+    "leaderboardComparable": false,
+    "reason": "current lexical adapter after deeper chunk coverage and trajectory diversity; ten text-only enterprise questions only"
+  }
+}

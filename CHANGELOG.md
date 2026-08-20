@@ -74,9 +74,14 @@ uses a state-level BM25 shortlist plus Remembero local chunk scoring, and confor
 official metadata-private `insert/query` interface. On ten fresh text-only enterprise
 questions it improves the fixed reader from 0/10 to 3/10 at 121 ms memory-query p95 with
 zero memory provider calls; multimodal and leaderboard claims remain explicitly out of scope.
-The same frozen adapter now has a 50-question text-only enterprise expansion at 10/50 and
-122 ms memory-query p95, with zero operational errors. The result remains a pilot because
+The original v1 frozen adapter has a 50-question text-only enterprise expansion at 10/50 and
+122 ms memory-query p95, with zero operational errors; it remains historical after the v2
+chunk/diversity pass. The result remains a pilot because
 web, multimodal, abstention, gotcha, and medium-tier questions are not yet covered.
+Adds an opt-in prepared state-semantic LongMemEval-V2 lane using the existing 0.6B
+embedding client. On the same ten-question pilot it reaches 6/10 versus the lexical
+3/10, with 512 ms memory-query p95; 46.8 s maintenance and $0.005382 embedding cost are
+reported separately from the user turn and the zero-provider-cost default.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

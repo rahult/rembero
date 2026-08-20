@@ -1,0 +1,13 @@
+{
+  "memory_type": "remembero",
+  "memory_params": {
+    "top_k": 6,
+    "source_characters": 16384,
+    "context_characters": 12000,
+    "semantic_enabled": true,
+    "semantic_level": "state",
+    "semantic_summary_characters": 1400,
+    "semantic_top_results": 100,
+    "semantic_prepare_after_inserts": 100
+  }
+}

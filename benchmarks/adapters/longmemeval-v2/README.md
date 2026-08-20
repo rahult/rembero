@@ -4,13 +4,29 @@ This adapter implements the official `Memory.insert` / `Memory.query` contract a
 LongMemEval-V2 revision `2cc8c540bdb87fe6761629b585e727e1c4704520`.
 
 Each trajectory state becomes one sourced Remembero fact in a persistent Node sidecar.
-`query` runs bounded local source search and returns at most six text evidence items. The
+`query` runs bounded local source search, keeps at most two states per trajectory, and
+returns at most six text evidence items. The
 backend receives only the official trajectory objects and question text/image path; it never
 receives question IDs, types, gold answers, or evaluator configuration.
 
 The first evidence lane is text-only. It indexes goals, outcomes, URLs, actions, thoughts,
 and accessibility trees, and explicitly reports when a question image was ignored. It does
 not claim multimodal support.
+
+The default lane is lexical-only: zero model calls, zero embedding calls, and zero provider
+cost. For accuracy-sensitive deployments, the checked-in
+`memory_config.semantic.json` enables a prepared state-level semantic index. It embeds
+bounded 1,400-character state summaries after the configured 100 inserts, then uses one
+query embedding plus local lexical/proof ranking. Maintenance time and provider usage are
+reported separately from user-turn retrieval; the semantic lane never establishes answer
+authority, and summaries pass the same sensitive-text redaction boundary before leaving the
+process.
+
+On the same ten-question official pilot, the prepared semantic lane scored 6/10 versus 3/10
+for the lexical pilot, with 0.51 s memory-query p95. Its measured one-time maintenance was
+46.8 s for 3,358 states and $0.00538 embedding cost for the shared 100-trajectory haystack.
+These are pilot measurements, not universal guarantees; use the lexical config when the
+provider boundary or maintenance budget is unacceptable.
 
 Run through the pinned official harness after building Remembero with Python 3.11, the
 official requirements, and CPU-appropriate Torch/Torchvision packages. The official Qwen

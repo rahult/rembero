@@ -28,9 +28,24 @@ class RememberoMemory(Memory):
         self.top_k = int(memory_params.get("top_k", 6))
         self.source_characters = int(memory_params.get("source_characters", 16384))
         self.context_characters = int(memory_params.get("context_characters", 12000))
+        self.semantic_enabled = bool(memory_params.get("semantic_enabled", False))
+        self.semantic_level = str(memory_params.get("semantic_level", "trajectory"))
+        self.semantic_summary_characters = int(
+            memory_params.get("semantic_summary_characters", 6000)
+        )
+        self.semantic_top_results = int(
+            memory_params.get("semantic_top_results", 32)
+        )
+        self.semantic_prepare_after_inserts = int(
+            memory_params.get("semantic_prepare_after_inserts", 0)
+        )
         require(1 <= self.top_k <= 100, "top_k must be from 1 to 100")
         require(1 <= self.source_characters <= 32768, "source_characters must be from 1 to 32768")
         require(256 <= self.context_characters <= 32768, "context_characters must be from 256 to 32768")
+        require(self.semantic_level in {"trajectory", "state"}, "semantic_level must be trajectory or state")
+        require(512 <= self.semantic_summary_characters <= 16384, "semantic_summary_characters must be from 512 to 16384")
+        require(1 <= self.semantic_top_results <= 100, "semantic_top_results must be from 1 to 100")
+        require(0 <= self.semantic_prepare_after_inserts <= 500, "semantic_prepare_after_inserts must be from 0 to 500")
         self._lock = threading.Lock()
         self._last_metadata: dict[str, object] = {}
         self._process = subprocess.Popen(
@@ -41,6 +56,16 @@ class RememberoMemory(Memory):
             text=True,
             bufsize=1,
         )
+        self._call({
+            "op": "configure",
+            "semantic": {
+                "enabled": self.semantic_enabled,
+                "level": self.semantic_level,
+                "summaryCharacters": self.semantic_summary_characters,
+                "topResults": self.semantic_top_results,
+                "prepareAfterInserts": self.semantic_prepare_after_inserts,
+            },
+        })
         atexit.register(self.close)
 
     def _call(self, payload: dict[str, object]) -> dict[str, Any]:

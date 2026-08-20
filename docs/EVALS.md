@@ -33,11 +33,18 @@ See the [current scorecard, gates, and evidence boundary](AGENT-DATABASE-SCORECA
 
 The pinned official adapter consumes browser-agent trajectories through the benchmark's
 `Memory.insert` / `Memory.query` interface and returns bounded Remembero state evidence.
-On ten fresh text-only enterprise questions with deterministic official scorers, Remembero
-improves the fixed Qwen3.5-9B reader from 0/10 without retrieval to 3/10. Memory-query p95
-is 121 ms with zero memory model or embedding calls. A frozen 50-question expansion scores
-10/50 (20.0%) at 122 ms memory-query p95. This is not a leaderboard claim; see the
+On ten fresh text-only enterprise questions with deterministic official scorers, the
+original Remembero pilot improved the fixed Qwen3.5-9B reader from 0/10 without retrieval
+to 3/10. Its memory-query p95 was 121 ms with zero memory model or embedding calls. The
+current lexical v2 pilot remains 3/10 at 133 ms p95. The original v1 frozen 50-question
+expansion scored 10/50 (20.0%) at 122 ms memory-query p95; it is retained as historical
+v1 evidence. This is not a leaderboard claim; see the
 [contract and limits](research/LONGMEMEVAL-V2.md).
+
+The opt-in prepared state-semantic lane scores 6/10 on the same ten-question selection,
+with 512 ms memory-query p95, 46.8 s one-time maintenance for 3,358 states, and $0.005382
+embedding cost for the shared 100-trajectory haystack. It is reported as a separate
+accuracy/cost operating point rather than blended into the zero-provider-cost lexical result.
 
 ## LongMemEval-S source retrieval
 

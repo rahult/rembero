@@ -58,10 +58,14 @@ it spends about 19.7% more total embedding cost, so use it when latency matters 
 minimum provider spend.
 
 The separate pinned LongMemEval-V2 adapter runs through the official agentic-memory harness.
-Its first fresh text-only enterprise pilot improves Qwen3.5-9B from 0/10 without retrieval
-to 3/10 with 121 ms memory-query p95 and zero memory provider calls. A frozen 50-question
-expansion scores 10/50 at 122 ms p95. See the
+Its original fresh text-only enterprise pilot improved Qwen3.5-9B from 0/10 without retrieval
+to 3/10 with 121 ms memory-query p95 and zero memory provider calls. The current lexical v2
+pilot remains 3/10 at 133 ms p95. The original v1
+50-question expansion scored 10/50 at 122 ms p95. See the
 [fresh pilot boundary](docs/research/LONGMEMEVAL-V2.md); it is not a leaderboard claim.
+The opt-in prepared state-semantic lane reaches 6/10 on the same ten-question pilot at
+512 ms memory-query p95, with 46.8 s maintenance and $0.005382 embedding cost for the
+shared 100-trajectory haystack; it remains separate from the zero-provider-cost default.
 
 ## Try the real web console
 
