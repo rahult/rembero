@@ -50,6 +50,7 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Fresh agentic lexical v2 speed | LongMemEval-V2 memory-query p95 | 133 ms | zero provider calls |
 | Fresh agentic expansion (v1 historical) | LongMemEval-V2 Remembero accuracy | 20% | 50 text-only questions |
 | Fresh agentic semantic lane | LongMemEval-V2 prepared state-semantic accuracy | 60% | 10 text-only questions |
+| Fresh agentic semantic expansion | LongMemEval-V2 prepared state-semantic accuracy | 36% | 50 text-only questions; no same-question control |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
 | Speed | MCP process startup | 93.74 ms | diagnostic |
@@ -66,6 +67,7 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | Natural-language cost | Recall, Luna, 26 cases | $0.016735 total / $0.000644 avg | measured |
 | Natural-language cost | Extraction, Luna, 15 cases | $0.003306 total / $0.000220 avg | measured |
 | Fresh semantic maintenance | LongMemEval-V2 state index | 46.8 s / $0.005382 | 3,358 states; measured outside user turn |
+| Fresh semantic expansion maintenance | LongMemEval-V2 state index | 43.8 s / $0.005221 | 3,358 states; measured outside user turn |
 | Ease | Setup commands | 2 | contract |
 | Ease | Discovered MCP tools | 36 | includes required read tools |
 | Preference retrieval | LongMemEval-S Recall@5 | 43.3% → 73.3% | measured semantic policy |

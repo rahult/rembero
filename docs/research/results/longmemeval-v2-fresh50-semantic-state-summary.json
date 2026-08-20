@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "remembero.longmemeval-v2-fresh-semantic-state-summary.v1",
+  "measuredAt": "2026-08-20T04:46:43Z",
+  "officialHarness": {
+    "repository": "xiaowu0162/LongMemEval-V2",
+    "commit": "2cc8c540bdb87fe6761629b585e727e1c4704520",
+    "tier": "small",
+    "domain": "enterprise"
+  },
+  "dataset": {
+    "questionsSha256": "0a3ae5ebea938c24d7800e1e0b0828e08ae1646f939a53853b2b8cdc08e292b7",
+    "trajectoriesSha256": "363cec9a8e87aa8d9101ce4e600aadbf7031d674056ebe4f969e8424abc5f3c6",
+    "smallHaystackSha256": "9b5301defb23a088a5f06e45ff8d5f35e569d78305a66d492046a9fff9b46593",
+    "sharedTrajectories": 100,
+    "selectedQuestions": 50,
+    "selection": "fresh text-only enterprise questions with deterministic official scorers, excluding development question 01307e07"
+  },
+  "adapter": {
+    "id": "remembero-local-state-search-semantic-prepared",
+    "version": 1,
+    "stateChunkCharacters": 4096,
+    "stateChunkOverlap": 512,
+    "maximumStateChunks": 24,
+    "returnedStates": 6,
+    "maximumStatesPerTrajectory": 2,
+    "semanticLevel": "state",
+    "semanticModel": "pplx-embed-v1-0.6b",
+    "semanticSummaryCharacters": 1400,
+    "semanticPrepareAfterInserts": 100,
+    "memoryModelCalls": 0,
+    "memoryEmbeddingCalls": 118,
+    "memoryEmbeddingTokens": 1305314,
+    "memoryEmbeddingCostUsd": 0.005221256,
+    "multimodal": false
+  },
+  "maintenance": {
+    "stateCount": 3358,
+    "indexMilliseconds": 43818.0,
+    "measuredOutsideUserTurn": true
+  },
+  "reader": {
+    "model": "qwen/qwen3.5-9b",
+    "provider": "OpenRouter",
+    "temperature": 0.6,
+    "topP": 0.95,
+    "topK": 20,
+    "maxConcurrentRequests": 4
+  },
+  "remembero": {
+    "correct": 18,
+    "questions": 50,
+    "accuracy": 0.36,
+    "staticAccuracy": 0.3793103448275862,
+    "dynamicAccuracy": 0.1,
+    "procedureAccuracy": 0.5454545454545454,
+    "unknownRate": 0.38,
+    "memoryQueryAverageMs": 410.7517365773674,
+    "memoryQueryP50Ms": 409.34804105199873,
+    "memoryQueryP95Ms": 503.2565420260653,
+    "averageMemoryContextTokens": 21059.74,
+    "readerPromptTokens": 1063019,
+    "readerCompletionTokens": 204460,
+    "readerTotalTokens": 1267479,
+    "operationalErrors": 0
+  },
+  "comparison": {
+    "historicalLexicalV1Accuracy": 0.2,
+    "sameQuestionNoRetrievalRun": false,
+    "tenQuestionPreparedSemanticAccuracy": 0.6
+  },
+  "evidenceBoundary": {
+    "officialHarnessUsed": true,
+    "officialScorersUsed": true,
+    "llmJudgeUsed": false,
+    "questionImagesUsed": false,
+    "screenshotArchivesDownloaded": false,
+    "statisticalSignificance": false,
+    "leaderboardComparable": false,
+    "reason": "fresh text-only enterprise expansion with prepared state semantics; no same-question no-retrieval control, web, multimodal, abstention, gotcha, or medium-tier coverage"
+  }
+}

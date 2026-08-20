@@ -66,6 +66,9 @@ pilot remains 3/10 at 133 ms p95. The original v1
 The opt-in prepared state-semantic lane reaches 6/10 on the same ten-question pilot at
 512 ms memory-query p95, with 46.8 s maintenance and $0.005382 embedding cost for the
 shared 100-trajectory haystack; it remains separate from the zero-provider-cost default.
+On the frozen 50-question expansion, the same prepared lane scores 18/50 (36.0%) at
+503 ms memory-query p95, with $0.005221 embedding cost and no same-question no-retrieval
+control.
 
 ## Try the real web console
 

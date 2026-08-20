@@ -85,6 +85,16 @@ made.
 The machine-readable result is
 [`results/longmemeval-v2-fresh10-semantic-state-summary.json`](results/longmemeval-v2-fresh10-semantic-state-summary.json).
 
+The same prepared semantic configuration was then run on the frozen 50-question expansion.
+It scored 18/50 (36.0%) with 37.9% static, 10.0% dynamic, and 54.5% procedure accuracy.
+Memory-query p95 was 503 ms; maintenance took 43.8 seconds and total embedding cost was
+$0.005221 for 3,358 states. The run had zero operational errors. This expansion has no
+same-question no-retrieval control, so it is a generalization measurement rather than a
+causal lift claim.
+
+The machine-readable result is
+[`results/longmemeval-v2-fresh50-semantic-state-summary.json`](results/longmemeval-v2-fresh50-semantic-state-summary.json).
+
 This is an accuracy/cost operating point, not a default replacement: it requires an
 embedding provider, has a maintenance phase, and has only ten questions of evidence. The
 lexical path remains the zero-provider-cost baseline.
@@ -92,8 +102,8 @@ lexical path remains the zero-provider-cost baseline.
 ## Evidence boundary
 
 These results prove that the adapter conforms to the official privacy boundary and that a
-prepared state-semantic operating point improves the same reader from 3/10 lexical to 6/10
-on one fresh text-only subset. They do not establish:
+prepared state-semantic operating point reaches 6/10 on the ten-question pilot and 18/50
+on the larger fresh text-only expansion. They do not establish:
 
 - leaderboard performance or statistical significance;
 - web-domain, medium-tier, screenshot, or multimodal quality;

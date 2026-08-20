@@ -82,6 +82,9 @@ Adds an opt-in prepared state-semantic LongMemEval-V2 lane using the existing 0.
 embedding client. On the same ten-question pilot it reaches 6/10 versus the lexical
 3/10, with 512 ms memory-query p95; 46.8 s maintenance and $0.005382 embedding cost are
 reported separately from the user turn and the zero-provider-cost default.
+The same prepared lane reaches 18/50 on the frozen 50-question expansion at 503 ms
+memory-query p95, with $0.005221 embedding cost; no same-question no-retrieval control is
+claimed for this expansion.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

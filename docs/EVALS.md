@@ -45,6 +45,10 @@ The opt-in prepared state-semantic lane scores 6/10 on the same ten-question sel
 with 512 ms memory-query p95, 46.8 s one-time maintenance for 3,358 states, and $0.005382
 embedding cost for the shared 100-trajectory haystack. It is reported as a separate
 accuracy/cost operating point rather than blended into the zero-provider-cost lexical result.
+The same prepared lane scores 18/50 (36.0%) on the frozen expansion at 503 ms memory-query
+p95, with 43.8 s maintenance and $0.005221 embedding cost. There is no same-question
+no-retrieval control for those 50 questions, so this is generalization evidence rather than
+a causal comparison.
 
 ## LongMemEval-S source retrieval
 
