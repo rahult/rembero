@@ -413,3 +413,9 @@ Temporal reasoning uses the same top-five budget. Complete temporal development 
 validation runs improve from 71.4% to 79.7% with no additional provider call. The
 [adaptive v4 result](research/results/longmemeval-answer-v4-summary.json) reaches 79.8%
 overall accuracy at $0.000786 runtime cost per question.
+
+For multi-session synthesis, call semantic retrieval only when the best local score is at
+most 315. Stronger local matches stay fast and embedding-free. The measured gate routes
+115 of 133 multi-session questions, reaches 76.7% subtype and 83.2% overall accuracy, and
+costs $0.000872 per answer across the 500-question run. See the
+[v5 evidence](research/results/longmemeval-answer-v5-summary.json).

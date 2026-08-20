@@ -214,7 +214,15 @@ describe('LongMemEval end-to-end answer evaluation', () => {
     const observation = await evaluateLongMemEvalAnswerInstance(
       instance({
         question_type: 'multi-session',
-        question: 'My degree was in Business Administration.',
+        question: 'My university degree was Business Administration.',
+        haystack_sessions: [
+          [{ role: 'user', content: 'Compare credit card rewards for travel.' }],
+          [{
+            role: 'user',
+            content: 'My university degree was Business Administration.',
+            has_answer: true,
+          }],
+        ],
       }),
       reader,
       judge,

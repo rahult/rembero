@@ -61,6 +61,10 @@ Temporal reasoning now also receives five sessions while ordinary questions rema
 Complete temporal runs improve the subtype from 71.4% to 79.7% and lift the composed
 post-hoc score to 79.8% at $0.000786 runtime provider cost per question, without another
 model or embedding call.
+Multi-session semantic reranking is now gated by a deterministic local top-score ceiling of
+315. Under role-aware top-five context it raises multi-session accuracy from 63.9% to 76.7%
+and the composed post-hoc score from 79.8% to 83.2%. The gate avoids 18 high-confidence
+local cases and 55 provider calls relative to global semantic routing.
 Adds a clean-install gate that packs the current package, installs it with lifecycle scripts
 disabled into a fresh directory and empty npm cache, then times a real first write and
 proof-carrying query with model credentials scrubbed.

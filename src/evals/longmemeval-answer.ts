@@ -39,9 +39,10 @@ export const DEFAULT_LONGMEMEVAL_TEMPORAL_TOP_K = 5;
 export const DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES = 56 * 1024;
 export const MAX_LONGMEMEVAL_ANSWER_CONTEXT_BYTES = 60 * 1024;
 export const LONGMEMEVAL_ANSWER_SOURCE_CHARACTERS = 16_384;
-export const LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE = 135;
+export const LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE = 315;
 export const DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES = new Set([
   'single-session-preference',
+  'multi-session',
 ]);
 
 export interface LongMemEvalCompletionClient {
@@ -326,6 +327,7 @@ export async function evaluateLongMemEvalAnswerInstance(
     contextBytes?: number;
     embeddings?: EmbeddingClient;
     semanticQuestionTypes?: ReadonlySet<string>;
+    multiSessionSemanticMaximumLexicalScore?: number;
   } = {}
 ): Promise<LongMemEvalAnswerObservation> {
   const topK = options.topK ?? DEFAULT_LONGMEMEVAL_ANSWER_TOP_K;
@@ -336,6 +338,16 @@ export async function evaluateLongMemEvalAnswerInstance(
       : topK;
   const contextBytes = options.contextBytes ?? DEFAULT_LONGMEMEVAL_ANSWER_CONTEXT_BYTES;
   validateOptions(effectiveTopK, contextBytes);
+  const multiSessionSemanticMaximumLexicalScore =
+    options.multiSessionSemanticMaximumLexicalScore ??
+    LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE;
+  if (
+    !Number.isFinite(multiSessionSemanticMaximumLexicalScore) ||
+    multiSessionSemanticMaximumLexicalScore < 0 ||
+    multiSessionSemanticMaximumLexicalScore > 10_000
+  ) {
+    throw new Error('multi-session semantic maximum lexical score must be from 0 to 10000');
+  }
   const root = mkdtempSync(join(tmpdir(), 'remembero-longmemeval-answer-'));
   const started = performance.now();
   let formationMs = 0;
@@ -407,7 +419,7 @@ export async function evaluateLongMemEvalAnswerInstance(
           isRecommendationIntent(instance.question)) ||
         (instance.question_type === 'multi-session' &&
           (lexical.results[0]?.score ?? 0) <=
-            LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE)
+            multiSessionSemanticMaximumLexicalScore)
       );
     let search: KnowledgeSearchResult | SemanticKnowledgeSearchResult;
     if (useSemantic) {
@@ -625,6 +637,7 @@ export function longMemEvalAnswerRun(
     selection?: 'dev' | 'test' | 'all';
     sha256?: string;
     semanticQuestionTypes?: ReadonlySet<string>;
+    multiSessionSemanticMaximumLexicalScore?: number;
   } = {}
 ): LongMemEvalAnswerRun {
   const topK = options.topK ?? DEFAULT_LONGMEMEVAL_ANSWER_TOP_K;
@@ -659,6 +672,7 @@ export function longMemEvalAnswerRun(
       ...(options.semanticQuestionTypes ?? DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES),
     ].sort(),
     multiSessionSemanticMaximumLexicalScore:
+      options.multiSessionSemanticMaximumLexicalScore ??
       LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE,
     topK,
     multiSessionTopK,

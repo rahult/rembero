@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "remembero.longmemeval-answer-summary.v5",
+  "dataset": {
+    "id": "xiaowu0162/longmemeval-cleaned",
+    "commit": "98d7416c24c778c2fee6e6f3006e7a073259d48f",
+    "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+    "questions": 500,
+    "validationStatus": "post-hoc; multi-session semantic threshold selected on development and applied to complete validation observations"
+  },
+  "policy": {
+    "topK": 4,
+    "multiSessionTopK": 5,
+    "temporalTopK": 5,
+    "multiSessionSemanticMaximumLexicalScore": 315,
+    "sourceCharacters": 16384,
+    "contextBytes": 57344,
+    "answerContext": "user turns except single-session-assistant questions, which retain both roles",
+    "semanticQuestionTypes": ["multi-session", "single-session-preference"],
+    "readerModel": "openai/gpt-5.6-luna",
+    "embeddingModel": "perplexity/pplx-embed-v1-0.6b",
+    "judgeModel": "openai/gpt-4o-2024-08-06"
+  },
+  "development": {
+    "questions": 261,
+    "correct": 224,
+    "accuracy": 0.8582375478927203,
+    "errors": 0,
+    "retrievalRecall": 0.9028236914600551,
+    "fullContextEvidenceAccuracy": 0.9365853658536586,
+    "incompleteContextEvidenceAccuracy": 0.5714285714285714,
+    "abstentionAccuracy": 0.9473684210526315,
+    "readerTokens": 696452,
+    "readerCostUsd": 0.19541459999999986,
+    "embeddingCalls": 209,
+    "embeddingCostUsd": 0.028204323999999996,
+    "judgeCostUsd": 0.08332250000000004,
+    "medianTotalMs": 12606.987916999962,
+    "p95TotalMs": 38397.09379200003
+  },
+  "validation": {
+    "questions": 239,
+    "correct": 192,
+    "accuracy": 0.803347280334728,
+    "errors": 0,
+    "retrievalRecall": 0.8914473684210528,
+    "fullContextEvidenceAccuracy": 0.9037433155080213,
+    "incompleteContextEvidenceAccuracy": 0.4423076923076923,
+    "abstentionAccuracy": 0.7272727272727273,
+    "readerTokens": 664385,
+    "readerCostUsd": 0.18612765000000003,
+    "embeddingCalls": 193,
+    "embeddingCostUsd": 0.026154332000000006,
+    "judgeCostUsd": 0.07752,
+    "medianTotalMs": 13587.850666999992,
+    "p95TotalMs": 56732.364541999996
+  },
+  "combined": {
+    "questions": 500,
+    "correct": 416,
+    "accuracy": 0.832,
+    "errors": 0,
+    "retrievalRecall": 0.8973049645390072,
+    "fullContextEvidenceAccuracy": 0.9209183673469388,
+    "incompleteContextEvidenceAccuracy": 0.5092592592592593,
+    "abstentionAccuracy": 0.8666666666666667,
+    "readerTokens": 1360837,
+    "readerCostUsd": 0.3815422499999993,
+    "embeddingCalls": 402,
+    "embeddingTokens": 13589664,
+    "embeddingCostUsd": 0.05435865599999998,
+    "runtimeProviderCostUsd": 0.4359009059999993,
+    "runtimeProviderCostPerQuestionUsd": 0.0008718018119999986,
+    "judgeCostUsd": 0.16084250000000014,
+    "totalMeasuredCostUsd": 0.5967434059999995,
+    "medianTotalMs": 13341.279332999984,
+    "p95TotalMs": 55448.493625
+  },
+  "multiSession": {
+    "questions": 133,
+    "correct": 102,
+    "accuracy": 0.7669172932330827,
+    "retrievalRecall": 0.9298898071625346,
+    "fullContextEvidenceAccuracy": 0.8888888888888888,
+    "incompleteContextEvidenceAccuracy": 0.4117647058823529,
+    "abstentionAccuracy": 0.8333333333333334,
+    "semanticRoutedQuestions": 115,
+    "embeddingCalls": 316,
+    "embeddingCostUsd": 0.041494931999999984,
+    "medianTotalMs": 18191.508333000005,
+    "p95TotalMs": 22371.510374999998
+  },
+  "temporalReasoning": {
+    "questions": 133,
+    "correct": 106,
+    "accuracy": 0.7969924812030075,
+    "retrievalRecall": 0.8087926509186353,
+    "abstentionAccuracy": 1
+  },
+  "comparison": {
+    "versusV1AccuracyPoints": 7.799999999999996,
+    "versusV1RuntimeCostReduction": 0.6820845748844501,
+    "versusV1ReaderTokenReduction": 0.7486974468221839,
+    "versusV4AccuracyPoints": 3.399999999999992,
+    "versusV4MultiSessionAccuracyPoints": 12.781954887218038
+  },
+  "thresholdSelection": [
+    { "maximumLexicalScore": 135, "routedDevelopment": 4, "correctDevelopment": 52 },
+    { "maximumLexicalScore": 270, "routedDevelopment": 52, "correctDevelopment": 53 },
+    { "maximumLexicalScore": 315, "routedDevelopment": 60, "correctDevelopment": 56 },
+    { "maximumLexicalScore": 10000, "routedDevelopment": 69, "correctDevelopment": 55 }
+  ],
+  "evidenceBoundary": {
+    "composedFromCompleteRuns": true,
+    "liveModelVariance": true,
+    "validationUsedForTuning": true,
+    "upstreamPythonJudgeRun": false,
+    "externalSystemComparison": false,
+    "coldSemanticLatency": true
+  }
+}

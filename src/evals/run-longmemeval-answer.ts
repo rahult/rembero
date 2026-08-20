@@ -10,6 +10,7 @@ import {
   DEFAULT_LONGMEMEVAL_ANSWER_TOP_K,
   DEFAULT_LONGMEMEVAL_MULTI_SESSION_TOP_K,
   DEFAULT_LONGMEMEVAL_TEMPORAL_TOP_K,
+  LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE,
   DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES,
   MAX_LONGMEMEVAL_ANSWER_CONTEXT_BYTES,
   evaluateLongMemEvalAnswerInstance,
@@ -35,6 +36,7 @@ interface Args {
   hypotheses: string | undefined;
   questionTypes: Set<string> | undefined;
   semanticQuestionTypes: Set<string>;
+  multiSessionSemanticMaximumLexicalScore: number;
   caseIds: Set<string> | undefined;
   json: boolean;
 }
@@ -58,6 +60,7 @@ Options:
   --question-types <csv> Run only the named question types
   --cases <csv>          Run only the named question IDs
   --semantic-question-types <csv>  Question types eligible for semantic reranking
+  --multi-semantic-max-score <n>  Multi-session local-score ceiling for semantic routing
   --local-only           Keep every question on local lexical retrieval
   --no-semantic-preferences  Compatibility alias for --local-only
   --json                 Print the complete run instead of its summary
@@ -94,6 +97,8 @@ function parseArgs(argv: string[]): Args {
     hypotheses: undefined,
     questionTypes: undefined,
     semanticQuestionTypes: new Set(DEFAULT_LONGMEMEVAL_SEMANTIC_QUESTION_TYPES),
+    multiSessionSemanticMaximumLexicalScore:
+      LONGMEMEVAL_MULTI_SEMANTIC_MAX_LEXICAL_SCORE,
     caseIds: undefined,
     json: false,
   };
@@ -166,6 +171,13 @@ function parseArgs(argv: string[]): Args {
         throw new Error('--semantic-question-types needs at least one value');
       }
       args.semanticQuestionTypes = new Set(values);
+    } else if (arg === '--multi-semantic-max-score') {
+      args.multiSessionSemanticMaximumLexicalScore = boundedInteger(
+        requiredValue(argv, index++, arg),
+        arg,
+        0,
+        10_000
+      );
     } else if (arg === '--local-only' || arg === '--no-semantic-preferences') {
       args.semanticQuestionTypes.clear();
     } else if (arg === '--json') args.json = true;
@@ -231,6 +243,8 @@ async function main(): Promise<void> {
       contextBytes: args.contextBytes,
       ...(embeddings === undefined ? {} : { embeddings }),
       semanticQuestionTypes: args.semanticQuestionTypes,
+      multiSessionSemanticMaximumLexicalScore:
+        args.multiSessionSemanticMaximumLexicalScore,
     });
     completed++;
     if (!args.json) {
@@ -249,6 +263,8 @@ async function main(): Promise<void> {
     selection: args.split,
     sha256: loaded.sha256,
     semanticQuestionTypes: args.semanticQuestionTypes,
+    multiSessionSemanticMaximumLexicalScore:
+      args.multiSessionSemanticMaximumLexicalScore,
   });
   const serialized = stringifyBoundedResult(run, 'LongMemEval answer run');
   if (args.output !== undefined) {

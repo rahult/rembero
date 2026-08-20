@@ -42,7 +42,10 @@ post-hoc run improves overall accuracy to 77.0% while cutting reader tokens 76.7
 reader-plus-embedding cost to $0.000645/question. Adaptive v3 uses top five only for
 multi-session questions, reaching 77.6% overall and 63.9% multi-session accuracy at
 $0.000760/question. V4 also uses top five for temporal reasoning, reaching 79.8% overall
-and 79.7% temporal accuracy at $0.000786/question. Its
+and 79.7% temporal accuracy at $0.000786/question. V5 routes multi-session questions
+through semantic reranking only when the local top score
+is at most 315. It reaches 83.2% overall and 76.7% multi-session accuracy at
+$0.000872/question—still 68.2% below v1 runtime cost. Its
 [method, evidence split, and limitations](docs/research/LONGMEMEVAL.md) are public.
 For fuzzy recommendations, the opt-in [`semantic_search_knowledge`](docs/SEMANTIC-KNOWLEDGE-SEARCH.md)
 tool reranks a bounded local shortlist, reports provider cost, and caches document vectors

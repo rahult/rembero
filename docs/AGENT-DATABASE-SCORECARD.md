@@ -39,9 +39,11 @@ Measured on this checkout with ten engine repetitions and one fresh MCP process:
 | End-to-end memory | Role-aware v2 overall / post-hoc validation | 77.0% / 72.8% | measured live |
 | End-to-end memory | Adaptive v3 overall / multi-session | 77.6% / 63.9% | composed live runs |
 | End-to-end memory | Adaptive v4 overall / temporal | 79.8% / 79.7% | composed live runs |
+| End-to-end memory | Gated semantic v5 overall / multi-session | 83.2% / 76.7% | composed live runs |
 | End-to-end memory | V4 complete / incomplete evidence accuracy | 92.9% / 44.9% | composed live runs |
 | End-to-end cost | Adaptive v3 runtime, 500 questions | $0.379880 / $0.000760 avg | composed live runs |
 | End-to-end cost | Adaptive v4 runtime, 500 questions | $0.392863 / $0.000786 avg | composed live runs |
+| End-to-end cost | Gated semantic v5 runtime, 500 questions | $0.435901 / $0.000872 avg | composed live runs |
 | End-to-end formation | Durable raw-session formation p95 | 183 ms | measured |
 | Speed | Engine p50 | 0.03 ms | diagnostic |
 | Speed | Engine p95 | 0.54 ms | <= 25 ms |
@@ -336,6 +338,12 @@ Adaptive v4 also uses top five for temporal reasoning. Complete temporal runs im
 subtype from 71.4% to 79.7%, lifting the composed score to 79.8%. Runtime cost remains
 $0.000786/question—71.3% below v1—with no extra model or embedding call.
 
+Gated semantic v5 reranks multi-session questions only when the local top score is at most
+315. It routes 115/133 questions, raises multi-session accuracy from 63.9% to 76.7%, and
+lifts the composed result to 83.2%. Runtime cost remains $0.000872/question—68.2% below
+v1. Global semantic routing scored one fewer development answer and made 55 more provider
+calls across the two partitions.
+
 The opt-in semantic policy addresses the largest measured subtype gap without changing the
 default structured path. It routes explicit recommendation/advice intent through
 `semantic_search_knowledge`, which reranks at most 100 locally shortlisted sources and
@@ -380,8 +388,8 @@ This scorecard does not yet prove:
   durable raw-session facts and sources rather than model-extracted semantic facts;
 - statistical superiority over another memory system under the same LongMemEval reader,
   judge, prompt, and provider revision;
-- strong multi-session synthesis—the current v2 result is 61.7% on that subtype,
-  versus 90%+ on the three single-session subtypes;
+- strong multi-session synthesis—the current v5 result is 76.7% on that subtype,
+  still below the 90%+ single-session results;
 - repeated and memory-bounded performance beyond the current one-million-fact gate;
 - managed-service availability or multi-tenant operations;
 - natural-language cost stability across provider revisions and workloads beyond the

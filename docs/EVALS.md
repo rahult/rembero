@@ -82,6 +82,11 @@ temporal runs raise that subtype from 71.4% to 79.7%, producing a composed 79.8%
 score. Runtime provider cost remains $0.000786/question and no additional model or
 embedding call is introduced.
 
+Gated semantic v5 reranks multi-session questions only when the local top score is at most
+315. It routes 115 of 133 multi-session questions, reaches 76.7% multi-session and 83.2%
+overall accuracy, and raises combined retrieval Recall to 89.7%. Runtime provider cost is
+$0.000872/question; the semantic latency is a cold isolated-corpus measurement.
+
 ## Structured-memory comparison
 
 The v0.54 benchmark separates exact answers, answerability, ranked evidence retrieval,

@@ -169,6 +169,23 @@ validation accuracy. Reader plus embedding cost is $0.392863, or $0.000786/quest
 below v1—and no extra provider call is added. See the
 [v4 machine-readable evidence](results/longmemeval-answer-v4-summary.json).
 
+## Gated multi-session semantic result v5
+
+Semantic multi-session retrieval was re-tested under role-aware top-five context. Global
+semantic routing reaches 55/69 development and 46/64 validation answers, unlike the earlier
+full-transcript experiment where higher Recall did not improve answers. A deterministic
+local-score gate performs better: rerank only when the local leader scores at most 315.
+
+The gate routes 60/69 development and 55/64 validation questions. It produces 56/69 and
+46/64 correct answers, saves 55 embedding calls versus global routing, and raises combined
+multi-session accuracy from 63.9% to 76.7%. Multi-session Recall reaches 93.0%.
+
+The composed v5 policy reaches 416/500 (83.2%), with 85.8% development and 80.3% post-hoc
+validation accuracy. Runtime reader-plus-embedding cost is $0.435901, or
+$0.000872/question—68.2% below v1. The semantic timing is cold: every isolated benchmark
+case recomputes document vectors; a prepared long-lived harness pays only for the query
+embedding. See the [v5 evidence](results/longmemeval-answer-v5-summary.json).
+
 ## What is actually indexed
 
 Each LongMemEval session is represented by one opaque `longmem_session(session_N).` carrier
@@ -240,8 +257,8 @@ live raw-session formation and QA evidence, but it does not establish:
 - superiority over another memory product under the same reader, judge, and policy;
 - deterministic generation or judging—one development preference slice moved between
   repeated temperature-zero runs, so live-model variance remains real;
-- reliable multi-session aggregation or learned abstention confidence—v3 still reaches
-  only 63.9% on multi-session questions;
+- reliable multi-session aggregation or learned abstention confidence—v5 reaches 76.7%
+  multi-session accuracy but remains below the single-session results;
 - hosted, concurrent, multi-tenant, or sustained-provider performance.
 
 The held-out run initially contained one provider HTTP 400 caused by a lone UTF-16 high

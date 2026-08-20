@@ -136,12 +136,12 @@ parallel preserved a 5/5 development pilot while reducing semantic retrieval p50
 the full run's 48.6/67.0 seconds to 8.4/9.0 seconds. Prepared caches still reduce a later
 query to its question embedding only.
 
-Semantic reranking was also tested on all 69 development multi-session questions. Recall@4
-rose from 79.3% to 91.2%, but answer accuracy fell to 45/69 and required 192 embedding
-calls. A score-gated variant routed only four low-confidence cases and finished at the same
-46/69 answers as local retrieval while adding cost. Neither becomes a default route;
-semantic multi-session evaluation remains available through
-`--semantic-question-types multi-session`.
+The first full-transcript multi-session experiment raised Recall but reduced answer accuracy,
+so it was rejected. Role-aware top-five context changes that result. Under v5, semantic
+reranking is enabled only when the local leader scores at most 315. It routes 115/133
+multi-session questions, reaches 93.0% Recall and 76.7% answer accuracy, and saves 55
+embedding calls versus global routing. Strong local leaders remain embedding-free. See the
+[v5 end-to-end evidence](research/results/longmemeval-answer-v5-summary.json).
 
 ## Remaining limits
 
